@@ -21,6 +21,9 @@
   --line:#e3e8ee;
   --shadow:0 6px 20px rgba(17,26,38,.10);
   --shadow-sm:0 2px 8px rgba(17,26,38,.06);
+  --stack-shadow:0 22px 46px rgba(17,26,38,.24);
+  --stack-shadow-sm:0 12px 24px rgba(17,26,38,.18);
+  --spring:cubic-bezier(.16,1.24,.3,1);
   --radius-card:20px;
   --radius-row:12px;
   --safe-b:env(safe-area-inset-bottom,0px);
@@ -40,6 +43,8 @@
     --line:#2c323b;
     --shadow:0 6px 20px rgba(0,0,0,.45);
     --shadow-sm:0 2px 8px rgba(0,0,0,.3);
+    --stack-shadow:0 22px 46px rgba(0,0,0,.6);
+    --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="dark"]{
@@ -53,6 +58,8 @@
   --line:#2c323b;
   --shadow:0 6px 20px rgba(0,0,0,.45);
   --shadow-sm:0 2px 8px rgba(0,0,0,.3);
+  --stack-shadow:0 22px 46px rgba(0,0,0,.6);
+  --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
 }
 
 *{box-sizing:border-box}
@@ -254,17 +261,34 @@ select.sort{
 .group-head[aria-expanded="true"] .g-chev{transform:rotate(180deg)}
 .group-head:active .g-name{opacity:.6}
 
-/* 堆叠容器：子项全部绝对定位，只靠 transform 移动（交给合成器，滑动更顺） */
-.stack{position:relative}
-.stack, .stack > .stack-item{
-  transition:height .46s cubic-bezier(.22,1,.36,1),
-             transform .46s cubic-bezier(.22,1,.36,1),
-             opacity .3s ease;
+/* 堆叠容器：真 3D 透视，子项绝对定位后只靠 transform 移动（交给合成器） */
+.stack{
+  position:relative;
+  perspective-origin:50% 0;      /* 灭点放在这一摞的顶边，越往后的卡越往里退 */
+  transform-origin:center top;
+  transition:height .62s var(--spring), transform .22s ease;
 }
+.stack.is-pressed{transform:scale(.972)}   /* 按下去整摞往里一压，像真的按到一叠卡 */
 .stack > .stack-item{
   position:absolute;left:0;top:0;width:100%;
   transform-origin:center top;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+  will-change:transform;
+  transition:transform .62s var(--spring), opacity .42s ease;
 }
+/* 越往后的层压一层暗色，做出"退进阴影里"的空气感 */
+.stack > .stack-item::after{
+  content:"";position:absolute;inset:0;
+  border-radius:var(--radius-card);
+  background:#0a1018;opacity:var(--dim,0);
+  pointer-events:none;
+  transition:opacity .5s ease;
+}
+.list .stack > .stack-item::after{border-radius:var(--radius-row)}
+/* 收起时最上面那张替整摞投影，压得越实越像一叠 */
+.stack:not(.is-open) > .stack-item[data-layer="0"] > .card{box-shadow:var(--stack-shadow)}
+.stack:not(.is-open) > .stack-item[data-layer="0"] > .row{box-shadow:var(--stack-shadow-sm)}
 /* 首次渲染 / 改尺寸时直接就位，不要动画 */
 .no-anim .stack, .no-anim .stack > .stack-item{transition:none !important}
 @media (prefers-reduced-motion: reduce){
@@ -707,6 +731,18 @@ function render(){
     var stack = document.createElement("div");
     stack.className = "stack";
     stack.setAttribute("data-group", g.name);
+    /* 收起状态下按住这一摞会整体往里压一下，松开才展开——手感上像真的按到一叠卡 */
+    if(g.items.length > 1){
+      var press = function(on){
+        return function(){
+          stack.classList.toggle("is-pressed", on && !isExpanded(g.name));
+        };
+      };
+      stack.addEventListener("pointerdown", press(true));
+      stack.addEventListener("pointerup", press(false));
+      stack.addEventListener("pointercancel", press(false));
+      stack.addEventListener("pointerleave", press(false));
+    }
     g.items.forEach(function(ev){
       var wrap = document.createElement("div");
       wrap.className = "stack-item";
@@ -727,13 +763,14 @@ function render(){
    收起：只露出最上面一张，后面每张往下探出 PEEK 像素、逐层缩小，像一叠卡片
    展开：依次排成一列，每张之间留 GAP
    位置全部用 transform 表达，容器只改 height，动画交给合成器 */
-var SCALE_STEP = .05; /* 每往下一层缩小多少（两侧内缩，看着像一叠） */
-var LAYER_FADE = .09; /* 每往下一层淡多少，做出景深 */
-var VISIBLE = 3;      /* 收起时最多露几层 */
+var PERSPECTIVE = 880;  /* 透视距离，直接写到 .stack 上，保证 CSS 与这里的算式同源 */
+var DEPTH = 150;        /* 每往后一层退多远（z 轴），退得越远投影越小 —— 这才是空间感的来源 */
+var TILT = 1.15;        /* 每层轻微歪一点点，像随手叠上去的 */
+var DIM = .07;          /* 每往后一层压多少暗色（压太狠会把彩色badge压成脏褐色，实测调低） */
+var VISIBLE = 3;        /* 收起时最多露几层 */
 
-/* 露出量和间距都跟着视图走：卡片高（~160px）能撑得住 14px，
-   列表行只有 ~58px，同样露 14px 就显得错位了 */
-function stackPeek(){ return state.view === "card" ? 14 : 9; }
+/* 露出量和间距都跟着视图走：卡片高（~160px）撑得住大露出，列表行只有 58px */
+function stackPeek(){ return state.view === "card" ? 26 : 12; }
 function stackGap(){ return state.view === "card" ? 14 : 10; }
 
 function layoutStacks(animate){
@@ -754,24 +791,35 @@ function layoutStacks(animate){
     var h = [], i;
     for(i = 0; i < n; i++) h[i] = items[i].offsetHeight;   /* 先量完再写，避免反复触发重排 */
 
+    stack.style.perspective = PERSPECTIVE + "px";   /* 与下面的 k 算式同源，避免两处各写一个值 */
+    stack.classList.toggle("is-open", open);
+
     var gap = stackGap(), peek = stackPeek(), total;
     if(open){
       var y = 0;
       for(i = 0; i < n; i++){
-        place(items[i], y, 1, 1, "auto", n - i,
-              animate ? i * 26 : 0);
+        place(items[i], {y:y, z:0, tilt:0, dim:0, blur:0, op:1, pe:"auto", z9:n - i, layer:i,
+                         delay: animate ? i * 62 : 0});
         y += h[i] + gap;
       }
       total = y - gap;
     }else{
-      /* 每层底边正好比上一层低 PEEK 像素——缩放带来的高度损失在这里补回来，
-         所以卡片高、行矮都能得到同样的露出量（不写死某一档的像素） */
+      /* 每一层往后退 DEPTH 像素，透视把它投影成 k 倍大小：k = P / (P + 深度)。
+         灭点定在这一摞的顶边(perspective-origin:50% 0)，所以投影就是绕顶边的等比缩放，
+         于是「第 i 层的底边正好比上一层低 peek 像素」可以反解出它该往下平移多少：
+             ty = (h0 + i*peek) / k - h[i]
+         这样卡片高、列表行矮，都能得到同样的露出量，不用按某一档硬写死。 */
       for(i = 0; i < n; i++){
-        var k = Math.min(i, VISIBLE);
-        var sc = 1 - k * SCALE_STEP;
-        var y2 = h[0] + k * peek - h[i] * sc;
-        place(items[i], y2, sc, (i < VISIBLE ? 1 - k * LAYER_FADE : 0), (i < VISIBLE ? "auto" : "none"), n - i,
-              animate ? (n - 1 - i) * 18 : 0);
+        var L = Math.min(i, VISIBLE);
+        var k = PERSPECTIVE / (PERSPECTIVE + L * DEPTH);
+        var ty = (h[0] + L * peek) / k - h[i];
+        place(items[i], {
+          y: ty, z: -L * DEPTH, tilt: (i % 2 ? 1 : -1) * L * TILT,
+          dim: L * DIM, blur: L >= 2 ? 1.4 : 0,
+          op: i < VISIBLE ? 1 : 0, pe: i < VISIBLE ? "auto" : "none",
+          z9: n - i, layer: i,
+          delay: animate ? (n - 1 - i) * 40 : 0
+        });
       }
       total = h[0] + Math.min(n - 1, VISIBLE - 1) * peek;
     }
@@ -784,15 +832,20 @@ function layoutStacks(animate){
   }
 }
 
-function place(el, y, scale, opacity, pe, z, delay){
-  el.style.transform = "translate3d(0," + y.toFixed(2) + "px,0) scale(" + scale.toFixed(3) + ")";
-  el.style.opacity = opacity.toFixed(2);
-  el.style.pointerEvents = pe;
-  el.style.zIndex = String(z);
-  el.style.transitionDelay = delay ? (delay + "ms") : "0ms";
+function place(el, o){
+  el.style.transform =
+    "translate3d(0," + o.y.toFixed(2) + "px," + o.z.toFixed(1) + "px)" +
+    (o.tilt ? " rotate(" + o.tilt.toFixed(2) + "deg)" : " rotate(0deg)");
+  el.style.opacity = o.op.toFixed(2);
+  el.style.filter = o.blur ? ("blur(" + o.blur + "px)") : "";
+  el.style.setProperty("--dim", o.dim.toFixed(3));
+  el.style.pointerEvents = o.pe;
+  el.style.zIndex = String(o.z9);
+  el.style.transitionDelay = o.delay ? (o.delay + "ms") : "0ms";
+  el.setAttribute("data-layer", String(o.layer));
   /* 被压在下面看不见的那几张，别让键盘 Tab 还能聚焦到 */
   var btn = el.firstElementChild;
-  if(btn) btn.tabIndex = (pe === "none") ? -1 : 0;
+  if(btn) btn.tabIndex = (o.pe === "none") ? -1 : 0;
 }
 
 function toggleGroup(name){
