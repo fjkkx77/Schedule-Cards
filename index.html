@@ -1531,10 +1531,19 @@ function paintSync(){
   if(box) box.textContent = txt;
 }
 
+var pendingChange = false;
 function queueSync(){
   if(!sync.on || !sync.code) return;
+  pendingChange = true;
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(function(){ syncNow("本地改动"); }, 1200);
+  syncTimer = setTimeout(function(){ syncNow(); }, 600);
+}
+/* 页面被切走/关掉时，把还没发出去的改动立刻冲出去——
+   否则"手机上改完马上锁屏"这一下，改动就要等到下次打开手机才传得上去 */
+function flushSync(){
+  if(!sync.on || !sync.code || !pendingChange) return;
+  clearTimeout(syncTimer);
+  syncNow();
 }
 
 async function syncNow(){
@@ -1571,6 +1580,7 @@ async function syncNow(){
       sync.version = data.version;
     }
     sync.lastAt = Date.now();
+    pendingChange = false;      /* 本地改动已经上去了，页面被切走时就不用再冲一次 */
     saveSync();
     setSync("ok");
   }catch(e){
@@ -1582,11 +1592,11 @@ async function syncNow(){
 }
 
 async function pushDoc(events, baseVersion){
-  var r = await fetch("/api/sync", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ code: sync.code, baseVersion: baseVersion, doc: { events: events } })
-  });
+  var body = JSON.stringify({ code: sync.code, baseVersion: baseVersion, doc: { events: events } });
+  /* keepalive 让请求在页面被关掉之后也能发完（浏览器限制 64KB，超了就走普通请求） */
+  var opts = { method: "POST", headers: {"Content-Type": "application/json"}, body: body };
+  if(body.length < 60000) opts.keepalive = true;
+  var r = await fetch("/api/sync", opts);
   var d = await r.json();
   if(r.status === 409) return { conflict: true, version: d.version, doc: d.doc };
   if(!d.ok) throw new Error(d.error || ("上传失败 " + r.status));
@@ -1596,7 +1606,11 @@ async function pushDoc(events, baseVersion){
 /* 打开页面、切回页面、每 30 秒（只在页面可见时）各同步一次 */
 function startSyncLoops(){
   setInterval(function(){ if(!document.hidden) syncNow(); }, 30000);
-  document.addEventListener("visibilitychange", function(){ if(!document.hidden) syncNow(); });
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden) flushSync();     /* 要走了：把待上传的发出去 */
+    else syncNow();                      /* 回来了：拉一次最新的 */
+  });
+  window.addEventListener("pagehide", flushSync);
   window.addEventListener("focus", function(){ syncNow(); });
   window.addEventListener("online", function(){ syncNow(); });
 }
