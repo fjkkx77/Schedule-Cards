@@ -227,6 +227,50 @@ select.sort{
 }
 .row-badge .u.past-u{font-size:clamp(12px,3.6vw,15px);letter-spacing:0}
 
+/* ============ 分组堆叠 ============ */
+.group{display:block}
+.group-head{
+  display:flex;align-items:center;gap:8px;width:100%;
+  min-height:44px;padding:0 6px;margin:0;border:0;background:transparent;
+  color:var(--text-2);font-size:14px;font-weight:800;letter-spacing:.5px;
+  text-align:left;
+}
+.g-name{overflow-wrap:anywhere;min-width:0}
+.g-count{
+  flex:0 0 auto;
+  font-size:12px;font-weight:700;color:var(--text-3);
+  background:var(--surface);padding:2px 9px;border-radius:99px;
+  box-shadow:var(--shadow-sm);
+}
+.list .g-count{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)}
+.g-chev{
+  margin-left:auto;flex:0 0 auto;
+  width:26px;height:26px;border-radius:99px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:var(--text-3);
+  background:var(--surface);box-shadow:var(--shadow-sm);
+  transition:transform .34s cubic-bezier(.22,1,.36,1);
+}
+.group-head[aria-expanded="true"] .g-chev{transform:rotate(180deg)}
+.group-head:active .g-name{opacity:.6}
+
+/* 堆叠容器：子项全部绝对定位，只靠 transform 移动（交给合成器，滑动更顺） */
+.stack{position:relative}
+.stack, .stack > .stack-item{
+  transition:height .46s cubic-bezier(.22,1,.36,1),
+             transform .46s cubic-bezier(.22,1,.36,1),
+             opacity .3s ease;
+}
+.stack > .stack-item{
+  position:absolute;left:0;top:0;width:100%;
+  transform-origin:center top;
+}
+/* 首次渲染 / 改尺寸时直接就位，不要动画 */
+.no-anim .stack, .no-anim .stack > .stack-item{transition:none !important}
+@media (prefers-reduced-motion: reduce){
+  .stack, .stack > .stack-item, .g-chev{transition:none !important}
+}
+
 /* ============ 空状态 ============ */
 .empty{
   text-align:center;padding:56px 20px;color:var(--text-2);
@@ -308,6 +352,14 @@ select.sort{
 .modes input:checked + label{background:#2f86f6;color:#fff;box-shadow:none}
 .modes input:focus-visible + label{outline:2px solid var(--text);outline-offset:2px}
 .hint{margin:8px 2px 0;font-size:13px;line-height:1.5;color:var(--text-3)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chips button{
+  min-height:44px;padding:0 14px;border:0;border-radius:12px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  font-size:14px;font-weight:700;color:var(--text-2);
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.chips button.on{background:#2f86f6;color:#fff;box-shadow:none}
 .colors{display:flex;flex-wrap:wrap;gap:10px}
 .colors input{position:absolute;opacity:0;width:0;height:0}
 .colors label{
@@ -353,6 +405,8 @@ select.sort{
         <option value="manual">自定义顺序</option>
         <option value="days">按天数临近</option>
         <option value="date">按日期先后</option>
+        <option value="created">按创建时间</option>
+        <option value="updated">按最近修改</option>
       </select>
     </div>
   </div>
@@ -411,6 +465,12 @@ select.sort{
     </div>
 
     <div class="field">
+      <label for="fGroup">分组</label>
+      <input type="text" id="fGroup" maxlength="12" placeholder="留空＝不分组" autocomplete="off">
+      <div class="chips" id="fGroupChips"></div>
+    </div>
+
+    <div class="field">
       <label>颜色</label>
       <div class="colors" id="fColors"></div>
     </div>
@@ -446,7 +506,8 @@ var state = {
   view: "card",
   sort: "manual",
   showDateInList: false,
-  theme: "auto"
+  theme: "auto",
+  expanded: []          /* 处于展开状态的分组名 */
 };
 var editingId = null;
 var todayKey = "";
@@ -455,7 +516,7 @@ var todayKey = "";
 function load(){
   var raw = null;
   try { raw = localStorage.getItem(STORE_KEY); } catch(e){ raw = null; }
-  if(!raw){ state.events = seed(); save(); return; }
+  if(!raw){ state.events = seed(); migrate(); save(); return; }
   try{
     var d = JSON.parse(raw);
     if(d && Array.isArray(d.events)) state.events = d.events;
@@ -463,9 +524,23 @@ function load(){
     if(d && d.sort) state.sort = d.sort;
     if(d && typeof d.showDateInList === "boolean") state.showDateInList = d.showDateInList;
     if(d && d.theme) state.theme = d.theme;
+    if(d && Array.isArray(d.expanded)) state.expanded = d.expanded;
   }catch(e){
     state.events = seed();
   }
+  migrate();
+}
+
+/* 老数据补齐新字段：分组、创建时间、修改时间。
+   创建时间按原有数组顺序倒推，保证「按创建时间」排序对老数据也等于原来的顺序 */
+function migrate(){
+  var now = Date.now(), n = state.events.length, changed = false;
+  state.events.forEach(function(e, i){
+    if(typeof e.group !== "string"){ e.group = ""; changed = true; }
+    if(typeof e.createdAt !== "number"){ e.createdAt = now - (n - i) * 60000; changed = true; }
+    if(typeof e.updatedAt !== "number"){ e.updatedAt = e.createdAt; changed = true; }
+  });
+  if(changed) save();
 }
 function save(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
@@ -474,9 +549,11 @@ function seed(){
   var t = new Date();
   var y = t.getFullYear();
   return [
-    {id:uid(), title:"回家过年啦", date:"2027-01-10", mode:"down", repeat:"none", color:"#2f86f6"},
-    {id:uid(), title:"我的生日",   date:(y)+"-11-06",  mode:"down", repeat:"year", color:"#f5a13c"},
-    {id:uid(), title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", repeat:"none", color:"#22b07d"}
+    {id:uid(), title:"回家过年啦", date:"2027-01-10", mode:"down", repeat:"none", color:"#2f86f6", group:"生活"},
+    {id:uid(), title:"我的生日",   date:(y)+"-11-06",  mode:"down", repeat:"year", color:"#f5a13c", group:"生活"},
+    {id:uid(), title:"四级考试",   date:(y)+"-12-19",  mode:"down", repeat:"none", color:"#ef4d4d", group:"考试"},
+    {id:uid(), title:"计组考试",   date:(y+1)+"-01-04",mode:"down", repeat:"none", color:"#8a6ef2", group:"考试"},
+    {id:uid(), title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", repeat:"none", color:"#22b07d", group:""}
   ];
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -541,8 +618,42 @@ function sortedEvents(){
       if(!ra) return 1; if(!rb) return -1;
       return ra.date - rb.date;
     });
+  }else if(state.sort === "created"){        /* 先建的排前面 */
+    arr.sort(function(a,b){ return (a.createdAt||0) - (b.createdAt||0); });
+  }else if(state.sort === "updated"){        /* 最近改过的排前面 */
+    arr.sort(function(a,b){ return (b.updatedAt||b.createdAt||0) - (a.updatedAt||a.createdAt||0); });
   }
   return arr;
+}
+
+/* 把排好序的列表按分组聚拢：分组出现的位置＝该组第一条的位置，未分组的各自独立占位 */
+function groupize(list){
+  var out = [], idx = {};
+  list.forEach(function(ev){
+    var g = (ev.group || "").trim();
+    if(!g){ out.push({name:"", items:[ev]}); return; }
+    if(!Object.prototype.hasOwnProperty.call(idx, g)){
+      idx[g] = out.length;
+      out.push({name:g, items:[]});
+    }
+    out[idx[g]].items.push(ev);
+  });
+  return out;
+}
+
+function allGroups(){
+  var seen = {}, out = [];
+  state.events.forEach(function(e){
+    var g = (e.group || "").trim();
+    if(g && !Object.prototype.hasOwnProperty.call(seen, g)){ seen[g] = 1; out.push(g); }
+  });
+  return out;
+}
+function isExpanded(name){ return state.expanded.indexOf(name) > -1; }
+/* 分组被删空/改名后，把记在展开列表里的空壳清掉 */
+function pruneExpanded(){
+  var live = allGroups();
+  state.expanded = state.expanded.filter(function(g){ return live.indexOf(g) > -1; });
 }
 /* 未来的按“还剩几天”从小到大排前面；已过去的排后面，越近的越靠前 */
 function rank(ev, t){
@@ -569,17 +680,144 @@ function render(){
     return;
   }
 
-  if(state.view === "card"){
-    var wrap = document.createElement("div");
-    wrap.className = "cards";
-    list.forEach(function(ev){ wrap.appendChild(cardEl(ev, t)); });
-    board.appendChild(wrap);
-  }else{
-    var box = document.createElement("div");
-    box.className = "list";
-    list.forEach(function(ev){ box.appendChild(rowEl(ev, t)); });
-    board.appendChild(box);
+  var isCard = state.view === "card";
+  var box = document.createElement("div");
+  box.className = isCard ? "cards" : "list";
+
+  groupize(list).forEach(function(g){
+    var make = function(ev){ return isCard ? cardEl(ev, t) : rowEl(ev, t); };
+
+    if(!g.name){                                  /* 没分组的直接平铺 */
+      box.appendChild(make(g.items[0]));
+      return;
+    }
+
+    var sec = document.createElement("section");
+    sec.className = "group";
+
+    var head = document.createElement("button");
+    head.type = "button";
+    head.className = "group-head";
+    head.setAttribute("aria-expanded", isExpanded(g.name) ? "true" : "false");
+    head.innerHTML = '<span class="g-name"></span><span class="g-count"></span><span class="g-chev">▾</span>';
+    head.querySelector(".g-name").textContent = g.name;
+    head.querySelector(".g-count").textContent = g.items.length;
+    head.addEventListener("click", function(){ toggleGroup(g.name); });
+
+    var stack = document.createElement("div");
+    stack.className = "stack";
+    stack.setAttribute("data-group", g.name);
+    g.items.forEach(function(ev){
+      var wrap = document.createElement("div");
+      wrap.className = "stack-item";
+      wrap.appendChild(make(ev));
+      stack.appendChild(wrap);
+    });
+
+    sec.appendChild(head);
+    sec.appendChild(stack);
+    box.appendChild(sec);
+  });
+
+  board.appendChild(box);
+  layoutStacks(false);
+}
+
+/* ---- 堆叠布局 ----
+   收起：只露出最上面一张，后面每张往下探出 PEEK 像素、逐层缩小，像一叠卡片
+   展开：依次排成一列，每张之间留 GAP
+   位置全部用 transform 表达，容器只改 height，动画交给合成器 */
+var SCALE_STEP = .05; /* 每往下一层缩小多少（两侧内缩，看着像一叠） */
+var LAYER_FADE = .09; /* 每往下一层淡多少，做出景深 */
+var VISIBLE = 3;      /* 收起时最多露几层 */
+
+/* 露出量和间距都跟着视图走：卡片高（~160px）能撑得住 14px，
+   列表行只有 ~58px，同样露 14px 就显得错位了 */
+function stackPeek(){ return state.view === "card" ? 14 : 9; }
+function stackGap(){ return state.view === "card" ? 14 : 10; }
+
+function layoutStacks(animate){
+  var stacks = board.querySelectorAll(".stack");
+  if(!stacks.length) return;
+  if(!animate) board.classList.add("no-anim");
+
+  for(var s = 0; s < stacks.length; s++){
+    var stack = stacks[s];
+    var items = stack.children;
+    var n = items.length;
+    if(!n) continue;
+
+    var name = stack.getAttribute("data-group");
+    /* 只有一张时没有“堆”的概念，永远当展开处理 */
+    var open = (n === 1) || isExpanded(name);
+
+    var h = [], i;
+    for(i = 0; i < n; i++) h[i] = items[i].offsetHeight;   /* 先量完再写，避免反复触发重排 */
+
+    var gap = stackGap(), peek = stackPeek(), total;
+    if(open){
+      var y = 0;
+      for(i = 0; i < n; i++){
+        place(items[i], y, 1, 1, "auto", n - i,
+              animate ? i * 26 : 0);
+        y += h[i] + gap;
+      }
+      total = y - gap;
+    }else{
+      /* 每层底边正好比上一层低 PEEK 像素——缩放带来的高度损失在这里补回来，
+         所以卡片高、行矮都能得到同样的露出量（不写死某一档的像素） */
+      for(i = 0; i < n; i++){
+        var k = Math.min(i, VISIBLE);
+        var sc = 1 - k * SCALE_STEP;
+        var y2 = h[0] + k * peek - h[i] * sc;
+        place(items[i], y2, sc, (i < VISIBLE ? 1 - k * LAYER_FADE : 0), (i < VISIBLE ? "auto" : "none"), n - i,
+              animate ? (n - 1 - i) * 18 : 0);
+      }
+      total = h[0] + Math.min(n - 1, VISIBLE - 1) * peek;
+    }
+    stack.style.height = total + "px";
   }
+
+  if(!animate){
+    void board.offsetHeight;          /* 强制应用一次，再把动画打开 */
+    board.classList.remove("no-anim");
+  }
+}
+
+function place(el, y, scale, opacity, pe, z, delay){
+  el.style.transform = "translate3d(0," + y.toFixed(2) + "px,0) scale(" + scale.toFixed(3) + ")";
+  el.style.opacity = opacity.toFixed(2);
+  el.style.pointerEvents = pe;
+  el.style.zIndex = String(z);
+  el.style.transitionDelay = delay ? (delay + "ms") : "0ms";
+  /* 被压在下面看不见的那几张，别让键盘 Tab 还能聚焦到 */
+  var btn = el.firstElementChild;
+  if(btn) btn.tabIndex = (pe === "none") ? -1 : 0;
+}
+
+function toggleGroup(name){
+  var i = state.expanded.indexOf(name);
+  if(i > -1) state.expanded.splice(i, 1);
+  else state.expanded.push(name);
+  save();
+  var heads = board.querySelectorAll(".group-head");
+  for(var k = 0; k < heads.length; k++){
+    var st = heads[k].nextElementSibling;
+    if(st && st.getAttribute("data-group") === name){
+      heads[k].setAttribute("aria-expanded", isExpanded(name) ? "true" : "false");
+    }
+  }
+  layoutStacks(true);
+}
+
+/* 窗口尺寸变化 / 字体加载完，卡片高度会变，重新量一次 */
+var reflowTimer = null;
+window.addEventListener("resize", function(){
+  clearTimeout(reflowTimer);
+  reflowTimer = setTimeout(function(){ layoutStacks(false); }, 120);
+});
+if(document.fonts && document.fonts.ready && document.fonts.ready.then){
+  document.fonts.ready.then(function(){ layoutStacks(false); });
 }
 
 /* 一条日程当前要显示成什么样，全部在这里算清楚
@@ -615,6 +853,18 @@ function numInfo(ev, t){
     cycle: r.cycle,
     dateLabel: (m === "down" ? "目标 " : "起算 ")
   };
+}
+
+function groupCount(g){
+  var c = 0;
+  state.events.forEach(function(e){ if((e.group || "").trim() === g) c++; });
+  return c;
+}
+/* 收起状态下点这一叠＝展开；展开状态（或没分组、组里只有一条）下点＝编辑 */
+function activate(ev){
+  var g = (ev.group || "").trim();
+  if(g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
+  openForm(ev.id);
 }
 
 function tagEl(text){
@@ -682,7 +932,7 @@ function cardEl(ev, t){
 
   body.appendChild(left); body.appendChild(num);
   el.appendChild(top); el.appendChild(body);
-  el.addEventListener("click", function(){ openForm(ev.id); });
+  el.addEventListener("click", function(){ activate(ev); });
   return el;
 }
 
@@ -735,7 +985,7 @@ function rowEl(ev, t){
   badge.appendChild(n); badge.appendChild(u);
 
   el.appendChild(main); el.appendChild(badge);
-  el.addEventListener("click", function(){ openForm(ev.id); });
+  el.addEventListener("click", function(){ activate(ev); });
   return el;
 }
 
@@ -820,11 +1070,17 @@ fileInput.addEventListener("change", function(){
           date: x.date,
           mode: (x.mode === "down" || x.mode === "up") ? x.mode : "auto",
           repeat: x.repeat === "year" ? "year" : "none",
-          color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0]
+          group: typeof x.group === "string" ? x.group.trim().slice(0,12) : "",
+          color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
+          createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
+          updatedAt: (typeof x.updatedAt === "number" && x.updatedAt > 0) ? x.updatedAt : undefined
         });
       });
       if(!clean.length) throw new Error("没有可用的日程");
-      state.events = clean; save(); render();
+      state.events = clean;
+      migrate();                    /* 备份文件里没有创建时间的，按顺序补上 */
+      pruneExpanded();
+      save(); render();
     }catch(e){
       alert("导入失败：" + e.message);
     }
@@ -834,7 +1090,7 @@ fileInput.addEventListener("change", function(){
 document.getElementById("mClear").addEventListener("click", function(){
   closeMenu();
   if(confirm("确定清空全部日程吗？该操作无法撤销。")){
-    state.events = []; save(); render();
+    state.events = []; state.expanded = []; save(); render();
   }
 });
 
@@ -867,6 +1123,35 @@ function syncModeUI(){
 }
 fModes.addEventListener("change", syncModeUI);
 var fColors = document.getElementById("fColors");
+var fGroup = document.getElementById("fGroup");
+var fGroupChips = document.getElementById("fGroupChips");
+
+/* 已有分组做成一排快捷按钮：点一下填进输入框，再点一下取消 */
+function buildGroupChips(){
+  fGroupChips.innerHTML = "";
+  var groups = allGroups();
+  if(!groups.length){ fGroupChips.hidden = true; return; }
+  fGroupChips.hidden = false;
+  groups.forEach(function(g){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = g;
+    if(fGroup.value.trim() === g) b.className = "on";
+    b.addEventListener("click", function(){
+      fGroup.value = (fGroup.value.trim() === g) ? "" : g;
+      syncGroupChips();
+    });
+    fGroupChips.appendChild(b);
+  });
+}
+function syncGroupChips(){
+  var cur = fGroup.value.trim();
+  var bs = fGroupChips.children;
+  for(var i = 0; i < bs.length; i++){
+    bs[i].className = (bs[i].textContent === cur) ? "on" : "";
+  }
+}
+document.getElementById("fGroup").addEventListener("input", syncGroupChips);
 var fDelete = document.getElementById("fDelete");
 var fTop = document.getElementById("fTop");
 
@@ -908,6 +1193,8 @@ function openForm(id){
   if(mr) mr.checked = true;
   syncModeUI();
   fRepeat.value = ev && ev.repeat === "year" ? "year" : "none";
+  fGroup.value = ev ? (ev.group || "") : "";
+  buildGroupChips();
   setColor(ev ? ev.color : COLORS[0]);
   fDelete.hidden = !ev;
   fTop.hidden = !(ev && state.sort === "manual" && state.events.length > 1);
@@ -934,6 +1221,8 @@ form.addEventListener("submit", function(e){
   if(!parseYMD(date)){ alert("请选择一个有效日期"); return; }
   var mode = pickedMode();
   var repeat = (mode === "up") ? "none" : fRepeat.value;   /* 正数模式不支持每年重复 */
+  var group = fGroup.value.trim().slice(0, 12);
+  var now = Date.now();
   if(editingId){
     for(var i=0;i<state.events.length;i++){
       if(state.events[i].id === editingId){
@@ -941,12 +1230,18 @@ form.addEventListener("submit", function(e){
         state.events[i].date = date;
         state.events[i].mode = mode;
         state.events[i].repeat = repeat;
+        state.events[i].group = group;
         state.events[i].color = pickedColor();
+        state.events[i].updatedAt = now;
       }
     }
   }else{
-    state.events.push({id:uid(), title:title, date:date, mode:mode, repeat:repeat, color:pickedColor()});
+    state.events.push({id:uid(), title:title, date:date, mode:mode, repeat:repeat,
+                       group:group, color:pickedColor(), createdAt:now, updatedAt:now});
   }
+  /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
+  if(group && !isExpanded(group)) state.expanded.push(group);
+  pruneExpanded();
   save(); closeForm(); render();
 });
 
@@ -954,6 +1249,7 @@ fDelete.addEventListener("click", function(){
   if(!editingId) return;
   if(!confirm("删除这条日程？")) return;
   state.events = state.events.filter(function(x){ return x.id !== editingId; });
+  pruneExpanded();
   save(); closeForm(); render();
 });
 fTop.addEventListener("click", function(){
