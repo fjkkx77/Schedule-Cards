@@ -91,6 +91,8 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 .brand{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
 .brand h1{margin:0;font-size:19px;font-weight:800;letter-spacing:.5px}
 .brand .today{margin:2px 0 0;font-size:13px;color:var(--text-2);font-weight:500}
+.sync-line{margin:2px 0 0;font-size:12px;color:var(--text-3);font-weight:600}
+.sync-line.bad{color:#e0483d}
 .icon-btn{
   flex:0 0 auto;width:44px;height:44px;border:0;border-radius:14px;
   background:var(--surface);color:var(--text-2);
@@ -415,6 +417,7 @@ select.sort{
     <div class="brand">
       <h1>日程卡片</h1>
       <p class="today" id="todayLine">今天</p>
+      <p class="sync-line" id="syncLine" hidden></p>
     </div>
     <button class="icon-btn" id="menuBtn" aria-label="更多设置" aria-haspopup="true">⋯</button>
   </div>
@@ -445,6 +448,8 @@ select.sort{
 <!-- 菜单 -->
 <div class="menu-mask" id="menuMask" hidden></div>
 <div class="menu" id="menu" hidden>
+  <button id="mSync">云同步<span class="switch" id="mSyncState">未开启</span></button>
+  <hr>
   <button id="mToggleDate">列表显示日期<span class="switch" id="mDateState">关</span></button>
   <button id="mTheme">主题<span class="switch" id="mThemeState">跟随系统</span></button>
   <hr>
@@ -454,6 +459,40 @@ select.sort{
   <button id="mClear" class="danger">清空全部日程</button>
 </div>
 <input type="file" id="fileInput" accept="application/json,.json" hidden>
+
+<!-- 云同步设置 -->
+<div class="mask" id="syncMask" hidden>
+  <div class="sheet" id="syncSheet">
+    <h2>云同步</h2>
+    <p class="hint" style="margin-top:0">
+      在两台设备上填<strong>同一个同步码</strong>，日程就会自动互通。<br>
+      同步码相当于密码，知道它的人就能看到并修改这些日程，别外传。
+    </p>
+
+    <div class="field">
+      <label for="sCode">同步码（8~64 位字母 / 数字 / - / _）</label>
+      <input type="text" id="sCode" maxlength="64" placeholder="例如 wbztl-2026-rc" autocomplete="off" spellcheck="false">
+      <div class="chips">
+        <button type="button" id="sGen">随机生成一个</button>
+        <button type="button" id="sCopy">复制</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>状态</label>
+      <p class="hint" id="syncState" style="margin-top:0">未开启</p>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn" id="sOff">关闭同步</button>
+      <button type="button" class="btn primary" id="sOn">开启并同步</button>
+    </div>
+    <div class="extra-row">
+      <button type="button" class="btn" id="sNow">立即同步一次</button>
+      <button type="button" class="btn" id="sClose">关闭窗口</button>
+    </div>
+  </div>
+</div>
 
 <!-- 新增 / 编辑 -->
 <div class="mask" id="mask" hidden>
@@ -563,8 +602,30 @@ function migrate(){
     if(typeof e.group !== "string"){ e.group = ""; changed = true; }
     if(typeof e.createdAt !== "number"){ e.createdAt = now - (n - i) * 60000; changed = true; }
     if(typeof e.updatedAt !== "number"){ e.updatedAt = e.createdAt; changed = true; }
+    /* 自定义顺序原来靠数组位置，跨设备合并后位置就没了，改成显式的 order 字段 */
+    if(typeof e.order !== "number"){ e.order = i; changed = true; }
   });
+  /* 删除标记（墓碑）留够久，保证另一台设备下次上线还能收到这条删除；再老就清掉 */
+  var keep = state.events.filter(function(e){
+    return !e.deletedAt || (now - e.deletedAt) < 120 * 24 * 3600 * 1000;
+  });
+  if(keep.length !== state.events.length){ state.events = keep; changed = true; }
   if(changed) save();
+}
+
+/* 没被删掉的那些——所有显示、分组、排序都只看这个 */
+function liveEvents(){
+  return state.events.filter(function(e){ return !e.deletedAt; });
+}
+function orderMax(){
+  var m = 0;
+  state.events.forEach(function(e){ if(typeof e.order === "number" && e.order > m) m = e.order; });
+  return m;
+}
+function orderMin(){
+  var m = 0;
+  state.events.forEach(function(e){ if(typeof e.order === "number" && e.order < m) m = e.order; });
+  return m;
 }
 function save(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
@@ -631,8 +692,10 @@ var board = document.getElementById("board");
 
 function sortedEvents(){
   var t = today();
-  var arr = state.events.slice();
-  if(state.sort === "days"){
+  var arr = liveEvents();
+  if(state.sort === "manual"){                /* 自定义顺序按 order 字段，跨设备合并后也稳定 */
+    arr.sort(function(a,b){ return (a.order || 0) - (b.order || 0); });
+  }else if(state.sort === "days"){
     arr.sort(function(a,b){
       return rank(a,t) - rank(b,t);
     });
@@ -667,7 +730,7 @@ function groupize(list){
 
 function allGroups(){
   var seen = {}, out = [];
-  state.events.forEach(function(e){
+  liveEvents().forEach(function(e){
     var g = (e.group || "").trim();
     if(g && !Object.prototype.hasOwnProperty.call(seen, g)){ seen[g] = 1; out.push(g); }
   });
@@ -910,7 +973,7 @@ function numInfo(ev, t){
 
 function groupCount(g){
   var c = 0;
-  state.events.forEach(function(e){ if((e.group || "").trim() === g) c++; });
+  liveEvents().forEach(function(e){ if((e.group || "").trim() === g) c++; });
   return c;
 }
 /* 收起状态下点这一叠＝展开；展开状态（或没分组、组里只有一条）下点＝编辑 */
@@ -1093,7 +1156,7 @@ document.getElementById("mTheme").addEventListener("click", function(){
 });
 document.getElementById("mExport").addEventListener("click", function(){
   closeMenu();
-  var data = JSON.stringify({app:"schedule-cards", version:1, events:state.events}, null, 2);
+  var data = JSON.stringify({app:"schedule-cards", version:1, events:liveEvents()}, null, 2);
   var blob = new Blob([data], {type:"application/json"});
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1130,10 +1193,17 @@ fileInput.addEventListener("change", function(){
         });
       });
       if(!clean.length) throw new Error("没有可用的日程");
+      /* 导入＝"用这份备份替换现在的数据"。本地原有、备份里没有的那些要打删除标记，
+         否则开着同步时它们会从另一台设备又回来 */
+      var keepIds = {}, tnow = Date.now();
+      clean.forEach(function(x){ keepIds[x.id] = 1; });
+      state.events.forEach(function(x){
+        if(!keepIds[x.id] && !x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; clean.push(x); }
+      });
       state.events = clean;
-      migrate();                    /* 备份文件里没有创建时间的，按顺序补上 */
+      migrate();                    /* 备份文件里没有创建时间/顺序的，按顺序补上 */
       pruneExpanded();
-      save(); render();
+      save(); queueSync(); render();
     }catch(e){
       alert("导入失败：" + e.message);
     }
@@ -1143,8 +1213,72 @@ fileInput.addEventListener("change", function(){
 document.getElementById("mClear").addEventListener("click", function(){
   closeMenu();
   if(confirm("确定清空全部日程吗？该操作无法撤销。")){
-    state.events = []; state.expanded = []; save(); render();
+    var tnow = Date.now();
+    state.events.forEach(function(x){ if(!x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; } });
+    state.expanded = []; save(); queueSync(); render();
   }
+});
+
+/* ================= 云同步的界面 ================= */
+var syncMask = document.getElementById("syncMask");
+var sCode = document.getElementById("sCode");
+
+function openSyncSheet(){
+  closeMenu();
+  sCode.value = sync.code || "";
+  paintSync();
+  syncMask.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+function closeSyncSheet(){
+  syncMask.hidden = true;
+  document.body.style.overflow = "";
+}
+document.getElementById("mSync").addEventListener("click", openSyncSheet);
+document.getElementById("sClose").addEventListener("click", closeSyncSheet);
+syncMask.addEventListener("click", function(e){ if(e.target === syncMask) closeSyncSheet(); });
+
+document.getElementById("sGen").addEventListener("click", function(){
+  var abc = "abcdefghijkmnpqrstuvwxyz23456789";   /* 去掉容易看混的 l/o/0/1 */
+  var out = "";
+  var buf = new Uint8Array(16);
+  if(window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(buf);
+  else for(var j=0;j<16;j++) buf[j] = Math.floor(Math.random()*256);
+  for(var i=0;i<16;i++){ out += abc[buf[i] % abc.length]; if(i===3||i===7||i===11) out += "-"; }
+  sCode.value = out;
+});
+document.getElementById("sCopy").addEventListener("click", function(){
+  var v = sCode.value.trim();
+  if(!v){ alert("同步码是空的"); return; }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(v).then(function(){ alert("同步码已复制"); },
+                                          function(){ alert("复制失败，请手动长按选中"); });
+  }else{
+    sCode.select(); alert("请长按选中后复制");
+  }
+});
+document.getElementById("sOn").addEventListener("click", function(){
+  var v = sCode.value.trim();
+  if(!/^[A-Za-z0-9\-_]{8,64}$/.test(v)){
+    alert("同步码要 8~64 位，只能用字母、数字、- 和 _");
+    return;
+  }
+  sync.on = true; sync.code = v; sync.version = 0;
+  saveSync();
+  document.getElementById("mSyncState").textContent = "已开启";
+  syncNow();
+});
+document.getElementById("sOff").addEventListener("click", function(){
+  sync.on = false;
+  saveSync();
+  setSync("off");
+  document.getElementById("mSyncState").textContent = "未开启";
+  document.getElementById("syncLine").hidden = true;
+  document.getElementById("syncState").textContent = "未开启（数据仍保留在本机）";
+});
+document.getElementById("sNow").addEventListener("click", function(){
+  if(!sync.on){ alert("先点「开启并同步」"); return; }
+  syncNow();
 });
 
 /* ================= 新增 / 编辑弹窗 ================= */
@@ -1250,7 +1384,7 @@ function openForm(id){
   buildGroupChips();
   setColor(ev ? ev.color : COLORS[0]);
   fDelete.hidden = !ev;
-  fTop.hidden = !(ev && state.sort === "manual" && state.events.length > 1);
+  fTop.hidden = !(ev && state.sort === "manual" && liveEvents().length > 1);
   mask.hidden = false;
   document.body.style.overflow = "hidden";
   if(!ev) setTimeout(function(){ try{ fTitle.focus(); }catch(e){} }, 60);
@@ -1264,7 +1398,11 @@ document.getElementById("addBtn").addEventListener("click", function(){ openForm
 document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
-  if(e.key === "Escape"){ if(!mask.hidden) closeForm(); if(!menu.hidden) closeMenu(); }
+  if(e.key === "Escape"){
+    if(!mask.hidden) closeForm();
+    if(!syncMask.hidden) closeSyncSheet();
+    if(!menu.hidden) closeMenu();
+  }
 });
 
 form.addEventListener("submit", function(e){
@@ -1290,31 +1428,178 @@ form.addEventListener("submit", function(e){
     }
   }else{
     state.events.push({id:uid(), title:title, date:date, mode:mode, repeat:repeat,
-                       group:group, color:pickedColor(), createdAt:now, updatedAt:now});
+                       group:group, color:pickedColor(), order:orderMax() + 1,
+                       createdAt:now, updatedAt:now});
   }
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
   if(group && !isExpanded(group)) state.expanded.push(group);
   pruneExpanded();
-  save(); closeForm(); render();
+  save(); queueSync(); closeForm(); render();
 });
 
 fDelete.addEventListener("click", function(){
   if(!editingId) return;
   if(!confirm("删除这条日程？")) return;
-  state.events = state.events.filter(function(x){ return x.id !== editingId; });
+  /* 不真删，打一个删除标记：否则另一台设备同步时会把它当"我这边没有的新条目"又加回来 */
+  var tnow = Date.now();
+  state.events.forEach(function(x){
+    if(x.id === editingId){ x.deletedAt = tnow; x.updatedAt = tnow; }
+  });
   pruneExpanded();
-  save(); closeForm(); render();
+  save(); queueSync(); closeForm(); render();
 });
 fTop.addEventListener("click", function(){
   if(!editingId) return;
-  var idx = -1;
-  for(var i=0;i<state.events.length;i++){ if(state.events[i].id === editingId) idx = i; }
-  if(idx > 0){
-    var it = state.events.splice(idx,1)[0];
-    state.events.unshift(it);
-  }
-  save(); closeForm(); render();
+  var min = orderMin(), now = Date.now();
+  state.events.forEach(function(x){
+    if(x.id === editingId){ x.order = min - 1; x.updatedAt = now; }
+  });
+  save(); queueSync(); closeForm(); render();
 });
+
+/* ================= 云同步 =================
+   服务端只存一份「事件列表」，视图/排序/主题/展开状态这些是各设备自己的偏好，不同步。
+   合并规则：按 id 取并集，同一条取 updatedAt 更新的那一份；删除是打标记(deletedAt)而不是真删，
+   所以删除也能传到另一台设备。因此两边即使各自离线改过，合起来也不会丢东西。 */
+
+var SYNC_KEY = "schedule-cards-sync-v1";
+var sync = { on:false, code:"", lastAt:0, version:0 };
+var syncStatus = "off";      /* off | ok | syncing | error | unsupported */
+var syncMsg = "";
+var syncTimer = null, syncBusy = false, syncAgain = false;
+
+function loadSync(){
+  try{
+    var raw = localStorage.getItem(SYNC_KEY);
+    if(raw){
+      var d = JSON.parse(raw);
+      if(d && typeof d === "object"){
+        sync.on = !!d.on;
+        sync.code = typeof d.code === "string" ? d.code : "";
+        sync.lastAt = d.lastAt || 0;
+        sync.version = d.version || 0;
+      }
+    }
+  }catch(e){}
+}
+function saveSync(){
+  try{ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }catch(e){}
+}
+
+function mergeEvents(a, b){
+  var map = {}, out = [];
+  function stamp(e){ return e.updatedAt || e.createdAt || 0; }
+  function take(list){
+    (list || []).forEach(function(e){
+      if(!e || typeof e !== "object" || !e.id) return;
+      var cur = map[e.id];
+      if(!cur || stamp(e) > stamp(cur)) map[e.id] = e;
+    });
+  }
+  take(a); take(b);
+  for(var k in map){ if(Object.prototype.hasOwnProperty.call(map, k)) out.push(map[k]); }
+  return out;
+}
+/* 两份数据是不是一样：按 id + updatedAt 比对，用来判断要不要上传 */
+function fingerprint(list){
+  return (list || []).map(function(e){ return e.id + ":" + (e.updatedAt || e.createdAt || 0); })
+                     .sort().join("|");
+}
+
+function setSync(st, msg){
+  syncStatus = st; syncMsg = msg || "";
+  paintSync();
+}
+function timeAgo(ts){
+  if(!ts) return "";
+  var s = Math.floor((Date.now() - ts) / 1000);
+  if(s < 60) return "刚刚";
+  if(s < 3600) return Math.floor(s/60) + " 分钟前";
+  if(s < 86400) return Math.floor(s/3600) + " 小时前";
+  return Math.floor(s/86400) + " 天前";
+}
+function paintSync(){
+  var el = document.getElementById("syncLine");
+  if(!el) return;
+  if(!sync.on || !sync.code){ el.hidden = true; return; }
+  el.hidden = false;
+  var txt = { syncing:"同步中…", ok:"已同步 · " + timeAgo(sync.lastAt),
+              error:"同步失败：" + syncMsg, unsupported:"当前地址不支持同步", off:"未开启" }[syncStatus] || "";
+  el.textContent = "☁ " + txt;
+  el.className = "sync-line" + (syncStatus === "error" || syncStatus === "unsupported" ? " bad" : "");
+  var box = document.getElementById("syncState");
+  if(box) box.textContent = txt;
+}
+
+function queueSync(){
+  if(!sync.on || !sync.code) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(function(){ syncNow("本地改动"); }, 1200);
+}
+
+async function syncNow(){
+  if(!sync.on || !sync.code) return;
+  if(syncBusy){ syncAgain = true; return; }      /* 正在同步就排队，避免并发写 */
+  syncBusy = true;
+  setSync("syncing");
+  try{
+    var r = await fetch("/api/sync?code=" + encodeURIComponent(sync.code), {cache:"no-store"});
+    if(r.status === 404){ setSync("unsupported"); return; }
+    var data = await r.json();
+    if(!data.ok) throw new Error(data.error || ("读取失败 " + r.status));
+
+    var remote = (data.doc && data.doc.events) || [];
+    var before = fingerprint(state.events);
+    var merged = mergeEvents(state.events, remote);
+
+    if(fingerprint(merged) !== before){        /* 远端有我这儿没有的：先落地再说 */
+      state.events = merged;
+      pruneExpanded();
+      save();
+      render();
+    }
+    if(fingerprint(merged) !== fingerprint(remote)){   /* 我这儿有远端没有的：上传 */
+      var pushed = await pushDoc(merged, data.version);
+      if(pushed.conflict){                     /* 另一台设备刚写过：拿它的再合一次，重试一次 */
+        var again = mergeEvents(merged, (pushed.doc && pushed.doc.events) || []);
+        state.events = again; save(); render();
+        pushed = await pushDoc(again, pushed.version);
+        if(pushed.conflict) throw new Error("另一台设备正在写入，稍后会自动重试");
+      }
+      sync.version = pushed.version;
+    }else{
+      sync.version = data.version;
+    }
+    sync.lastAt = Date.now();
+    saveSync();
+    setSync("ok");
+  }catch(e){
+    setSync("error", (e && e.message) || "网络异常");
+  }finally{
+    syncBusy = false;
+    if(syncAgain){ syncAgain = false; setTimeout(function(){ syncNow(); }, 400); }
+  }
+}
+
+async function pushDoc(events, baseVersion){
+  var r = await fetch("/api/sync", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ code: sync.code, baseVersion: baseVersion, doc: { events: events } })
+  });
+  var d = await r.json();
+  if(r.status === 409) return { conflict: true, version: d.version, doc: d.doc };
+  if(!d.ok) throw new Error(d.error || ("上传失败 " + r.status));
+  return { conflict: false, version: d.version };
+}
+
+/* 打开页面、切回页面、每 30 秒（只在页面可见时）各同步一次 */
+function startSyncLoops(){
+  setInterval(function(){ if(!document.hidden) syncNow(); }, 30000);
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) syncNow(); });
+  window.addEventListener("focus", function(){ syncNow(); });
+  window.addEventListener("online", function(){ syncNow(); });
+}
 
 /* ================= 跨天自动刷新 ================= */
 function tick(){
@@ -1326,11 +1611,16 @@ document.addEventListener("visibilitychange", function(){ if(!document.hidden) t
 
 /* ================= 启动 ================= */
 load();
+loadSync();
 applyTheme();
 viewCard.setAttribute("aria-pressed", state.view === "card" ? "true" : "false");
 viewList.setAttribute("aria-pressed", state.view === "list" ? "true" : "false");
 sortSel.value = state.sort;
 render();
+document.getElementById("mSyncState").textContent = sync.on ? "已开启" : "未开启";
+if(sync.on && sync.code){ setSync("syncing"); syncNow(); }
+startSyncLoops();
+setInterval(paintSync, 60000);     /* 只是把"3 分钟前"这种相对时间刷新一下 */
 
 })();
 </script>
