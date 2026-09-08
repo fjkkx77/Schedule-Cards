@@ -1,2 +1,7 @@
 .vercel
 .env*
+
+# vercel install upstash 顺带装的 Upstash 用法文档，本项目用不到（零依赖直连 REST）
+.agents
+.claude
+skills-lock.json
