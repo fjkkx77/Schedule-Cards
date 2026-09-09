@@ -367,10 +367,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 /* ============ 悬浮新增按钮 ============ */
 .fab{
   position:fixed;
-  /* 宽屏上别贴在整个屏幕的右下角（离内容太远、还容易被桌面挂件挡住），
-     改成跟内容列的右边缘对齐：内容列最宽 600px，所以右边距 = 半屏 - 300 + 16。
-     窄屏时这个值算出来是负的，被 max() 兜回 16px，行为和原来一样 */
-  right:max(calc(16px + var(--safe-r)), calc(50vw - 300px + 16px));
+  /* 宽屏上放在内容列**外面**的空白里：按钮左边缘距列右边缘 16px，既不压住卡片，
+     也不会缩到屏幕角落。算式：右边距 = 半屏 - 300(半列宽) - 58(按钮宽) - 16(间距) = 50vw - 374px。
+     屏幕不够宽时这个值是负的/太小，被 max() 兜回 16px，回到手机上那种压在内容上的老行为 */
+  right:max(calc(16px + var(--safe-r)), calc(50vw - 374px));
   bottom:calc(18px + var(--safe-b));
   width:58px;height:58px;border-radius:20px;border:0;
   background:#2f86f6;color:#fff;font-size:30px;line-height:1;
@@ -548,6 +548,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 
 .actions{display:flex;gap:10px;margin-top:18px}
 .danger-row{margin-top:10px}
+.danger-row .btn{width:100%}   /* 编辑表单里的删除按钮独占一行 */
+#gpRow2{margin-top:10px}
 .btn{
   flex:1 1 auto;min-height:50px;border:0;border-radius:14px;
   font-size:16px;font-weight:700;
@@ -557,7 +559,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .btn.primary{background:#2f86f6;color:#fff;box-shadow:none}
 /* 注意：必须写在 .btn 之后——同特异性下靠顺序决胜，写在前面会被 .btn 的底色和字色盖掉 */
 .btn.btn-danger{
-  width:100%;background:transparent;color:#e0483d;
+  background:transparent;color:#e0483d;
   box-shadow:inset 0 0 0 1px rgba(224,72,61,.45);
 }
 .btn.btn-danger:active{background:rgba(224,72,61,.08)}
@@ -632,13 +634,11 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <input type="text" id="gpInput" maxlength="12" autocomplete="off">
     </div>
     <p class="hint" id="gpHint"></p>
-    <div class="actions">
-      <button type="button" class="btn" id="gpCancel">取消</button>
-      <button type="button" class="btn primary" id="gpOk">保存</button>
-    </div>
-    <div class="danger-row" id="gpDangerRow" hidden>
-      <button type="button" class="btn btn-danger" id="gpDelAll">连同里面的日程一起删除</button>
-    </div>
+    <!-- 两行按钮，按模式重新分配：
+         重命名 → 第一行[取消][保存]
+         删除   → 第一行[解散分组][连同日程一起删]，第二行[取消] -->
+    <div class="actions" id="gpRow1"></div>
+    <div class="actions" id="gpRow2"></div>
   </div>
 </div>
 
@@ -1606,19 +1606,40 @@ gmMask.addEventListener("click", closeGroupMenu);
 function groupMemberCount(name){
   return liveEvents().filter(function(e){ return (e.group || "").trim() === name; }).length;
 }
+/* 三个按钮固定存在，只是按模式换位置和文案 */
+var gpBtnOk = document.createElement("button");
+gpBtnOk.type = "button"; gpBtnOk.id = "gpOk"; gpBtnOk.className = "btn primary";
+var gpBtnDel = document.createElement("button");
+gpBtnDel.type = "button"; gpBtnDel.id = "gpDelAll"; gpBtnDel.className = "btn btn-danger";
+gpBtnDel.textContent = "连同日程一起删";
+var gpBtnCancel = document.createElement("button");
+gpBtnCancel.type = "button"; gpBtnCancel.id = "gpCancel"; gpBtnCancel.className = "btn";
+gpBtnCancel.textContent = "取消";
+
 function openGroupSheet(mode){
   gpMode = mode;
   var n = groupMemberCount(gpTarget);
+  var row1 = document.getElementById("gpRow1");
+  var row2 = document.getElementById("gpRow2");
+  row1.innerHTML = ""; row2.innerHTML = "";
   document.getElementById("gpTitle").textContent =
     (mode === "rename") ? "重命名分组" : "删除分组「" + gpTarget + "」";
   document.getElementById("gpRenameField").hidden = (mode !== "rename");
-  document.getElementById("gpDangerRow").hidden = (mode !== "delete");
   document.getElementById("gpInput").value = gpTarget;
-  document.getElementById("gpOk").textContent =
-    (mode === "rename") ? "保存" : "解散分组（保留 " + n + " 条日程）";
+  if(mode === "rename"){
+    gpBtnOk.textContent = "保存";
+    row1.appendChild(gpBtnCancel); row1.appendChild(gpBtnOk);
+    row2.hidden = true;
+  }else{
+    gpBtnOk.textContent = "解散分组";
+    row1.appendChild(gpBtnOk); row1.appendChild(gpBtnDel);   /* 解散在左、连同删除在右 */
+    row2.appendChild(gpBtnCancel);                           /* 取消单独一行在下面 */
+    row2.hidden = false;
+  }
   document.getElementById("gpHint").textContent = (mode === "rename")
     ? "改名后这 " + n + " 条日程会跟着走；如果新名字和已有分组重名，两个分组会合并。"
-    : "「解散」只是把这 " + n + " 条日程移出分组，日程本身还在（变成不分组）。";
+    : "「解散分组」只是把这 " + n + " 条日程移出分组，日程本身还在（变成不分组）；"
+      + "右边那个红色的会把这 " + n + " 条日程一起删掉。";
   gpMask.hidden = false;
   document.body.style.overflow = "hidden";
   if(mode === "rename") setTimeout(function(){ try{ document.getElementById("gpInput").focus(); }catch(e){} }, 60);
@@ -1627,10 +1648,10 @@ function closeGroupSheet(){
   gpMask.hidden = true;
   document.body.style.overflow = "";
 }
-document.getElementById("gpCancel").addEventListener("click", closeGroupSheet);
+gpBtnCancel.addEventListener("click", closeGroupSheet);
 gpMask.addEventListener("click", function(e){ if(e.target === gpMask) closeGroupSheet(); });
 
-document.getElementById("gpOk").addEventListener("click", function(){
+gpBtnOk.addEventListener("click", function(){
   var now = Date.now();
   if(gpMode === "rename"){
     var name = document.getElementById("gpInput").value.trim().slice(0, 12);
@@ -1650,7 +1671,7 @@ document.getElementById("gpOk").addEventListener("click", function(){
   save(); queueSync(); closeGroupSheet(); render();
 });
 
-document.getElementById("gpDelAll").addEventListener("click", function(){
+gpBtnDel.addEventListener("click", function(){
   var n = groupMemberCount(gpTarget);
   if(!confirm("确定把分组「" + gpTarget + "」和里面的 " + n + " 条日程一起删掉吗？此操作无法撤销。")) return;
   var now = Date.now();
