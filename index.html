@@ -65,7 +65,31 @@
 *{box-sizing:border-box}
 [hidden]{display:none !important}
 
+/* 关掉浏览器自带的下拉刷新，换成下面这套自己的，避免两套同时触发 */
+html,body{overscroll-behavior-y:contain}
 html{-webkit-text-size-adjust:100%}
+
+/* ---- 下拉刷新指示器 ---- */
+.ptr{
+  position:fixed;left:50%;top:0;z-index:60;
+  width:44px;height:44px;margin-left:-22px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:99px;background:var(--surface);
+  box-shadow:var(--shadow);
+  color:var(--text-3);font-size:19px;font-weight:800;
+  transform:translate3d(0,-64px,0);
+  opacity:0;pointer-events:none;
+  will-change:transform;
+}
+.ptr.anim{transition:transform .25s ease, opacity .25s ease}
+.ptr.ready{color:#2f86f6}
+.ptr .ptr-c{display:block;transition:transform .2s ease}
+.ptr.ready .ptr-c{transform:rotate(180deg)}
+.ptr.spin .ptr-c{animation:ptr-spin .7s linear infinite;transform:none}
+@keyframes ptr-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  .ptr.spin .ptr-c{animation:none}
+}
 body{
   margin:0;
   background:var(--bg);
@@ -442,6 +466,8 @@ select.sort{
 
   <p class="foot">数据保存在本机浏览器里，换设备或清理缓存会丢失，重要日程记得用「导出备份」。</p>
 </div>
+
+<div class="ptr" id="ptr" aria-hidden="true"><span class="ptr-c">↓</span></div>
 
 <button class="fab" id="addBtn" aria-label="新增日程">＋</button>
 
@@ -1633,6 +1659,98 @@ function startSyncLoops(){
   window.addEventListener("focus", function(){ syncNow(); });
   window.addEventListener("online", function(){ syncNow(); });
 }
+
+/* ================= 下拉刷新 =================
+   参数与状态机沿用之前项目验证过的那一套（死区 16 / 阻尼 0.42 / 回弹 .25s）。
+   关键是"一锤定音"：方向只在出死区那一刻判一次，判完不再回头，
+   否则"上滑到一半回带一下"也会触发刷新。 */
+var PTR_DEADZONE = 16;    /* 起手死区：手指按下瞬间的抖动不算数 */
+var PTR_DAMPING  = 0.42;  /* 手指位移 × 它 = 指示器位移 */
+var PTR_MAX      = 120;   /* 拉到这儿指示器就不再往下走 */
+/* 阈值按屏高推导，不写死：矮屏(568)约 57px，高屏(844)约 84px，
+   手指实际要走 死区 + 阈值/阻尼，占屏高始终 ≈26% */
+function ptrThreshold(){
+  return Math.round(Math.min(100, Math.max(56, window.innerHeight * 0.10)));
+}
+
+var ptrEl = document.getElementById("ptr");
+var ptrStartX = 0, ptrStartY = 0, ptrDist = 0;
+var ptrPulling = false, ptrLocked = false, ptrBusy = false;
+
+/* 有浮层打开时不接管手势——弹窗自己要能滚 */
+function ptrBlocked(){
+  return ptrBusy || !mask.hidden || !syncMask.hidden || !menu.hidden;
+}
+function ptrPaint(d){
+  ptrDist = d;
+  ptrEl.style.transform = "translate3d(0," + (d - 64) + "px,0)";
+  ptrEl.style.opacity = Math.min(1, d / 40).toFixed(2);
+  ptrEl.classList.toggle("ready", d >= ptrThreshold());
+}
+function ptrReset(animate){
+  ptrEl.classList.toggle("anim", !!animate);
+  ptrEl.classList.remove("ready", "spin");
+  ptrEl.style.transform = "translate3d(0,-64px,0)";
+  ptrEl.style.opacity = "0";
+  ptrDist = 0;
+}
+function ptrDoRefresh(){
+  ptrBusy = true;
+  ptrEl.classList.add("anim", "spin");
+  ptrEl.style.transform = "translate3d(0," + (ptrThreshold() - 64 + 12) + "px,0)";
+  ptrEl.style.opacity = "1";
+  /* 留一眼转圈，直接跳转会像卡死；标记写进 sessionStorage，
+     用来区分"我的下拉刷新"和"浏览器手势导致的重载" */
+  setTimeout(function(){
+    try{ sessionStorage.setItem("ptr-fired", String(Date.now())); }catch(e){}
+    if(navigator.onLine === false){
+      /* 断网时整页 reload 会变成浏览器的错误页，这时候只做"重读本地数据 + 重绘" */
+      load(); loadSync(); render(); ptrBusy = false; ptrReset(true);
+      setSync(sync.on ? "error" : "off", "当前没有网络");
+      return;
+    }
+    location.reload();
+  }, 260);
+}
+
+document.addEventListener("touchstart", function(e){
+  if(ptrBlocked() || e.touches.length !== 1 || window.scrollY > 0) return;
+  ptrStartX = e.touches[0].clientX;
+  ptrStartY = e.touches[0].clientY;
+  ptrPulling = true; ptrLocked = false;
+}, {passive:true});
+
+document.addEventListener("touchmove", function(e){
+  if(!ptrPulling || ptrBlocked()) return;
+  var dx = e.touches[0].clientX - ptrStartX;
+  var dy = e.touches[0].clientY - ptrStartY;
+
+  if(!ptrLocked){
+    if(Math.abs(dy) < PTR_DEADZONE && Math.abs(dx) < PTR_DEADZONE) return;  /* 还在死区，继续观察 */
+    if(dy <= 0 || Math.abs(dx) > Math.abs(dy)){ ptrPulling = false; return; }  /* 上滑/横滑 → 整次弃权 */
+    ptrLocked = true;
+    /* 接管手势时，把堆叠卡片的"按下"态收掉，免得它一直陷在按压状态 */
+    var ps = document.querySelectorAll(".stack.is-pressed");
+    for(var i=0;i<ps.length;i++) ps[i].classList.remove("is-pressed");
+  }
+  if(dy <= 0 || window.scrollY > 0){        /* 中途改主意往上滑：交还控制权 */
+    ptrPulling = false; ptrLocked = false; ptrReset(true); return;
+  }
+  ptrEl.classList.remove("anim");           /* 跟手过程中不要过渡，否则拖泥带水 */
+  ptrPaint(Math.min((dy - PTR_DEADZONE) * PTR_DAMPING, PTR_MAX));
+  e.preventDefault();
+}, {passive:false});
+
+function ptrEnd(){
+  if(!ptrPulling || !ptrLocked){ ptrPulling = false; ptrLocked = false; return; }
+  ptrPulling = false; ptrLocked = false;
+  if(ptrDist >= ptrThreshold()) ptrDoRefresh();
+  else ptrReset(true);
+}
+document.addEventListener("touchend", ptrEnd, {passive:true});
+document.addEventListener("touchcancel", function(){
+  ptrPulling = false; ptrLocked = false; ptrReset(true);
+}, {passive:true});
 
 /* ================= 跨天自动刷新 ================= */
 function tick(){
