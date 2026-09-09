@@ -428,6 +428,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .chips button.on{background:#2f86f6;color:#fff;box-shadow:none}
+/* 中间这个是"选择已有分组"的下拉：它自带菜单，所以要能定位 */
+.chip-sel{position:relative;display:inline-flex;max-width:100%}
+.chip-sel > button::after{content:"▾";margin-left:6px;font-size:12px;opacity:.7}
+.chip-sel .dp-menu{top:calc(100% + 6px);left:0;min-width:120px}
 /* ---- 日期触发按钮（原来是原生 input[type=date]） ---- */
 .date-trigger{
   width:100%;min-height:48px;
@@ -678,8 +682,16 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 
     <div class="field">
       <label>分组</label>
-      <!-- 选已有 / 新建 二选一：选的时候不出现输入框，新建的时候不出现选项 -->
-      <div class="chips" id="fGroupChips"></div>
+      <!-- 选已有 / 新建 二选一：选的时候不出现输入框，新建的时候不出现选项。
+           已有分组收进中间那个下拉，分组再多这一行也只占一行高 -->
+      <div class="chips" id="fGroupChips">
+        <button type="button" id="fGroupNone">不分组</button>
+        <span class="chip-sel" id="fGroupSelWrap">
+          <button type="button" id="fGroupSelBtn"><span id="fGroupSelTxt">选择已有分组</span></button>
+          <div class="dp-menu" id="fGroupMenu" role="listbox" hidden></div>
+        </span>
+        <button type="button" id="fGroupNewBtn">＋ 新建分组</button>
+      </div>
       <div id="fGroupNew" hidden>
         <input type="text" id="fGroup" maxlength="12" placeholder="输入新分组的名字" autocomplete="off">
         <div class="chips">
@@ -1622,38 +1634,65 @@ var fGroupNew = document.getElementById("fGroupNew");
 var groupPick = "";        /* 选择模式下当前选中的分组（空字符串＝不分组） */
 var groupMode = "pick";    /* pick | new */
 
-function buildGroupChips(){
-  fGroupChips.innerHTML = "";
-  var opts = [""].concat(allGroups());     /* 第一项固定是"不分组" */
-  opts.forEach(function(g){
+var fGroupMenu   = document.getElementById("fGroupMenu");
+var fGroupSelWrap= document.getElementById("fGroupSelWrap");
+
+/* 已有分组收进下拉里：分组再多，这一行也只占一行高度，不会换行把表单撑长 */
+function buildGroupMenu(){
+  fGroupMenu.innerHTML = "";
+  allGroups().forEach(function(g){
     var b = document.createElement("button");
     b.type = "button";
-    b.textContent = g || "不分组";
-    b.className = (groupPick === g) ? "on" : "";
+    b.textContent = g;
+    b.className = (groupMode === "pick" && groupPick === g) ? "on" : "";
     b.addEventListener("click", function(){
       groupPick = g;
       groupMode = "pick";
+      fGroupMenu.hidden = true;
       syncGroupUI();
     });
-    fGroupChips.appendChild(b);
+    fGroupMenu.appendChild(b);
   });
-  var nb = document.createElement("button");
-  nb.type = "button";
-  nb.textContent = "＋ 新建分组";
-  nb.className = (groupMode === "new") ? "on" : "";
-  nb.addEventListener("click", function(){
-    groupMode = "new";
-    fGroup.value = "";
-    syncGroupUI();
-    setTimeout(function(){ try{ fGroup.focus(); }catch(e){} }, 50);
-  });
-  fGroupChips.appendChild(nb);
 }
 function syncGroupUI(){
-  buildGroupChips();
+  var groups = allGroups();
+  var picked = (groupMode === "pick" && groupPick !== "");
+  /* 没有任何已有分组时，中间那个下拉整个不出现 */
+  fGroupSelWrap.hidden = (groups.length === 0);
+  document.getElementById("fGroupSelTxt").textContent = picked ? groupPick : "选择已有分组";
+  document.getElementById("fGroupSelBtn").className = picked ? "on" : "";
+  document.getElementById("fGroupNone").className =
+    (groupMode === "pick" && groupPick === "") ? "on" : "";
+  document.getElementById("fGroupNewBtn").className = (groupMode === "new") ? "on" : "";
+  buildGroupMenu();
   fGroupNew.hidden = (groupMode !== "new");
-  fGroupChips.hidden = (groupMode === "new");   /* 新建时把选项列表收起来，避免两套并存 */
+  fGroupChips.hidden = (groupMode === "new");   /* 新建时把选项收起来，避免两套并存 */
+  if(groupMode !== "pick") fGroupMenu.hidden = true;
 }
+
+document.getElementById("fGroupNone").addEventListener("click", function(){
+  groupPick = ""; groupMode = "pick"; fGroupMenu.hidden = true; syncGroupUI();
+});
+document.getElementById("fGroupSelBtn").addEventListener("click", function(e){
+  e.stopPropagation();
+  var openIt = fGroupMenu.hidden;
+  fGroupMenu.hidden = !openIt;
+  if(openIt){
+    var cur = fGroupMenu.querySelector(".on");
+    if(cur) cur.scrollIntoView({block:"center"});
+  }
+});
+document.getElementById("fGroupNewBtn").addEventListener("click", function(){
+  groupMode = "new";
+  fGroup.value = "";
+  fGroupMenu.hidden = true;
+  syncGroupUI();
+  setTimeout(function(){ try{ fGroup.focus(); }catch(e){} }, 50);
+});
+/* 点表单里别处就把这个下拉收起来 */
+form.addEventListener("click", function(e){
+  if(!fGroupMenu.hidden && !e.target.closest("#fGroupSelWrap")) fGroupMenu.hidden = true;
+});
 /* 当前表单要保存的分组名 */
 function currentGroup(){
   return (groupMode === "new") ? fGroup.value.trim().slice(0, 12) : groupPick;
