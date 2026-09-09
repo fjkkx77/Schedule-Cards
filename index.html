@@ -263,11 +263,21 @@ select.sort{
 /* ============ 分组堆叠 ============ */
 .group{display:block}
 .group-head{
-  display:flex;align-items:center;gap:8px;width:100%;
-  min-height:44px;padding:0 6px;margin:0;border:0;background:transparent;
+  display:flex;align-items:center;gap:6px;width:100%;
+  min-height:44px;padding:0 6px;margin:0;
   color:var(--text-2);font-size:14px;font-weight:800;letter-spacing:.5px;
-  text-align:left;
 }
+.group-head .g-main{
+  flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;
+  min-height:44px;border:0;background:transparent;padding:0;
+  color:inherit;font:inherit;letter-spacing:inherit;text-align:left;
+}
+.group-head .g-more{
+  flex:0 0 auto;width:44px;height:44px;border:0;background:transparent;
+  color:var(--text-3);font-size:18px;font-weight:800;line-height:1;
+  display:flex;align-items:center;justify-content:center;border-radius:10px;
+}
+.group-head .g-more:active{background:var(--surface-2)}
 .g-name{overflow-wrap:anywhere;min-width:0}
 .g-count{
   flex:0 0 auto;
@@ -276,16 +286,23 @@ select.sort{
   box-shadow:var(--shadow-sm);
 }
 .list .g-count{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)}
+/* 点击区必须 44×44（触摸标准），但视觉上还是那个 34px 的小圆圈——
+   所以圆圈画在内部的 span 上，按钮本身透明 */
 .g-chev{
-  margin-left:auto;flex:0 0 auto;
-  width:26px;height:26px;border-radius:99px;
+  flex:0 0 auto;
+  width:44px;height:44px;border:0;padding:0;background:transparent;
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .34s cubic-bezier(.22,1,.36,1);
+}
+.g-chev span{
+  width:34px;height:34px;border-radius:99px;
   display:flex;align-items:center;justify-content:center;
   font-size:13px;color:var(--text-3);
   background:var(--surface);box-shadow:var(--shadow-sm);
-  transition:transform .34s cubic-bezier(.22,1,.36,1);
 }
 .group-head[aria-expanded="true"] .g-chev{transform:rotate(180deg)}
-.group-head:active .g-name{opacity:.6}
+.group-head .g-main:active .g-name{opacity:.6}
+
 
 /* 堆叠容器：真 3D 透视，子项绝对定位后只靠 transform 移动（交给合成器） */
 .stack{
@@ -349,7 +366,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 
 /* ============ 悬浮新增按钮 ============ */
 .fab{
-  position:fixed;right:calc(16px + var(--safe-r));bottom:calc(18px + var(--safe-b));
+  position:fixed;
+  /* 宽屏上别贴在整个屏幕的右下角（离内容太远、还容易被桌面挂件挡住），
+     改成跟内容列的右边缘对齐：内容列最宽 600px，所以右边距 = 半屏 - 300 + 16。
+     窄屏时这个值算出来是负的，被 max() 兜回 16px，行为和原来一样 */
+  right:max(calc(16px + var(--safe-r)), calc(50vw - 300px + 16px));
+  bottom:calc(18px + var(--safe-b));
   width:58px;height:58px;border-radius:20px;border:0;
   background:#2f86f6;color:#fff;font-size:30px;line-height:1;
   box-shadow:0 8px 22px rgba(47,134,246,.42);
@@ -436,12 +458,15 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .date-trigger{
   width:100%;min-height:48px;
   display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding-top:6px;padding-bottom:6px;
   border:1px solid var(--line);border-radius:12px;
   background:var(--surface-2);color:var(--text);
   padding:0 12px;font-size:16px;font-weight:600;text-align:left;
 }
 .date-trigger:active{transform:scale(.995)}
 .date-trigger .date-ico{flex:0 0 auto;font-size:17px;opacity:.7}
+.date-trigger .date-main{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.date-trigger .date-sub{font-size:12px;font-weight:600;color:var(--text-3);margin-top:2px}
 .date-trigger.empty{color:var(--text-3);font-weight:500}
 
 /* ---- 日期选择器弹层 ---- */
@@ -595,6 +620,28 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 </div>
 <input type="file" id="fileInput" accept="application/json,.json" hidden>
 
+<!-- 分组管理：⋯ 菜单 + 重命名/删除弹窗 -->
+<div class="menu-mask" id="gmMask" hidden></div>
+<div class="dp-menu" id="gmMenu" hidden></div>
+
+<div class="mask" id="gpMask" hidden>
+  <div class="sheet" id="gpSheet">
+    <h2 id="gpTitle">重命名分组</h2>
+    <div class="field" id="gpRenameField">
+      <label for="gpInput">分组名称</label>
+      <input type="text" id="gpInput" maxlength="12" autocomplete="off">
+    </div>
+    <p class="hint" id="gpHint"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="gpCancel">取消</button>
+      <button type="button" class="btn primary" id="gpOk">保存</button>
+    </div>
+    <div class="danger-row" id="gpDangerRow" hidden>
+      <button type="button" class="btn btn-danger" id="gpDelAll">连同里面的日程一起删除</button>
+    </div>
+  </div>
+</div>
+
 <!-- 日期选择器（移植自 data-Calculation 的 iOS 风格选择器，去掉时分秒部分） -->
 <div class="dp-mask" id="dpMask" hidden>
   <div class="dp" id="dpCard">
@@ -676,7 +723,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <label id="dateLabel">目标日期</label>
       <input type="hidden" id="fDate">
       <button type="button" class="date-trigger" id="fDateBtn">
-        <span id="fDateTxt">请选择日期</span><span class="date-ico">🗓</span>
+        <span class="date-main"><span id="fDateTxt">请选择日期</span><span class="date-sub" id="fDateSub" hidden></span></span>
+        <span class="date-ico">🗓</span>
       </button>
     </div>
 
@@ -831,6 +879,83 @@ function syncAlreadyOn(){
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
+
+/* ================= 农历（公历 → 农历） =================
+   数据表与换算逻辑取自 fjkkx77/data-Calculation，那边是用香港天文台
+   《公曆與農曆日期對照表》1901-2100 逐日文本生成并全区间比对过的。
+   ⚠️ 不要改用浏览器内置的 Intl chinese 历法——它在这 200 年里有 12 段临界日算错
+   （含 2027 年春节），细节见记忆 reference-lunar-calendar-data。
+   每个数字：bit0-3 闰月号(0=无)，bit4-16 各月大小(1=30天)，bit17-22 正月初一距 1月1日的天数 */
+const LUNAR_TABLE = [
+        0x627520,0x4cea50,0x3964a5,0x5c64b0,0x44a9b0,0x315564,0x5656a0,0x40b590,0x2b7522,0x507520,
+        0x3bb256,0x60b250,0x48a4b0,0x334ab5,0x582ad0,0x4256b0,0x2cb692,0x52da90,0x3fd927,0x64e920,
+        0x4cd250,0x37a4d5,0x5ca560,0x462b60,0x2f5b54,0x566d40,0x40ea90,0x2de922,0x50e920,0x3ad266,
+        0x5e52b0,0x48a570,0x332b65,0x58b5a0,0x446d40,0x2eec93,0x527490,0x3d6937,0x62a930,0x4c52b0,
+        0x34a5b6,0x5aaad0,0x4656a0,0x31b554,0x56ba40,0x40b490,0x2ba932,0x50a950,0x3952d7,0x5e5360,
+        0x48aad0,0x355aa5,0x585b20,0x42da50,0x2fd4a3,0x54d4a0,0x3ca958,0x60a970,0x4c5560,0x36ab56,
+        0x5aad50,0x466d20,0x30ea54,0x56ea50,0x4064a0,0x28c973,0x4ea9b0,0x3b55a7,0x5e56a0,0x48b690,
+        0x357525,0x5ab520,0x42b250,0x2d64b4,0x52a4b0,0x3d4ab8,0x602ad0,0x4a56d0,0x36b696,0x5cda90,
+        0x46d920,0x31d254,0x56d250,0x41a4da,0x64a560,0x4e2b60,0x385b56,0x5e6d50,0x48ea90,0x35e925,
+        0x5ae920,0x44d260,0x2ca563,0x50a570,0x3d4d68,0x6235a0,0x4a6d50,0x376c95,0x5c7490,0x466930,
+        0x2f52b4,0x5452b0,0x3ea5b0,0x2b55a2,0x4e56a0,0x39b557,0x60ba40,0x4ab490,0x33a935,0x58a950,
+        0x4252d0,0x2caad4,0x50ab50,0x3d5aa9,0x625d20,0x4cda50,0x37d4a6,0x5cd4a0,0x46c950,0x3152e4,
+        0x545560,0x3eab50,0x2b5b22,0x506d20,0x38ea56,0x5e7250,0x4864b0,0x32c975,0x56cab0,0x4255a0,
+        0x2cad63,0x52b690,0x3d752b,0x62b520,0x4cb250,0x37a4b6,0x5aa4b0,0x444ab0,0x2e55b5,0x545ad0,
+        0x3eb6a0,0x2bb522,0x50d920,0x3bd257,0x5ed250,0x48a550,0x334ad5,0x584b60,0x405b50,0x2cdaa3,
+        0x52ec90,0x3fe928,0x62e920,0x4cd260,0x36a566,0x5aa570,0x445560,0x2e6d54,0x547550,0x407490,
+        0x28e933,0x4e6930,0x3952b7,0x5e52b0,0x46a5b0,0x3355a5,0x5856a0,0x42b650,0x2d74a4,0x52b4a0,
+        0x3da958,0x62a950,0x4a52d0,0x34aad6,0x5aab50,0x465aa0,0x2eba54,0x54da50,0x40d4a0,0x2bc953,
+        0x4ec960,0x3994e7,0x5e5560,0x48ab50,0x335b25,0x586d20,0x42ea50,0x2ee4a4,0x5068b0,0x3ac978,
+        0x604ab0,0x4a55b0,0x34ad66,0x5ab6a0,0x467520,0x317254,0x54b450,0x3ea8b0,0x2949b2,0x4e4ab0
+    ];
+var LUNAR_MIN_YEAR = 1901;
+var LUNAR_MAX_YEAR = LUNAR_MIN_YEAR + LUNAR_TABLE.length - 1;
+var LUNAR_MONTH_NAMES = ["正","二","三","四","五","六","七","八","九","十","冬","腊"];
+var LUNAR_DAY_TENS = ["初","十","廿","三"];
+var LUNAR_DIGITS = ["〇","一","二","三","四","五","六","七","八","九"];
+var MS_PER_DAY = 86400000;
+
+function getLunarYearInfo(ly){
+  var raw = LUNAR_TABLE[ly - LUNAR_MIN_YEAR];
+  if(raw === undefined) return null;
+  var leapMonth = raw & 0xF;
+  var sizeBits = (raw >> 4) & 0x1FFF;
+  var newYearOffset = (raw >> 17) & 0x3F;
+  var count = leapMonth ? 13 : 12, days = [], i;
+  for(i = 0; i < count; i++) days.push(((sizeBits >> i) & 1) ? 30 : 29);
+  return { year: ly, leapMonth: leapMonth, monthDays: days,
+           newYearMs: Date.UTC(ly, 0, 1) + newYearOffset * MS_PER_DAY };
+}
+function solarToLunar(y, m, d){
+  var ms = Date.UTC(y, m - 1, d);
+  var info = getLunarYearInfo(y);
+  if(!info || ms < info.newYearMs) info = getLunarYearInfo(y - 1);
+  if(!info || ms < info.newYearMs) return null;
+  var offset = Math.round((ms - info.newYearMs) / MS_PER_DAY), idx = 0;
+  while(idx < info.monthDays.length && offset >= info.monthDays[idx]){
+    offset -= info.monthDays[idx]; idx++;
+  }
+  if(idx >= info.monthDays.length) return null;
+  var lm, leap;
+  if(!info.leapMonth || idx < info.leapMonth){ lm = idx + 1; leap = false; }
+  else if(idx === info.leapMonth){ lm = info.leapMonth; leap = true; }
+  else { lm = idx; leap = false; }
+  return { year: info.year, month: lm, isLeap: leap, day: offset + 1 };
+}
+function lunarDayCn(d){
+  if(d === 10) return "初十";
+  if(d === 20) return "二十";
+  if(d === 30) return "三十";
+  return LUNAR_DAY_TENS[Math.floor(d / 10)] + LUNAR_DIGITS[d % 10];
+}
+/* 给一个 Date，返回「农历七月廿八」；超出 1901-2100 就返回空字符串，不外推 */
+function lunarLabel(d){
+  if(!d) return "";
+  var l = solarToLunar(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  if(!l) return "";
+  return "农历" + (l.isLeap ? "闰" : "") + LUNAR_MONTH_NAMES[l.month - 1] + "月" + lunarDayCn(l.day);
+}
+
 /* ================= 日期工具（全部按“零点”比较，避免时区/时分误差） ================= */
 function midnight(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 function today(){ return midnight(new Date()); }
@@ -935,8 +1060,9 @@ function rank(ev, t){
 function render(){
   var t = today();
   todayKey = ymd(t);
+  var lun = lunarLabel(t);
   document.getElementById("todayLine").textContent =
-    ymd(t) + " " + WEEK[t.getDay()];
+    ymd(t) + " " + WEEK[t.getDay()] + (lun ? " · " + lun : "");
 
   var list = sortedEvents();
   board.innerHTML = "";
@@ -982,14 +1108,38 @@ function render(){
     var sec = document.createElement("section");
     sec.className = "group";
 
-    var head = document.createElement("button");
-    head.type = "button";
+    /* 标题栏是个容器：左半边点了展开/收起，右边是「⋯」管理菜单。
+       用 div 包着两个 button——button 里不能再套 button */
+    var head = document.createElement("div");
     head.className = "group-head";
     head.setAttribute("aria-expanded", isExpanded(g.name) ? "true" : "false");
-    head.innerHTML = '<span class="g-name"></span><span class="g-count"></span><span class="g-chev">▾</span>';
-    head.querySelector(".g-name").textContent = g.name;
-    head.querySelector(".g-count").textContent = g.items.length;
-    head.addEventListener("click", function(){ toggleGroup(g.name); });
+
+    var gmain = document.createElement("button");
+    gmain.type = "button";
+    gmain.className = "g-main";
+    gmain.setAttribute("aria-expanded", isExpanded(g.name) ? "true" : "false");
+    gmain.innerHTML = '<span class="g-name"></span><span class="g-count"></span>';
+    gmain.querySelector(".g-name").textContent = g.name;
+    gmain.querySelector(".g-count").textContent = g.items.length;
+    gmain.addEventListener("click", function(){ toggleGroup(g.name); });
+
+    var gmore = document.createElement("button");
+    gmore.type = "button";
+    gmore.className = "g-more";
+    gmore.setAttribute("aria-label", "管理分组「" + g.name + "」");
+    gmore.textContent = "⋯";
+    gmore.addEventListener("click", function(e){ e.stopPropagation(); openGroupMenu(g.name, gmore); });
+
+    var gchev = document.createElement("button");
+    gchev.type = "button";
+    gchev.className = "g-chev";
+    gchev.setAttribute("aria-label", "展开或收起");
+    gchev.innerHTML = "<span>▾</span>";
+    gchev.addEventListener("click", function(){ toggleGroup(g.name); });
+
+    head.appendChild(gmain);
+    head.appendChild(gmore);
+    head.appendChild(gchev);
 
     var stack = document.createElement("div");
     stack.className = "stack";
@@ -1418,6 +1568,99 @@ document.getElementById("mClear").addEventListener("click", function(){
   }
 });
 
+/* ================= 分组的重命名 / 删除 =================
+   入口是分组标题栏右边的「⋯」。删除分两种，默认走安全的那种：
+     · 解散分组：里面的日程保留，变成"不分组"
+     · 连同日程一起删除：走和单条删除一样的墓碑机制，能同步到另一台设备 */
+var gmMask = document.getElementById("gmMask");
+var gmMenu = document.getElementById("gmMenu");
+var gpMask = document.getElementById("gpMask");
+var gpTarget = "";        /* 正在管理的分组名 */
+var gpMode = "rename";    /* rename | delete */
+
+function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; }
+function openGroupMenu(name, anchor){
+  gpTarget = name;
+  gmMenu.innerHTML = "";
+  [["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
+   ["删除分组",   function(){ closeGroupMenu(); openGroupSheet("delete"); }]
+  ].forEach(function(pair){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = pair[0];
+    b.addEventListener("click", pair[1]);
+    gmMenu.appendChild(b);
+  });
+  /* 菜单是 fixed 定位的，按锚点算位置；贴着右边缘，别超出屏幕 */
+  var r = anchor.getBoundingClientRect();
+  gmMenu.hidden = false;
+  gmMask.hidden = false;
+  var w = gmMenu.offsetWidth || 140;
+  var left = Math.min(r.left, document.documentElement.clientWidth - w - 12);
+  gmMenu.style.position = "fixed";
+  gmMenu.style.left = Math.max(12, left) + "px";
+  gmMenu.style.top = (r.bottom + 6) + "px";
+}
+gmMask.addEventListener("click", closeGroupMenu);
+
+function groupMemberCount(name){
+  return liveEvents().filter(function(e){ return (e.group || "").trim() === name; }).length;
+}
+function openGroupSheet(mode){
+  gpMode = mode;
+  var n = groupMemberCount(gpTarget);
+  document.getElementById("gpTitle").textContent =
+    (mode === "rename") ? "重命名分组" : "删除分组「" + gpTarget + "」";
+  document.getElementById("gpRenameField").hidden = (mode !== "rename");
+  document.getElementById("gpDangerRow").hidden = (mode !== "delete");
+  document.getElementById("gpInput").value = gpTarget;
+  document.getElementById("gpOk").textContent =
+    (mode === "rename") ? "保存" : "解散分组（保留 " + n + " 条日程）";
+  document.getElementById("gpHint").textContent = (mode === "rename")
+    ? "改名后这 " + n + " 条日程会跟着走；如果新名字和已有分组重名，两个分组会合并。"
+    : "「解散」只是把这 " + n + " 条日程移出分组，日程本身还在（变成不分组）。";
+  gpMask.hidden = false;
+  document.body.style.overflow = "hidden";
+  if(mode === "rename") setTimeout(function(){ try{ document.getElementById("gpInput").focus(); }catch(e){} }, 60);
+}
+function closeGroupSheet(){
+  gpMask.hidden = true;
+  document.body.style.overflow = "";
+}
+document.getElementById("gpCancel").addEventListener("click", closeGroupSheet);
+gpMask.addEventListener("click", function(e){ if(e.target === gpMask) closeGroupSheet(); });
+
+document.getElementById("gpOk").addEventListener("click", function(){
+  var now = Date.now();
+  if(gpMode === "rename"){
+    var name = document.getElementById("gpInput").value.trim().slice(0, 12);
+    if(!name){ document.getElementById("gpHint").textContent = "分组名不能是空的。"; return; }
+    if(name === gpTarget){ closeGroupSheet(); return; }
+    state.events.forEach(function(e){
+      if((e.group || "").trim() === gpTarget){ e.group = name; e.updatedAt = now; }
+    });
+    /* 展开状态跟着改名走，否则改完名字这个组会莫名收起来 */
+    state.expanded = state.expanded.map(function(g){ return g === gpTarget ? name : g; });
+  }else{
+    state.events.forEach(function(e){         /* 解散：日程保留，只是不再属于任何分组 */
+      if((e.group || "").trim() === gpTarget){ e.group = ""; e.updatedAt = now; }
+    });
+  }
+  pruneExpanded();
+  save(); queueSync(); closeGroupSheet(); render();
+});
+
+document.getElementById("gpDelAll").addEventListener("click", function(){
+  var n = groupMemberCount(gpTarget);
+  if(!confirm("确定把分组「" + gpTarget + "」和里面的 " + n + " 条日程一起删掉吗？此操作无法撤销。")) return;
+  var now = Date.now();
+  state.events.forEach(function(e){        /* 打墓碑而不是真删，删除才能同步到另一台设备 */
+    if((e.group || "").trim() === gpTarget && !e.deletedAt){ e.deletedAt = now; e.updatedAt = now; }
+  });
+  pruneExpanded();
+  save(); queueSync(); closeGroupSheet(); render();
+});
+
 /* ================= 日期选择器 =================
    移植自 data-Calculation 那套 iOS 风格选择器：年/月 下拉 + 今天 + 圆形日期格 + 取消/完成。
    那边还有时分秒，这里用不上就没搬。对外的接口没变：值仍然写进 #fDate 的 value（YYYY-MM-DD）。 */
@@ -1432,11 +1675,15 @@ function setFormDate(s){                 /* 同时更新隐藏值和按钮上看
   fDate.value = d ? s : "";
   var btn = document.getElementById("fDateBtn");
   var txt = document.getElementById("fDateTxt");
+  var sub = document.getElementById("fDateSub");
   if(d){
     txt.textContent = ymd(d) + " " + WEEK[d.getDay()];
+    sub.textContent = lunarLabel(d);
+    sub.hidden = !sub.textContent;
     btn.classList.remove("empty");
   }else{
     txt.textContent = "请选择日期";
+    sub.textContent = ""; sub.hidden = true;
     btn.classList.add("empty");
   }
 }
@@ -1774,6 +2021,8 @@ document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
   if(e.key === "Escape"){
+    if(!gmMenu.hidden){ closeGroupMenu(); return; }
+    if(!gpMask.hidden){ closeGroupSheet(); return; }
     if(!dpMask.hidden){ dpClose(); return; }
     if(!mask.hidden) closeForm();
     if(!syncMask.hidden) closeSyncSheet();
@@ -2011,6 +2260,7 @@ function dragScope(target){
   /* 分组区块只能整体拖，且必须是从它的标题栏起手，避免和"点卡片"抢 */
   if(item.classList.contains("group")){
     if(!target.closest(".group-head")) return null;
+    if(target.closest(".g-more") || target.closest(".g-chev")) return null;   /* 这两个是按钮，不当拖拽把手 */
     if(item.classList.contains("pinned-sec")) return null;   /* 置顶区本身不参与排序 */
   }
   var box = item.parentElement;
@@ -2125,7 +2375,7 @@ function commitOrder(items){
 document.addEventListener("pointerdown", function(e){
   if(!dragEnabled() || dragOn) return;
   if(e.pointerType === "mouse" && e.button !== 0) return;
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden) return;
   var scope = dragScope(e.target);
   if(!scope) return;
   var y0 = e.clientY, x0 = e.clientX, byTouch = (e.pointerType === "touch");
@@ -2179,7 +2429,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden;
+  return ptrBusy || dragOn || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
