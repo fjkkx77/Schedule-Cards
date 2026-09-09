@@ -186,6 +186,7 @@ select.sort{
   overflow-wrap:anywhere;   /* 中文标题一律完整换行显示，不用省略号截断 */
 }
 .card-sub{margin:6px 0 0;font-size:clamp(12px,3.5vw,15px);color:var(--text-2);font-weight:500}
+.card-sub2{margin:2px 0 0;font-size:clamp(11px,3.2vw,13px);color:var(--text-3);font-weight:600}
 .tag{
   display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;
   font-size:11px;font-weight:700;color:var(--c);
@@ -442,6 +443,25 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .modes input:checked + label{background:#2f86f6;color:#fff;box-shadow:none}
 .modes input:focus-visible + label{outline:2px solid var(--text);outline-offset:2px}
 .hint{margin:8px 2px 0;font-size:13px;line-height:1.5;color:var(--text-3)}
+/* ---- 可选时刻 ---- */
+.time-row{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.time-lab{font-size:13px;font-weight:700;color:var(--text-3);margin-right:2px}
+.time-btn{
+  min-width:56px;min-height:44px;padding:0 10px;border:0;border-radius:10px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  color:var(--text);font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;
+}
+.time-btn::after{content:"▾";margin-left:5px;font-size:11px;color:var(--text-3)}
+.time-btn.on{background:#2f86f6;color:#fff;box-shadow:none}
+.time-btn.on::after{color:rgba(255,255,255,.8)}
+.time-colon{font-weight:800;color:var(--text-3)}
+.time-clear{
+  min-height:44px;padding:0 12px;border:0;border-radius:10px;background:transparent;
+  color:var(--text-3);font-size:13px;font-weight:700;
+}
+.time-clear:active{background:var(--surface-2)}
+.time-row .dp-menu{min-width:88px;max-height:220px}
+
 /* ---- 日期下面的实时倒计时 ---- */
 .countdown{
   margin-top:8px;padding:10px 12px;border-radius:12px;
@@ -744,6 +764,20 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
         <span class="date-main"><span id="fDateTxt">请选择日期</span><span class="date-sub" id="fDateSub" hidden></span></span>
         <span class="date-ico">🗓</span>
       </button>
+      <!-- 可选时刻：不填就按当天 00:00 算，填了倒计时就按这个点算 -->
+      <div class="time-row" id="fTimeRow">
+        <span class="time-lab" id="fTimeLab">具体时刻</span>
+        <span class="dp-sel">
+          <button type="button" class="time-btn" id="fHourBtn">--</button>
+          <div class="dp-menu" id="fHourMenu" hidden></div>
+        </span>
+        <span class="time-colon">:</span>
+        <span class="dp-sel">
+          <button type="button" class="time-btn" id="fMinBtn">--</button>
+          <div class="dp-menu" id="fMinMenu" hidden></div>
+        </span>
+        <button type="button" class="time-clear" id="fTimeClear" hidden>清除</button>
+      </div>
       <div class="countdown" id="fCountdown" hidden>
         <span class="cd-num" id="fCdNum"></span>
         <span class="cd-base" id="fCdBase"></span>
@@ -1388,7 +1422,8 @@ function cardEl(ev, t){
   if(info.bad){
     sub.textContent = "日期无效";
   }else{
-    sub.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()];
+    sub.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()]
+                      + (ev.time ? " " + ev.time : "");
     if(info.state === "overdue")    sub.appendChild(tagEl("已过期"));
     if(info.state === "elapsed")    sub.appendChild(tagEl("已累计"));
     if(info.state === "notStarted") sub.appendChild(tagEl("未开始"));
@@ -1396,6 +1431,16 @@ function cardEl(ev, t){
     if(isPinned(ev) && (ev.group || "").trim()) sub.appendChild(tagEl("原属 " + ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
+  /* 目标日下面单独一行显示农历 */
+  if(!info.bad){
+    var lun = lunarLabel(info.target);
+    if(lun){
+      var sub2 = document.createElement("p");
+      sub2.className = "card-sub2";
+      sub2.textContent = lun;
+      left.appendChild(sub2);
+    }
+  }
 
   var num = document.createElement("div");
   num.className = "card-num";
@@ -1446,7 +1491,9 @@ function rowEl(ev, t){
     if(info.state === "overdue")    extra += " · 已过期";
     if(info.state === "elapsed")    extra += " · 已累计";
     if(info.state === "notStarted") extra += " · 未开始";
-    s.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()] + extra;
+    var lun2 = lunarLabel(info.target);
+    s.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()]
+                    + (ev.time ? " " + ev.time : "") + (lun2 ? " · " + lun2 : "") + extra;
     main.appendChild(s);
   }
 
@@ -1558,6 +1605,7 @@ fileInput.addEventListener("change", function(){
           mode: (x.mode === "down" || x.mode === "up") ? x.mode : "auto",
           group: typeof x.group === "string" ? x.group.trim().slice(0,12) : "",
           pinned: x.pinned === true,
+          time: /^([01]d|2[0-3]):([0-5]d)$/.test(x.time || "") ? x.time : "",
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
           createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
           updatedAt: (typeof x.updatedAt === "number" && x.updatedAt > 0) ? x.updatedAt : undefined
@@ -1590,6 +1638,77 @@ document.getElementById("mClear").addEventListener("click", function(){
   }
 });
 
+/* ================= 可选时刻 =================
+   存成 "HH:MM" 字符串，空＝没设。没设时一切按当天 00:00 算（和以前完全一样），
+   设了之后只影响"编辑弹窗里的实时倒计时"和卡片副标题的显示——
+   卡片上那个大数字仍然按整天算，"还剩几天"不该因为填了 09:00 就少一天。 */
+var formTime = "";      /* 当前表单里的时刻 */
+
+function validTime(s){ return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(s || "")); }
+
+function buildTimeMenus(){
+  var hm = document.getElementById("fHourMenu"), mm = document.getElementById("fMinMenu"), i;
+  if(!hm.childElementCount){
+    for(i = 0; i < 24; i++){
+      (function(h){
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = cdPad(h); b.setAttribute("data-h", h);
+        b.addEventListener("click", function(){
+          var mmin = formTime ? formTime.slice(3) : "00";
+          setFormTime(cdPad(h) + ":" + mmin);
+          hm.hidden = true;
+        });
+        hm.appendChild(b);
+      })(i);
+    }
+  }
+  if(!mm.childElementCount){
+    for(i = 0; i < 60; i++){
+      (function(m){
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = cdPad(m); b.setAttribute("data-m", m);
+        b.addEventListener("click", function(){
+          var hh = formTime ? formTime.slice(0, 2) : "00";
+          setFormTime(hh + ":" + cdPad(m));
+          mm.hidden = true;
+        });
+        mm.appendChild(b);
+      })(i);
+    }
+  }
+}
+function setFormTime(t){
+  formTime = validTime(t) ? t : "";
+  var hb = document.getElementById("fHourBtn"), mb = document.getElementById("fMinBtn");
+  hb.textContent = formTime ? formTime.slice(0, 2) : "--";
+  mb.textContent = formTime ? formTime.slice(3) : "--";
+  hb.className = "time-btn" + (formTime ? " on" : "");
+  mb.className = "time-btn" + (formTime ? " on" : "");
+  document.getElementById("fTimeClear").hidden = !formTime;
+  document.getElementById("fTimeLab").textContent = formTime ? "具体时刻" : "具体时刻（可不填）";
+  var i, bs = document.getElementById("fHourMenu").children;
+  for(i = 0; i < bs.length; i++) bs[i].className = (formTime && +bs[i].getAttribute("data-h") === +formTime.slice(0,2)) ? "on" : "";
+  bs = document.getElementById("fMinMenu").children;
+  for(i = 0; i < bs.length; i++) bs[i].className = (formTime && +bs[i].getAttribute("data-m") === +formTime.slice(3)) ? "on" : "";
+  if(cdTimer) paintCountdown();
+}
+function toggleTimeMenu(menu){
+  var openIt = menu.hidden;
+  document.getElementById("fHourMenu").hidden = true;
+  document.getElementById("fMinMenu").hidden = true;
+  if(!openIt) return;
+  menu.hidden = false;
+  var cur = menu.querySelector(".on");
+  if(cur) cur.scrollIntoView({block:"center"});
+}
+document.getElementById("fHourBtn").addEventListener("click", function(e){
+  e.stopPropagation(); buildTimeMenus(); toggleTimeMenu(document.getElementById("fHourMenu"));
+});
+document.getElementById("fMinBtn").addEventListener("click", function(e){
+  e.stopPropagation(); buildTimeMenus(); toggleTimeMenu(document.getElementById("fMinMenu"));
+});
+document.getElementById("fTimeClear").addEventListener("click", function(){ setFormTime(""); });
+
 /* ================= 编辑弹窗里的实时倒计时 =================
    日程只存日期不存时刻，所以基准是目标日的 00:00 —— 这一点在第二行明写出来，
    不让秒级数字假装自己很精确。只在弹窗打开时跑，关掉立刻停。 */
@@ -1611,8 +1730,10 @@ function paintCountdown(){
   if(!d){ box.hidden = true; return; }
   var mode = pickedMode();
   var now = new Date();
-  var target = d.getTime();                       /* 目标日 00:00 */
-  var dayEnd = target + 86400000;                 /* 目标日结束 */
+  var hh = formTime ? +formTime.slice(0,2) : 0;
+  var mi = formTime ? +formTime.slice(3) : 0;
+  var target = d.getTime() + (hh * 3600 + mi * 60) * 1000;   /* 有时刻就按时刻，没有就按 00:00 */
+  var dayEnd = d.getTime() + 86400000;                        /* 目标日结束（这个始终按当天算） */
   if(mode === "auto") mode = (now.getTime() < dayEnd) ? "down" : "up";
 
   var num, base, cls = "";
@@ -1620,7 +1741,7 @@ function paintCountdown(){
     if(now.getTime() < target){
       var left = target - now.getTime();
       num = "还剩 " + cdSplit(left);
-      base = "距 " + ymd(d) + " 00:00";
+      base = "距 " + ymd(d) + " " + (formTime || "00:00");
       if(left <= 86400000) cls = "urgent";
       else if(left <= 7 * 86400000) cls = "soon";
     }else if(now.getTime() < dayEnd){
@@ -1629,17 +1750,17 @@ function paintCountdown(){
       cls = "urgent";
     }else{
       num = "已过 " + cdSplit(now.getTime() - target);
-      base = "从 " + ymd(d) + " 00:00 算起";
+      base = "从 " + ymd(d) + " " + (formTime || "00:00") + " 算起";
       cls = "past";
     }
   }else{
     if(now.getTime() >= target){
       num = "已经 " + cdSplit(now.getTime() - target);
-      base = "从 " + ymd(d) + " 00:00 算起";
+      base = "从 " + ymd(d) + " " + (formTime || "00:00") + " 算起";
       cls = "past";
     }else{
       num = "还有 " + cdSplit(target - now.getTime()) + " 开始";
-      base = "距 " + ymd(d) + " 00:00";
+      base = "距 " + ymd(d) + " " + (formTime || "00:00");
       cls = "soon";
     }
   }
@@ -2051,6 +2172,10 @@ document.getElementById("fGroupNewBtn").addEventListener("click", function(){
 /* 点表单里别处就把这个下拉收起来 */
 form.addEventListener("click", function(e){
   if(!fGroupMenu.hidden && !e.target.closest("#fGroupSelWrap")) fGroupMenu.hidden = true;
+  if(!e.target.closest("#fTimeRow")){
+    document.getElementById("fHourMenu").hidden = true;
+    document.getElementById("fMinMenu").hidden = true;
+  }
 });
 /* 当前表单要保存的分组名 */
 function currentGroup(){
@@ -2106,6 +2231,8 @@ function openForm(id){
   document.getElementById("sheetTitle").textContent = ev ? "编辑日程" : "新增日程";
   fTitle.value = ev ? (ev.title || "") : "";
   /* iOS 上空的 date 控件是完全空白的一个图标，所以永远给个默认值 */
+  buildTimeMenus();
+  setFormTime(ev ? (ev.time || "") : "");
   setFormDate(ev ? ev.date : todayKey);
   var m = ev ? modeOf(ev) : "down";
   var mr = form.querySelector('input[name="mode"][value="' + m + '"]');
@@ -2160,6 +2287,7 @@ form.addEventListener("submit", function(e){
         state.events[i].date = date;
         state.events[i].mode = mode;
         state.events[i].group = group;
+        state.events[i].time = formTime;
         state.events[i].color = pickedColor();
         state.events[i].pinned = pinnedNow;
         state.events[i].updatedAt = now;
@@ -2168,7 +2296,7 @@ form.addEventListener("submit", function(e){
     }
   }else{
     state.events.push({id:uid(), title:title, date:date, mode:mode,
-                       group:group, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
+                       group:group, time:formTime, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
                        createdAt:now, updatedAt:now});
   }
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
