@@ -321,6 +321,24 @@ select.sort{
   .stack, .stack > .stack-item, .g-chev{transition:none !important}
 }
 
+/* ============ 置顶区 ============ */
+.pinned-sec{margin-bottom:4px}
+.pinned-head{color:var(--text-2)}
+.pinned{ /* 置顶区不堆叠，平铺显示——置顶就是为了一眼看见 */ }
+.cards.pinned, .list.pinned{box-shadow:none}
+.list.pinned{background:var(--surface-2)}
+
+/* ============ 长按拖拽排序 ============ */
+body.dragging{user-select:none;-webkit-user-select:none;touch-action:none}
+.drag-sliding{transition:transform .18s cubic-bezier(.2,.8,.3,1)}
+.drag-lift{
+  transition:none !important;
+  z-index:50;position:relative;
+  filter:drop-shadow(0 14px 26px rgba(17,26,38,.28));
+}
+.drag-lift .card, .drag-lift .row{opacity:.96}
+body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{pointer-events:none}
+
 /* ============ 空状态 ============ */
 .empty{
   text-align:center;padding:56px 20px;color:var(--text-2);
@@ -564,13 +582,20 @@ select.sort{
       <div class="colors" id="fColors"></div>
     </div>
 
+    <div class="field">
+      <label>置顶</label>
+      <div class="modes" id="fPinBox">
+        <input type="radio" name="pin" id="pinOff" value="off"><label for="pinOff">不置顶</label>
+        <input type="radio" name="pin" id="pinOn"  value="on"><label for="pinOn">📌 置顶</label>
+      </div>
+      <p class="hint">置顶的日程不管用哪种排序都排在最上面，单独放在「置顶区」；
+        如果它属于某个分组，会暂时离开那个分组，取消置顶后自动回去。</p>
+    </div>
+
     <div class="actions">
       <button type="button" class="btn ghost-danger" id="fDelete" aria-label="删除此日程" hidden>🗑</button>
       <button type="button" class="btn" id="fCancel">取消</button>
       <button type="submit" class="btn primary">保存</button>
-    </div>
-    <div class="extra-row">
-      <button type="button" class="btn" id="fTop" hidden>移到最前</button>
     </div>
   </form>
 </div>
@@ -749,6 +774,8 @@ function sortedEvents(){
   return arr;
 }
 
+function isPinned(ev){ return !!ev.pinned; }
+
 /* 把排好序的列表按分组聚拢：分组出现的位置＝该组第一条的位置，未分组的各自独立占位 */
 function groupize(list){
   var out = [], idx = {};
@@ -804,12 +831,30 @@ function render(){
   }
 
   var isCard = state.view === "card";
+  var make = function(ev){ return isCard ? cardEl(ev, t) : rowEl(ev, t); };
+
+  /* 置顶区：不管当前用哪种排序都排在最上面，而且不堆叠——
+     置顶就是为了"一眼看见"，再折起来就自相矛盾了 */
+  var pins = list.filter(isPinned);
+  if(pins.length){
+    var psec = document.createElement("section");
+    psec.className = "group pinned-sec";
+    var phead = document.createElement("div");
+    phead.className = "group-head pinned-head";
+    phead.innerHTML = '<span class="g-name">📌 置顶</span><span class="g-count"></span>';
+    phead.querySelector(".g-count").textContent = pins.length;
+    var pbox = document.createElement("div");
+    pbox.className = isCard ? "cards pinned" : "list pinned";
+    pins.forEach(function(ev){ pbox.appendChild(make(ev)); });
+    psec.appendChild(phead);
+    psec.appendChild(pbox);
+    board.appendChild(psec);
+  }
+
   var box = document.createElement("div");
   box.className = isCard ? "cards" : "list";
 
-  groupize(list).forEach(function(g){
-    var make = function(ev){ return isCard ? cardEl(ev, t) : rowEl(ev, t); };
-
+  groupize(list.filter(function(e){ return !isPinned(e); })).forEach(function(g){
     if(!g.name){                                  /* 没分组的直接平铺 */
       box.appendChild(make(g.items[0]));
       return;
@@ -1034,6 +1079,7 @@ function cardEl(ev, t){
   el.style.setProperty("--c", ev.color || COLORS[0]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[0], -0.16));
   el.setAttribute("aria-label", (ev.title || "未命名") + "，点击编辑");
+  el.setAttribute("data-id", ev.id);      /* 拖拽重排时靠它把 DOM 顺序写回数据 */
 
   var top = document.createElement("div");
   top.className = "card-top";
@@ -1059,6 +1105,8 @@ function cardEl(ev, t){
     if(info.state === "overdue")    sub.appendChild(tagEl("已过期"));
     if(info.state === "elapsed")    sub.appendChild(tagEl("已累计"));
     if(info.state === "notStarted") sub.appendChild(tagEl("未开始"));
+    /* 置顶的卡片离开了原分组，把它原来属于哪组标出来，免得找不着 */
+    if(isPinned(ev) && (ev.group || "").trim()) sub.appendChild(tagEl("原属 " + ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
 
@@ -1096,6 +1144,7 @@ function rowEl(ev, t){
   el.style.setProperty("--c", ev.color || COLORS[1]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[1], -0.16));
   el.setAttribute("aria-label", (ev.title || "未命名") + "，点击编辑");
+  el.setAttribute("data-id", ev.id);      /* 拖拽重排时靠它把 DOM 顺序写回数据 */
 
   var main = document.createElement("div");
   main.className = "row-main";
@@ -1223,6 +1272,7 @@ fileInput.addEventListener("change", function(){
           mode: (x.mode === "down" || x.mode === "up") ? x.mode : "auto",
           repeat: x.repeat === "year" ? "year" : "none",
           group: typeof x.group === "string" ? x.group.trim().slice(0,12) : "",
+          pinned: x.pinned === true,
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
           createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
           updatedAt: (typeof x.updatedAt === "number" && x.updatedAt > 0) ? x.updatedAt : undefined
@@ -1376,7 +1426,7 @@ function syncGroupChips(){
 }
 document.getElementById("fGroup").addEventListener("input", syncGroupChips);
 var fDelete = document.getElementById("fDelete");
-var fTop = document.getElementById("fTop");
+var fPinBox = document.getElementById("fPinBox");
 
 COLORS.forEach(function(c, i){
   var id = "clr" + i;
@@ -1420,7 +1470,8 @@ function openForm(id){
   buildGroupChips();
   setColor(ev ? ev.color : COLORS[0]);
   fDelete.hidden = !ev;
-  fTop.hidden = !(ev && state.sort === "manual" && liveEvents().length > 1);
+  var pinRadio = form.querySelector("input[name=pin][value=" + ((ev && ev.pinned) ? "on" : "off") + "]");
+  if(pinRadio) pinRadio.checked = true;
   mask.hidden = false;
   document.body.style.overflow = "hidden";
   if(!ev) setTimeout(function(){ try{ fTitle.focus(); }catch(e){} }, 60);
@@ -1449,6 +1500,8 @@ form.addEventListener("submit", function(e){
   var mode = pickedMode();
   var repeat = (mode === "up") ? "none" : fRepeat.value;   /* 正数模式不支持每年重复 */
   var group = fGroup.value.trim().slice(0, 12);
+  var pinnedNow = !!(form.querySelector('input[name="pin"]:checked') || {}).value &&
+                  form.querySelector('input[name="pin"]:checked').value === "on";
   var now = Date.now();
   if(editingId){
     for(var i=0;i<state.events.length;i++){
@@ -1459,13 +1512,14 @@ form.addEventListener("submit", function(e){
         state.events[i].repeat = repeat;
         state.events[i].group = group;
         state.events[i].color = pickedColor();
+        state.events[i].pinned = pinnedNow;
         state.events[i].updatedAt = now;
         delete state.events[i].demo;    /* 你动过的示例就是你的数据了，照常参与同步 */
       }
     }
   }else{
     state.events.push({id:uid(), title:title, date:date, mode:mode, repeat:repeat,
-                       group:group, color:pickedColor(), order:orderMax() + 1,
+                       group:group, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
                        createdAt:now, updatedAt:now});
   }
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
@@ -1483,14 +1537,6 @@ fDelete.addEventListener("click", function(){
     if(x.id === editingId){ x.deletedAt = tnow; x.updatedAt = tnow; }
   });
   pruneExpanded();
-  save(); queueSync(); closeForm(); render();
-});
-fTop.addEventListener("click", function(){
-  if(!editingId) return;
-  var min = orderMin(), now = Date.now();
-  state.events.forEach(function(x){
-    if(x.id === editingId){ x.order = min - 1; x.updatedAt = now; }
-  });
   save(); queueSync(); closeForm(); render();
 });
 
@@ -1660,6 +1706,174 @@ function startSyncLoops(){
   window.addEventListener("online", function(){ syncNow(); });
 }
 
+/* ================= 长按拖拽排序 =================
+   只在「自定义顺序」下启用。三种可拖的场景，靠"同一个父容器里的同级项"统一处理：
+     · 置顶区里的卡片      · 展开的分组里的卡片      · 顶层：未分组卡片 与 分组区块（整组移动）
+   与其它手势的分工：短按 = 编辑/展开，长按 450ms = 拿起来拖，拖动期间下拉刷新让位。 */
+var DRAG_HOLD = 450;      /* 按住多久算"拿起来" */
+var DRAG_SLOP = 10;       /* 按住期间手指动超过这么多，就当是滚动/下拉，取消长按 */
+
+var dragTimer = null, dragOn = false, dragEl = null, dragItems = null, dragTouch = false;
+var dragFrom = 0, dragTo = 0, dragStartY = 0, dragOffset = 0, dragH = 0;
+
+function dragEnabled(){ return state.sort === "manual"; }
+
+/* 从被按住的元素往上找：它属于哪个容器、容器里的同级项有哪些 */
+function dragScope(target){
+  var item = target.closest(".pinned > .card, .pinned > .row, .stack-item, .cards > .card, .list > .row, .group");
+  if(!item) return null;
+  /* 分组区块只能整体拖，且必须是从它的标题栏起手，避免和"点卡片"抢 */
+  if(item.classList.contains("group")){
+    if(!target.closest(".group-head")) return null;
+    if(item.classList.contains("pinned-sec")) return null;   /* 置顶区本身不参与排序 */
+  }
+  var box = item.parentElement;
+  if(!box) return null;
+  /* 展开的分组内部才可以拖；收起时卡片是叠着的，拖了没有意义 */
+  if(box.classList.contains("stack") && !box.classList.contains("is-open")) return null;
+  var items = [].slice.call(box.children).filter(function(n){
+    return n.nodeType === 1 && !n.classList.contains("pinned-head");
+  });
+  if(items.length < 2) return null;
+  return {item:item, box:box, items:items};
+}
+
+function dragCancelHold(){ clearTimeout(dragTimer); dragTimer = null; }
+
+function dragBegin(scope, clientY, byTouch){
+  dragOn = true;
+  dragTouch = !!byTouch;
+  dragEl = scope.item;
+  dragItems = scope.items;
+  dragFrom = dragItems.indexOf(dragEl);
+  dragTo = dragFrom;
+  dragStartY = clientY;
+  dragOffset = 0;
+  dragH = dragEl.getBoundingClientRect().height +
+          (scope.box.classList.contains("stack") ? stackGap() : (state.view === "card" ? 14 : 10));
+  /* 记下每一项当前的 transform，拖动时在它基础上叠加偏移（堆叠里的项本来就带 transform） */
+  dragItems.forEach(function(n){
+    n.__base = n.style.transform || "";
+    n.classList.add("drag-sliding");
+  });
+  dragEl.classList.add("drag-lift");
+  document.body.classList.add("dragging");
+  if(navigator.vibrate) { try{ navigator.vibrate(14); }catch(e){} }
+}
+
+function dragPaint(){
+  dragItems.forEach(function(n, i){
+    var shift = 0;
+    if(n === dragEl){
+      shift = dragOffset;
+    }else if(dragFrom < dragTo && i > dragFrom && i <= dragTo){
+      shift = -dragH;                      /* 被拖的往下走，中间这些往上让 */
+    }else if(dragFrom > dragTo && i >= dragTo && i < dragFrom){
+      shift = dragH;                       /* 往上走，中间这些往下让 */
+    }
+    n.style.transform = (n.__base ? n.__base + " " : "") + "translate3d(0," + shift.toFixed(1) + "px,0)";
+  });
+}
+
+function dragMove(clientY){
+  dragOffset = clientY - dragStartY;
+  var steps = Math.round(dragOffset / dragH);
+  var to = Math.max(0, Math.min(dragItems.length - 1, dragFrom + steps));
+  if(to !== dragTo) dragTo = to;
+  dragPaint();
+}
+
+function dragEnd(commit){
+  if(!dragOn) return;
+  dragItems.forEach(function(n){
+    n.classList.remove("drag-sliding");
+    n.style.transform = n.__base || "";
+    delete n.__base;
+  });
+  dragEl.classList.remove("drag-lift");
+  document.body.classList.remove("dragging");
+  var from = dragFrom, to = dragTo, items = dragItems;
+  dragOn = false; dragEl = null; dragItems = null;
+  /* 松手后浏览器还会补一个 click，要把它吃掉，否则拖完立刻弹出编辑窗 */
+  document.body.classList.add("just-dragged");
+  setTimeout(function(){ document.body.classList.remove("just-dragged"); }, 350);
+  if(commit && to !== from){
+    var moved = items.splice(from, 1)[0];
+    items.splice(to, 0, moved);
+    commitOrder(items);
+  }else{
+    layoutStacks(false);          /* 没换位就把堆叠的位置复原 */
+  }
+}
+
+/* 把容器里的新顺序写回数据：先按新顺序算出这批条目的 id 序列，
+   再把它们占用的那些 order 值按新顺序重新分配（不动容器之外的条目） */
+function commitOrder(items){
+  var ids = [];
+  items.forEach(function(n){
+    if(n.classList.contains("group")){
+      var st = n.querySelector(".stack");
+      [].slice.call(st.children).forEach(function(w){
+        var c = w.querySelector("[data-id]");
+        if(c) ids.push(c.getAttribute("data-id"));
+      });
+    }else{
+      var c2 = n.matches("[data-id]") ? n : n.querySelector("[data-id]");
+      if(c2) ids.push(c2.getAttribute("data-id"));
+    }
+  });
+  if(!ids.length) return;
+  var byId = {};
+  state.events.forEach(function(e){ byId[e.id] = e; });
+  /* 这批条目原本占着哪些 order 值，就还用这些值，按新顺序发下去 */
+  var slots = ids.map(function(id){ return byId[id] ? (byId[id].order || 0) : 0; })
+                 .sort(function(a,b){ return a - b; });
+  var now = Date.now();
+  ids.forEach(function(id, i){
+    var e = byId[id];
+    if(e && e.order !== slots[i]){ e.order = slots[i]; e.updatedAt = now; }
+  });
+  save(); queueSync(); render();
+}
+
+document.addEventListener("pointerdown", function(e){
+  if(!dragEnabled() || dragOn) return;
+  if(e.pointerType === "mouse" && e.button !== 0) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden) return;
+  var scope = dragScope(e.target);
+  if(!scope) return;
+  var y0 = e.clientY, x0 = e.clientX, byTouch = (e.pointerType === "touch");
+  dragCancelHold();
+  dragTimer = setTimeout(function(){ dragBegin(scope, y0, byTouch); dragPaint(); }, DRAG_HOLD);
+  var watch = function(ev2){
+    if(dragOn) return;
+    if(Math.abs(ev2.clientY - y0) > DRAG_SLOP || Math.abs(ev2.clientX - x0) > DRAG_SLOP) dragCancelHold();
+  };
+  var stop = function(){
+    dragCancelHold();
+    document.removeEventListener("pointermove", watch);
+    document.removeEventListener("pointerup", stop);
+    document.removeEventListener("pointercancel", stop);
+  };
+  document.addEventListener("pointermove", watch);
+  document.addEventListener("pointerup", stop);
+  document.addEventListener("pointercancel", stop);
+}, true);
+
+document.addEventListener("pointermove", function(e){
+  if(!dragOn) return;
+  e.preventDefault();
+  dragMove(e.clientY);
+}, {passive:false});
+document.addEventListener("pointerup", function(){ if(dragOn && !dragTouch) dragEnd(true); });
+/* 触屏拖动时浏览器一旦判定"这是滚动"就会发 pointercancel 把指针流掐掉，
+   所以触屏路径改由下面的 touchmove/touchend 驱动，这里不能跟着把拖拽取消掉 */
+document.addEventListener("pointercancel", function(){ if(dragOn && !dragTouch) dragEnd(false); });
+/* 拖起来之后不要再触发"点一下就编辑/展开" */
+document.addEventListener("click", function(e){
+  if(document.body.classList.contains("just-dragged")){ e.stopPropagation(); e.preventDefault(); }
+}, true);
+
 /* ================= 下拉刷新 =================
    参数与状态机沿用之前项目验证过的那一套（死区 16 / 阻尼 0.42 / 回弹 .25s）。
    关键是"一锤定音"：方向只在出死区那一刻判一次，判完不再回头，
@@ -1679,7 +1893,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || !mask.hidden || !syncMask.hidden || !menu.hidden;
+  return ptrBusy || dragOn || !mask.hidden || !syncMask.hidden || !menu.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -1721,6 +1935,11 @@ document.addEventListener("touchstart", function(e){
 }, {passive:true});
 
 document.addEventListener("touchmove", function(e){
+  if(dragOn){                       /* 正在拖卡片：自己接管，并挡住浏览器的滚动 */
+    e.preventDefault();
+    if(e.touches[0]) dragMove(e.touches[0].clientY);
+    return;
+  }
   if(!ptrPulling || ptrBlocked()) return;
   var dx = e.touches[0].clientX - ptrStartX;
   var dy = e.touches[0].clientY - ptrStartY;
@@ -1742,6 +1961,7 @@ document.addEventListener("touchmove", function(e){
 }, {passive:false});
 
 function ptrEnd(){
+  if(dragOn){ dragEnd(true); return; }          /* 拖拽落位，不要走下拉刷新那套 */
   if(!ptrPulling || !ptrLocked){ ptrPulling = false; ptrLocked = false; return; }
   ptrPulling = false; ptrLocked = false;
   if(ptrDist >= ptrThreshold()) ptrDoRefresh();
@@ -1749,6 +1969,7 @@ function ptrEnd(){
 }
 document.addEventListener("touchend", ptrEnd, {passive:true});
 document.addEventListener("touchcancel", function(){
+  if(dragOn){ dragEnd(false); return; }
   ptrPulling = false; ptrLocked = false; ptrReset(true);
 }, {passive:true});
 
