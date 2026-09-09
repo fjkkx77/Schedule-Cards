@@ -579,7 +579,7 @@ var todayKey = "";
 function load(){
   var raw = null;
   try { raw = localStorage.getItem(STORE_KEY); } catch(e){ raw = null; }
-  if(!raw){ state.events = seed(); migrate(); save(); return; }
+  if(!raw){ state.events = syncAlreadyOn() ? [] : seed(); migrate(); save(); return; }
   try{
     var d = JSON.parse(raw);
     if(d && Array.isArray(d.events)) state.events = d.events;
@@ -630,16 +630,26 @@ function orderMin(){
 function save(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
 }
+/* 示例数据。两个关键点：
+   ① id 固定（不是随机的）——否则两台设备各自生成一套，合并时会被当成不同的条目，变成每条两份
+   ② 打 demo 标记——一旦开了同步，这些示例不上传、本地也退场，绝不参与合并 */
 function seed(){
   var t = new Date();
   var y = t.getFullYear();
   return [
-    {id:uid(), title:"回家过年啦", date:"2027-01-10", mode:"down", repeat:"none", color:"#2f86f6", group:"生活"},
-    {id:uid(), title:"我的生日",   date:(y)+"-11-06",  mode:"down", repeat:"year", color:"#f5a13c", group:"生活"},
-    {id:uid(), title:"四级考试",   date:(y)+"-12-19",  mode:"down", repeat:"none", color:"#ef4d4d", group:"考试"},
-    {id:uid(), title:"计组考试",   date:(y+1)+"-01-04",mode:"down", repeat:"none", color:"#8a6ef2", group:"考试"},
-    {id:uid(), title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", repeat:"none", color:"#22b07d", group:""}
+    {id:"demo-1", demo:true, title:"回家过年啦", date:"2027-01-10", mode:"down", repeat:"none", color:"#2f86f6", group:"生活"},
+    {id:"demo-2", demo:true, title:"我的生日",   date:(y)+"-11-06",  mode:"down", repeat:"year", color:"#f5a13c", group:"生活"},
+    {id:"demo-3", demo:true, title:"四级考试",   date:(y)+"-12-19",  mode:"down", repeat:"none", color:"#ef4d4d", group:"考试"},
+    {id:"demo-4", demo:true, title:"计组考试",   date:(y+1)+"-01-04",mode:"down", repeat:"none", color:"#8a6ef2", group:"考试"},
+    {id:"demo-5", demo:true, title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", repeat:"none", color:"#22b07d", group:""}
   ];
+}
+/* 已经在用同步的设备，重装/换浏览器后不要再撒一次示例数据，直接等云端的 */
+function syncAlreadyOn(){
+  try{
+    var s = JSON.parse(localStorage.getItem(SYNC_KEY) || "null");
+    return !!(s && s.on && s.code);
+  }catch(e){ return false; }
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -1424,6 +1434,7 @@ form.addEventListener("submit", function(e){
         state.events[i].group = group;
         state.events[i].color = pickedColor();
         state.events[i].updatedAt = now;
+        delete state.events[i].demo;    /* 你动过的示例就是你的数据了，照常参与同步 */
       }
     }
   }else{
@@ -1558,6 +1569,14 @@ async function syncNow(){
     if(!data.ok) throw new Error(data.error || ("读取失败 " + r.status));
 
     var remote = (data.doc && data.doc.events) || [];
+
+    /* 示例数据一律不参与同步：它在每台设备上"看着一样、id 不同"，
+       合并只会把 5 条变成 10 条。开了同步就让示例退场，本地也清掉，不上传 */
+    var real = state.events.filter(function(e){ return !e.demo; });
+    if(real.length !== state.events.length){
+      state.events = real; save(); render();   /* 数据清了，屏幕也要立刻跟上 */
+    }
+
     var before = fingerprint(state.events);
     var merged = mergeEvents(state.events, remote);
 
