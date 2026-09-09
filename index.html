@@ -504,7 +504,21 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .colors input:checked + label::after{content:"✓"}
 .colors input:focus-visible + label{outline:2px solid var(--text);outline-offset:2px}
+/* 置顶：一个开关按钮，左边写当前状态、右边写点了会怎样，不再是两个并排选项 */
+.pin-toggle{
+  width:100%;min-height:50px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  border:0;border-radius:12px;padding:0 14px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  color:var(--text);font-size:16px;font-weight:700;
+}
+.pin-toggle .pin-act{font-size:13px;font-weight:600;color:var(--text-3)}
+.pin-toggle.on{background:#2f86f6;color:#fff;box-shadow:none}
+.pin-toggle.on .pin-act{color:rgba(255,255,255,.85)}
+.pin-toggle:active{transform:scale(.99)}
+
 .actions{display:flex;gap:10px;margin-top:18px}
+.danger-row{margin-top:10px}
 .btn{
   flex:1 1 auto;min-height:50px;border:0;border-radius:14px;
   font-size:16px;font-weight:700;
@@ -512,7 +526,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   box-shadow:inset 0 0 0 1px var(--line);
 }
 .btn.primary{background:#2f86f6;color:#fff;box-shadow:none}
-.btn.ghost-danger{flex:0 0 auto;width:56px;background:transparent;color:#e0483d;box-shadow:inset 0 0 0 1px var(--line);font-size:20px}
+/* 注意：必须写在 .btn 之后——同特异性下靠顺序决胜，写在前面会被 .btn 的底色和字色盖掉 */
+.btn.btn-danger{
+  width:100%;background:transparent;color:#e0483d;
+  box-shadow:inset 0 0 0 1px rgba(224,72,61,.45);
+}
+.btn.btn-danger:active{background:rgba(224,72,61,.08)}
 .btn:active{transform:scale(.98)}
 .extra-row{display:flex;gap:10px;margin-top:6px}
 .extra-row .btn{min-height:44px;font-size:14px}
@@ -657,18 +676,16 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       </button>
     </div>
 
-    <div class="field" id="repeatField">
-      <label for="fRepeat">重复</label>
-      <select id="fRepeat">
-        <option value="none">不重复</option>
-        <option value="year">每年（生日 / 纪念日）</option>
-      </select>
-    </div>
-
     <div class="field">
-      <label for="fGroup">分组</label>
-      <input type="text" id="fGroup" maxlength="12" placeholder="留空＝不分组" autocomplete="off">
+      <label>分组</label>
+      <!-- 选已有 / 新建 二选一：选的时候不出现输入框，新建的时候不出现选项 -->
       <div class="chips" id="fGroupChips"></div>
+      <div id="fGroupNew" hidden>
+        <input type="text" id="fGroup" maxlength="12" placeholder="输入新分组的名字" autocomplete="off">
+        <div class="chips">
+          <button type="button" id="fGroupBack">← 返回选择已有分组</button>
+        </div>
+      </div>
     </div>
 
     <div class="field">
@@ -678,18 +695,19 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 
     <div class="field">
       <label>置顶</label>
-      <div class="modes" id="fPinBox">
-        <input type="radio" name="pin" id="pinOff" value="off"><label for="pinOff">不置顶</label>
-        <input type="radio" name="pin" id="pinOn"  value="on"><label for="pinOn">📌 置顶</label>
-      </div>
+      <button type="button" class="pin-toggle" id="fPinBtn">
+        <span id="fPinTxt">未置顶</span><span class="pin-act" id="fPinAct">点这里置顶</span>
+      </button>
       <p class="hint">置顶的日程不管用哪种排序都排在最上面，单独放在「置顶区」；
         如果它属于某个分组，会暂时离开那个分组，取消置顶后自动回去。</p>
     </div>
 
     <div class="actions">
-      <button type="button" class="btn ghost-danger" id="fDelete" aria-label="删除此日程" hidden>🗑</button>
       <button type="button" class="btn" id="fCancel">取消</button>
       <button type="submit" class="btn primary">保存</button>
+    </div>
+    <div class="danger-row">
+      <button type="button" class="btn btn-danger" id="fDelete" hidden>删除这条日程</button>
     </div>
   </form>
 </div>
@@ -749,6 +767,9 @@ function migrate(){
     if(typeof e.updatedAt !== "number"){ e.updatedAt = e.createdAt; changed = true; }
     /* 自定义顺序原来靠数组位置，跨设备合并后位置就没了，改成显式的 order 字段 */
     if(typeof e.order !== "number"){ e.order = i; changed = true; }
+    /* 2026-09-09 去掉了「每年重复」，存量数据里的这个字段一并清掉，免得留着让人困惑。
+       不改 updatedAt：两台设备各自迁移的结果一样，没必要为此触发一次同步写 */
+    if("repeat" in e){ delete e.repeat; changed = true; }
   });
   /* 删除标记（墓碑）留够久，保证另一台设备下次上线还能收到这条删除；再老就清掉 */
   var keep = state.events.filter(function(e){
@@ -782,11 +803,11 @@ function seed(){
   var t = new Date();
   var y = t.getFullYear();
   return [
-    {id:"demo-1", demo:true, title:"回家过年啦", date:"2027-01-10", mode:"down", repeat:"none", color:"#2f86f6", group:"生活"},
-    {id:"demo-2", demo:true, title:"我的生日",   date:(y)+"-11-06",  mode:"down", repeat:"year", color:"#f5a13c", group:"生活"},
-    {id:"demo-3", demo:true, title:"四级考试",   date:(y)+"-12-19",  mode:"down", repeat:"none", color:"#ef4d4d", group:"考试"},
-    {id:"demo-4", demo:true, title:"计组考试",   date:(y+1)+"-01-04",mode:"down", repeat:"none", color:"#8a6ef2", group:"考试"},
-    {id:"demo-5", demo:true, title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", repeat:"none", color:"#22b07d", group:""}
+    {id:"demo-1", demo:true, title:"回家过年啦", date:"2027-01-10", mode:"down", color:"#2f86f6", group:"生活"},
+    {id:"demo-2", demo:true, title:"我的生日",   date:(y)+"-11-06",  mode:"down", color:"#f5a13c", group:"生活"},
+    {id:"demo-3", demo:true, title:"四级考试",   date:(y)+"-12-19",  mode:"down", color:"#ef4d4d", group:"考试"},
+    {id:"demo-4", demo:true, title:"计组考试",   date:(y+1)+"-01-04",mode:"down", color:"#8a6ef2", group:"考试"},
+    {id:"demo-5", demo:true, title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", color:"#22b07d", group:""}
   ];
 }
 /* 已经在用同步的设备，重装/换浏览器后不要再撒一次示例数据，直接等云端的 */
@@ -809,11 +830,6 @@ function parseYMD(s){
   var d = new Date(+m[1], +m[2]-1, +m[3]);
   return isNaN(d.getTime()) ? null : d;
 }
-/* 2月29日这类日期，在没有该日的年份里退到当月最后一天 */
-function makeDate(y, mo, day){
-  var last = new Date(y, mo+1, 0).getDate();
-  return new Date(y, mo, Math.min(day, last));
-}
 function dayDiff(a, b){ return Math.round((a - b) / 86400000); }
 
 /* 计算方式：down=倒数（还剩多少天），up=正数（累计多少天），auto=未来倒数/过去正数 */
@@ -821,14 +837,11 @@ function modeOf(ev){
   return (ev.mode === "down" || ev.mode === "up") ? ev.mode : "auto";
 }
 
-/* 算出这条日程“当前指向”的那一天。正数模式的起算日永远是原始日期，不参与每年重复 */
+/* 算出这条日程指向的那一天。2026-09-09 起去掉了「每年重复」，日期就是日期，不再推算下一次 */
 function resolve(ev, t){
   var base = parseYMD(ev.date);
   if(!base) return null;
-  if(ev.repeat !== "year" || modeOf(ev) === "up") return {date: base, cycle: 0, base: base};
-  var cand = makeDate(t.getFullYear(), base.getMonth(), base.getDate());
-  if(cand < t) cand = makeDate(t.getFullYear()+1, base.getMonth(), base.getDate());
-  return {date: cand, cycle: cand.getFullYear() - base.getFullYear(), base: base};
+  return {date: base, base: base};
 }
 
 /* 深浅色都用得上的“压暗”函数：不依赖 color-mix，兼容性最好 */
@@ -1141,7 +1154,6 @@ function numInfo(ev, t){
     bigText: TEXT[state] || "",
     muted: state === "overdue" || state === "notStarted",
     target: r.date,
-    cycle: r.cycle,
     dateLabel: (m === "down" ? "目标 " : "起算 ")
   };
 }
@@ -1193,9 +1205,6 @@ function cardEl(ev, t){
     sub.textContent = "日期无效";
   }else{
     sub.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()];
-    if(ev.repeat === "year" && info.mode === "down"){
-      sub.appendChild(tagEl(info.cycle > 0 ? "第" + info.cycle + "年" : "每年"));
-    }
     if(info.state === "overdue")    sub.appendChild(tagEl("已过期"));
     if(info.state === "elapsed")    sub.appendChild(tagEl("已累计"));
     if(info.state === "notStarted") sub.appendChild(tagEl("未开始"));
@@ -1250,7 +1259,6 @@ function rowEl(ev, t){
     var s = document.createElement("div");
     s.className = "row-sub";
     var extra = "";
-    if(ev.repeat === "year" && info.mode === "down") extra += " · 每年";
     if(info.state === "overdue")    extra += " · 已过期";
     if(info.state === "elapsed")    extra += " · 已累计";
     if(info.state === "notStarted") extra += " · 未开始";
@@ -1364,7 +1372,6 @@ fileInput.addEventListener("change", function(){
           title: String(x.title || "未命名").slice(0,30),
           date: x.date,
           mode: (x.mode === "down" || x.mode === "up") ? x.mode : "auto",
-          repeat: x.repeat === "year" ? "year" : "none",
           group: typeof x.group === "string" ? x.group.trim().slice(0,12) : "",
           pinned: x.pinned === true,
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
@@ -1586,11 +1593,9 @@ var mask = document.getElementById("mask");
 var form = document.getElementById("form");
 var fTitle = document.getElementById("fTitle");
 var fDate = document.getElementById("fDate");
-var fRepeat = document.getElementById("fRepeat");
 var fModes = document.getElementById("fModes");
 var modeHint = document.getElementById("modeHint");
 var dateLabel = document.getElementById("dateLabel");
-var repeatField = document.getElementById("repeatField");
 
 var MODE_HINT = {
   down: "距离这一天还剩多少天，到当天显示「就是今天」。",
@@ -1605,42 +1610,71 @@ function syncModeUI(){
   var m = pickedMode();
   modeHint.textContent = MODE_HINT[m];
   dateLabel.textContent = (m === "up") ? "起算日期" : (m === "down" ? "目标日期" : "日期");
-  /* 正数是从固定的起算日往后累计，“每年重复”对它没有意义，直接藏起来 */
-  repeatField.hidden = (m === "up");
 }
 fModes.addEventListener("change", syncModeUI);
 var fColors = document.getElementById("fColors");
 var fGroup = document.getElementById("fGroup");
 var fGroupChips = document.getElementById("fGroupChips");
 
-/* 已有分组做成一排快捷按钮：点一下填进输入框，再点一下取消 */
+/* 分组是"二选一"：要么在已有分组里挑一个（含"不分组"），要么新建一个。
+   两种模式互斥——挑的时候不出现输入框，新建的时候不出现选项列表。 */
+var fGroupNew = document.getElementById("fGroupNew");
+var groupPick = "";        /* 选择模式下当前选中的分组（空字符串＝不分组） */
+var groupMode = "pick";    /* pick | new */
+
 function buildGroupChips(){
   fGroupChips.innerHTML = "";
-  var groups = allGroups();
-  if(!groups.length){ fGroupChips.hidden = true; return; }
-  fGroupChips.hidden = false;
-  groups.forEach(function(g){
+  var opts = [""].concat(allGroups());     /* 第一项固定是"不分组" */
+  opts.forEach(function(g){
     var b = document.createElement("button");
     b.type = "button";
-    b.textContent = g;
-    if(fGroup.value.trim() === g) b.className = "on";
+    b.textContent = g || "不分组";
+    b.className = (groupPick === g) ? "on" : "";
     b.addEventListener("click", function(){
-      fGroup.value = (fGroup.value.trim() === g) ? "" : g;
-      syncGroupChips();
+      groupPick = g;
+      groupMode = "pick";
+      syncGroupUI();
     });
     fGroupChips.appendChild(b);
   });
+  var nb = document.createElement("button");
+  nb.type = "button";
+  nb.textContent = "＋ 新建分组";
+  nb.className = (groupMode === "new") ? "on" : "";
+  nb.addEventListener("click", function(){
+    groupMode = "new";
+    fGroup.value = "";
+    syncGroupUI();
+    setTimeout(function(){ try{ fGroup.focus(); }catch(e){} }, 50);
+  });
+  fGroupChips.appendChild(nb);
 }
-function syncGroupChips(){
-  var cur = fGroup.value.trim();
-  var bs = fGroupChips.children;
-  for(var i = 0; i < bs.length; i++){
-    bs[i].className = (bs[i].textContent === cur) ? "on" : "";
-  }
+function syncGroupUI(){
+  buildGroupChips();
+  fGroupNew.hidden = (groupMode !== "new");
+  fGroupChips.hidden = (groupMode === "new");   /* 新建时把选项列表收起来，避免两套并存 */
 }
-document.getElementById("fGroup").addEventListener("input", syncGroupChips);
+/* 当前表单要保存的分组名 */
+function currentGroup(){
+  return (groupMode === "new") ? fGroup.value.trim().slice(0, 12) : groupPick;
+}
+document.getElementById("fGroupBack").addEventListener("click", function(){
+  groupMode = "pick";
+  syncGroupUI();
+});
+
+/* 置顶是一个开关：左边写当前状态，右边写点了会发生什么，不再是两个并排选项 */
+var pinState = false;
+function setPinState(on){
+  pinState = !!on;
+  var btn = document.getElementById("fPinBtn");
+  btn.classList.toggle("on", pinState);
+  document.getElementById("fPinTxt").textContent = pinState ? "📌 已置顶" : "未置顶";
+  document.getElementById("fPinAct").textContent = pinState ? "点这里取消置顶" : "点这里置顶";
+  btn.setAttribute("aria-pressed", pinState ? "true" : "false");
+}
+document.getElementById("fPinBtn").addEventListener("click", function(){ setPinState(!pinState); });
 var fDelete = document.getElementById("fDelete");
-var fPinBox = document.getElementById("fPinBox");
 
 COLORS.forEach(function(c, i){
   var id = "clr" + i;
@@ -1679,13 +1713,14 @@ function openForm(id){
   var mr = form.querySelector('input[name="mode"][value="' + m + '"]');
   if(mr) mr.checked = true;
   syncModeUI();
-  fRepeat.value = ev && ev.repeat === "year" ? "year" : "none";
-  fGroup.value = ev ? (ev.group || "") : "";
-  buildGroupChips();
+  /* 分组：已有的就选中它，没有就落在"不分组"，一律从选择模式进 */
+  groupPick = ev ? (ev.group || "") : "";
+  groupMode = "pick";
+  fGroup.value = "";
+  syncGroupUI();
   setColor(ev ? ev.color : COLORS[0]);
   fDelete.hidden = !ev;
-  var pinRadio = form.querySelector("input[name=pin][value=" + ((ev && ev.pinned) ? "on" : "off") + "]");
-  if(pinRadio) pinRadio.checked = true;
+  setPinState(!!(ev && ev.pinned));
   mask.hidden = false;
   document.body.style.overflow = "hidden";
   if(!ev) setTimeout(function(){ try{ fTitle.focus(); }catch(e){} }, 60);
@@ -1713,10 +1748,8 @@ form.addEventListener("submit", function(e){
   var date = fDate.value;
   if(!parseYMD(date)){ alert("请选择一个有效日期"); return; }
   var mode = pickedMode();
-  var repeat = (mode === "up") ? "none" : fRepeat.value;   /* 正数模式不支持每年重复 */
-  var group = fGroup.value.trim().slice(0, 12);
-  var pinnedNow = !!(form.querySelector('input[name="pin"]:checked') || {}).value &&
-                  form.querySelector('input[name="pin"]:checked').value === "on";
+  var group = currentGroup();
+  var pinnedNow = pinState;
   var now = Date.now();
   if(editingId){
     for(var i=0;i<state.events.length;i++){
@@ -1724,7 +1757,6 @@ form.addEventListener("submit", function(e){
         state.events[i].title = title;
         state.events[i].date = date;
         state.events[i].mode = mode;
-        state.events[i].repeat = repeat;
         state.events[i].group = group;
         state.events[i].color = pickedColor();
         state.events[i].pinned = pinnedNow;
@@ -1733,7 +1765,7 @@ form.addEventListener("submit", function(e){
       }
     }
   }else{
-    state.events.push({id:uid(), title:title, date:date, mode:mode, repeat:repeat,
+    state.events.push({id:uid(), title:title, date:date, mode:mode,
                        group:group, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
                        createdAt:now, updatedAt:now});
   }
