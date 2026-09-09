@@ -491,6 +491,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 /* 中间这个是"选择已有分组"的下拉：它自带菜单，所以要能定位 */
 /* 分组管理是主操作菜单，按钮要够 44px；日期选择器那个年/月菜单项目多，仍用 40px */
 #gmMenu button{min-height:44px}
+/* 这里必须写死宽度而不是 max-width：底部提示是可任意断行的中文长串，
+   它的 max-content 宽超过任何可用空间，于是菜单的收缩宽度会等于"视口宽 - left"，
+   而 left 又由测出来的宽度算出——循环依赖，结果就是菜单被顶到屏幕右边缘 */
+#gmMenu{width:min(240px, calc(100vw - 32px))}
 .gm-tip{
   margin:6px 8px 2px;padding-top:6px;border-top:1px solid var(--line);
   font-size:12px;color:var(--text-3);font-weight:600;line-height:1.5;
@@ -1796,35 +1800,10 @@ var gpMode = "rename";    /* rename | delete */
 
 function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; }
 
-/* 分组在"顶层顺序"里挪一格。拖拽本来就能做，但那个功能没人找得到，
-   而且鼠标上长按拖并不自然——这里给一条自解释、可精确控制的路径 */
-function moveGroup(name, dir){
-  if(state.sort !== "manual"){
-    alert("现在是「" + (document.getElementById("sortSel").selectedOptions[0] || {}).text +
-          "」排序，顺序由规则决定。要自己排请先在上面切到「自定义顺序」。");
-    return;
-  }
-  var box = board.querySelector(".cards, .list");
-  if(!box) return;
-  var items = [].slice.call(box.children);
-  var idx = -1, i;
-  for(i = 0; i < items.length; i++){
-    var st = items[i].querySelector ? items[i].querySelector(".stack") : null;
-    if(st && st.getAttribute("data-group") === name) idx = i;
-  }
-  var to = idx + dir;
-  if(idx < 0 || to < 0 || to >= items.length) return;
-  var moved = items.splice(idx, 1)[0];
-  items.splice(to, 0, moved);
-  commitOrder(items);          /* 和拖拽落位走的是同一段写回逻辑 */
-}
-
 function openGroupMenu(name, anchor){
   gpTarget = name;
   gmMenu.innerHTML = "";
-  [["↑ 上移一位", function(){ closeGroupMenu(); moveGroup(name, -1); }],
-   ["↓ 下移一位", function(){ closeGroupMenu(); moveGroup(name, 1); }],
-   ["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
+  [["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
    ["删除分组",   function(){ closeGroupMenu(); openGroupSheet("delete"); }]
   ].forEach(function(pair){
     var b = document.createElement("button");
@@ -1833,18 +1812,23 @@ function openGroupMenu(name, anchor){
     b.addEventListener("click", pair[1]);
     gmMenu.appendChild(b);
   });
-  /* 顺手把"还能长按拖"这件事说出来——不然没人知道 */
+  /* 排顺序不给按钮（长按拖就够了），但得把"能拖"这件事说出来——不然没人知道。
+     非自定义排序下拖不动是设计使然，这里顺带解释，免得用户以为坏了 */
   var tip = document.createElement("p");
   tip.className = "gm-tip";
-  tip.textContent = "也可以长按分组名直接拖动";
+  tip.textContent = state.sort === "manual"
+    ? "长按分组名可以直接拖动排序"
+    : "想自己排顺序：先把上面的排序切到「自定义顺序」，再长按分组名拖动";
   gmMenu.appendChild(tip);
   /* 菜单是 fixed 定位的，按锚点算位置；贴着右边缘，别超出屏幕 */
   var r = anchor.getBoundingClientRect();
   gmMenu.hidden = false;
   gmMask.hidden = false;
+  /* 必须先切成 fixed 再量宽：absolute 时的包含块更窄，提示行换行方式不同，
+     量出来的宽度会偏小，按它算的 left 会把菜单顶到屏幕右边缘 */
+  gmMenu.style.position = "fixed";
   var w = gmMenu.offsetWidth || 140;
   var left = Math.min(r.left, document.documentElement.clientWidth - w - 12);
-  gmMenu.style.position = "fixed";
   gmMenu.style.left = Math.max(12, left) + "px";
   gmMenu.style.top = (r.bottom + 6) + "px";
 }
