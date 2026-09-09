@@ -442,6 +442,24 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .modes input:checked + label{background:#2f86f6;color:#fff;box-shadow:none}
 .modes input:focus-visible + label{outline:2px solid var(--text);outline-offset:2px}
 .hint{margin:8px 2px 0;font-size:13px;line-height:1.5;color:var(--text-3)}
+/* ---- 日期下面的实时倒计时 ---- */
+.countdown{
+  margin-top:8px;padding:10px 12px;border-radius:12px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  display:flex;flex-direction:column;gap:2px;
+}
+.countdown .cd-num{
+  font-size:17px;font-weight:800;letter-spacing:.2px;
+  font-variant-numeric:tabular-nums;   /* 等宽数字，秒跳动时整行不会左右抖 */
+  color:var(--text-2);
+}
+.countdown .cd-base{font-size:12px;font-weight:600;color:var(--text-3)}
+/* 越紧迫越显眼——这比数字本身更能让人有压力 */
+.countdown.soon  .cd-num{color:#ef7d20}                    /* 7 天内 */
+.countdown.urgent .cd-num{color:#e0483d}                   /* 24 小时内 */
+.countdown.urgent{background:rgba(224,72,61,.08);box-shadow:inset 0 0 0 1px rgba(224,72,61,.35)}
+.countdown.past  .cd-num{color:var(--text-3)}              /* 已过期/已累计 */
+
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .chips button{
   min-height:44px;padding:0 14px;border:0;border-radius:12px;
@@ -726,6 +744,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
         <span class="date-main"><span id="fDateTxt">请选择日期</span><span class="date-sub" id="fDateSub" hidden></span></span>
         <span class="date-ico">🗓</span>
       </button>
+      <div class="countdown" id="fCountdown" hidden>
+        <span class="cd-num" id="fCdNum"></span>
+        <span class="cd-base" id="fCdBase"></span>
+      </div>
     </div>
 
     <div class="field">
@@ -1568,6 +1590,73 @@ document.getElementById("mClear").addEventListener("click", function(){
   }
 });
 
+/* ================= 编辑弹窗里的实时倒计时 =================
+   日程只存日期不存时刻，所以基准是目标日的 00:00 —— 这一点在第二行明写出来，
+   不让秒级数字假装自己很精确。只在弹窗打开时跑，关掉立刻停。 */
+var cdTimer = null;
+
+function cdPad(n){ return n < 10 ? "0" + n : "" + n; }
+/* 把毫秒拆成 天/时/分/秒；天为 0 时省略"天"，时分秒补零 */
+function cdSplit(ms){
+  var s = Math.floor(ms / 1000);
+  var d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600);  s -= h * 3600;
+  var m = Math.floor(s / 60);    s -= m * 60;
+  return (d > 0 ? d + " 天 " : "") + cdPad(h) + ":" + cdPad(m) + ":" + cdPad(s);
+}
+
+function paintCountdown(){
+  var box = document.getElementById("fCountdown");
+  var d = parseYMD(fDate.value);
+  if(!d){ box.hidden = true; return; }
+  var mode = pickedMode();
+  var now = new Date();
+  var target = d.getTime();                       /* 目标日 00:00 */
+  var dayEnd = target + 86400000;                 /* 目标日结束 */
+  if(mode === "auto") mode = (now.getTime() < dayEnd) ? "down" : "up";
+
+  var num, base, cls = "";
+  if(mode === "down"){
+    if(now.getTime() < target){
+      var left = target - now.getTime();
+      num = "还剩 " + cdSplit(left);
+      base = "距 " + ymd(d) + " 00:00";
+      if(left <= 86400000) cls = "urgent";
+      else if(left <= 7 * 86400000) cls = "soon";
+    }else if(now.getTime() < dayEnd){
+      num = "就是今天 · 还剩 " + cdSplit(dayEnd - now.getTime());
+      base = "距今天结束（" + ymd(d) + " 24:00）";
+      cls = "urgent";
+    }else{
+      num = "已过 " + cdSplit(now.getTime() - target);
+      base = "从 " + ymd(d) + " 00:00 算起";
+      cls = "past";
+    }
+  }else{
+    if(now.getTime() >= target){
+      num = "已经 " + cdSplit(now.getTime() - target);
+      base = "从 " + ymd(d) + " 00:00 算起";
+      cls = "past";
+    }else{
+      num = "还有 " + cdSplit(target - now.getTime()) + " 开始";
+      base = "距 " + ymd(d) + " 00:00";
+      cls = "soon";
+    }
+  }
+  document.getElementById("fCdNum").textContent = num;
+  document.getElementById("fCdBase").textContent = base;
+  box.className = "countdown" + (cls ? " " + cls : "");
+  box.hidden = false;
+}
+function startCountdown(){
+  stopCountdown();
+  paintCountdown();
+  cdTimer = setInterval(paintCountdown, 1000);
+}
+function stopCountdown(){
+  if(cdTimer){ clearInterval(cdTimer); cdTimer = null; }
+}
+
 /* ================= 分组的重命名 / 删除 =================
    入口是分组标题栏右边的「⋯」。删除分两种，默认走安全的那种：
      · 解散分组：里面的日程保留，变成"不分组"
@@ -1707,6 +1796,7 @@ function setFormDate(s){                 /* 同时更新隐藏值和按钮上看
     sub.textContent = ""; sub.hidden = true;
     btn.classList.add("empty");
   }
+  if(cdTimer) paintCountdown();
 }
 
 function dpBuildMenus(){
@@ -1888,6 +1978,7 @@ function pickedMode(){
 }
 function syncModeUI(){
   var m = pickedMode();
+  if(cdTimer) paintCountdown();
   modeHint.textContent = MODE_HINT[m];
   dateLabel.textContent = (m === "up") ? "起算日期" : (m === "down" ? "目标日期" : "日期");
 }
@@ -2030,9 +2121,11 @@ function openForm(id){
   setPinState(!!(ev && ev.pinned));
   mask.hidden = false;
   document.body.style.overflow = "hidden";
+  startCountdown();
   if(!ev) setTimeout(function(){ try{ fTitle.focus(); }catch(e){} }, 60);
 }
 function closeForm(){
+  stopCountdown();
   mask.hidden = true;
   document.body.style.overflow = "";
   editingId = null;
