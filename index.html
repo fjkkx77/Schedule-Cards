@@ -428,6 +428,74 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .chips button.on{background:#2f86f6;color:#fff;box-shadow:none}
+/* ---- 日期触发按钮（原来是原生 input[type=date]） ---- */
+.date-trigger{
+  width:100%;min-height:48px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  border:1px solid var(--line);border-radius:12px;
+  background:var(--surface-2);color:var(--text);
+  padding:0 12px;font-size:16px;font-weight:600;text-align:left;
+}
+.date-trigger:active{transform:scale(.995)}
+.date-trigger .date-ico{flex:0 0 auto;font-size:17px;opacity:.7}
+.date-trigger.empty{color:var(--text-3);font-weight:500}
+
+/* ---- 日期选择器弹层 ---- */
+.dp-mask{
+  position:fixed;inset:0;z-index:70;
+  background:rgba(12,16,22,.42);
+  display:flex;align-items:center;justify-content:center;
+  padding:16px;
+}
+.dp{
+  width:100%;max-width:360px;max-height:92vh;overflow-y:auto;overscroll-behavior:contain;
+  background:var(--surface);border-radius:24px;
+  box-shadow:0 20px 44px rgba(0,0,0,.28);
+  padding:16px;
+}
+.dp-head{display:flex;align-items:center;gap:8px;margin-bottom:12px;position:relative;z-index:10}
+.dp-sel{position:relative}
+.dp-selbtn{
+  min-height:44px;padding:0 12px;border:0;border-radius:10px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  color:var(--text);font-size:17px;font-weight:700;
+  display:flex;align-items:center;gap:4px;
+}
+.dp-selbtn::after{content:"▾";font-size:13px;color:var(--text-3)}
+.dp-selbtn:active{background:var(--line)}
+.dp-menu{
+  position:absolute;top:calc(100% + 6px);left:0;z-index:100;
+  min-width:104px;max-height:220px;overflow-y:auto;overscroll-behavior:contain;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);padding:6px;
+}
+.dp-menu button{
+  display:block;width:100%;min-height:40px;border:0;background:transparent;
+  border-radius:9px;color:var(--text);font-size:16px;font-weight:600;text-align:center;
+}
+.dp-menu button.on{background:#2f86f6;color:#fff}
+.dp-menu button:active{background:var(--surface-2)}
+.dp-today{
+  margin-left:auto;min-height:44px;padding:0 14px;border:0;border-radius:10px;
+  background:rgba(47,134,246,.12);color:#2f86f6;font-size:14px;font-weight:700;
+}
+.dp-today:active{background:rgba(47,134,246,.24)}
+.dp-week,.dp-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.dp-week span{font-size:12px;color:var(--text-3);font-weight:600;padding-bottom:6px}
+.dp-days button{
+  height:44px;border:0;background:transparent;border-radius:50%;
+  color:var(--text);font-size:16px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+.dp-days button:active{background:var(--surface-2)}
+.dp-days .dp-empty{visibility:hidden;pointer-events:none}
+.dp-days button.today{color:#2f86f6;font-weight:800}
+.dp-days button.sel{
+  background:#2f86f6;color:#fff;font-weight:800;
+  box-shadow:0 4px 12px rgba(47,134,246,.35);
+}
+.dp-actions{display:flex;gap:12px;margin-top:14px}
+
 .colors{display:flex;flex-wrap:wrap;gap:10px}
 .colors input{position:absolute;opacity:0;width:0;height:0}
 .colors label{
@@ -504,6 +572,29 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 </div>
 <input type="file" id="fileInput" accept="application/json,.json" hidden>
 
+<!-- 日期选择器（移植自 data-Calculation 的 iOS 风格选择器，去掉时分秒部分） -->
+<div class="dp-mask" id="dpMask" hidden>
+  <div class="dp" id="dpCard">
+    <div class="dp-head">
+      <div class="dp-sel">
+        <button type="button" class="dp-selbtn" id="dpYearBtn" aria-haspopup="listbox"><span id="dpYearTxt">2026</span> 年</button>
+        <div class="dp-menu" id="dpYearMenu" role="listbox" hidden></div>
+      </div>
+      <div class="dp-sel">
+        <button type="button" class="dp-selbtn" id="dpMonthBtn" aria-haspopup="listbox"><span id="dpMonthTxt">9</span> 月</button>
+        <div class="dp-menu" id="dpMonthMenu" role="listbox" hidden></div>
+      </div>
+      <button type="button" class="dp-today" id="dpToday">今天</button>
+    </div>
+    <div class="dp-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+    <div class="dp-days" id="dpDays"></div>
+    <div class="dp-actions">
+      <button type="button" class="btn" id="dpCancel">取消</button>
+      <button type="button" class="btn primary" id="dpDone">完成</button>
+    </div>
+  </div>
+</div>
+
 <!-- 云同步设置 -->
 <div class="mask" id="syncMask" hidden>
   <div class="sheet" id="syncSheet">
@@ -559,8 +650,11 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
     </div>
 
     <div class="field">
-      <label for="fDate" id="dateLabel">目标日期</label>
-      <input type="date" id="fDate">
+      <label id="dateLabel">目标日期</label>
+      <input type="hidden" id="fDate">
+      <button type="button" class="date-trigger" id="fDateBtn">
+        <span id="fDateTxt">请选择日期</span><span class="date-ico">🗓</span>
+      </button>
     </div>
 
     <div class="field" id="repeatField">
@@ -1305,6 +1399,126 @@ document.getElementById("mClear").addEventListener("click", function(){
   }
 });
 
+/* ================= 日期选择器 =================
+   移植自 data-Calculation 那套 iOS 风格选择器：年/月 下拉 + 今天 + 圆形日期格 + 取消/完成。
+   那边还有时分秒，这里用不上就没搬。对外的接口没变：值仍然写进 #fDate 的 value（YYYY-MM-DD）。 */
+var dpMask = document.getElementById("dpMask");
+var dpDays = document.getElementById("dpDays");
+var dpYearMenu = document.getElementById("dpYearMenu");
+var dpMonthMenu = document.getElementById("dpMonthMenu");
+var dpY = 2026, dpM = 9, dpD = 1;
+
+function setFormDate(s){                 /* 同时更新隐藏值和按钮上看得见的文字 */
+  var d = parseYMD(s);
+  fDate.value = d ? s : "";
+  var btn = document.getElementById("fDateBtn");
+  var txt = document.getElementById("fDateTxt");
+  if(d){
+    txt.textContent = ymd(d) + " " + WEEK[d.getDay()];
+    btn.classList.remove("empty");
+  }else{
+    txt.textContent = "请选择日期";
+    btn.classList.add("empty");
+  }
+}
+
+function dpBuildMenus(){
+  if(dpYearMenu.childElementCount) return;
+  var t = today(), y0 = t.getFullYear(), i;
+  var frag = document.createDocumentFragment();
+  for(i = y0 - 100; i <= y0 + 100; i++){          /* 前后各 100 年，够用又不至于几千项 */
+    (function(y){
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = y; b.setAttribute("data-y", y);
+      b.addEventListener("click", function(){ dpY = y; dpCloseMenus(); dpRender(); });
+      frag.appendChild(b);
+    })(i);
+  }
+  dpYearMenu.appendChild(frag);
+  var frag2 = document.createDocumentFragment();
+  for(i = 1; i <= 12; i++){
+    (function(m){
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = m; b.setAttribute("data-m", m);
+      b.addEventListener("click", function(){ dpM = m; dpCloseMenus(); dpRender(); });
+      frag2.appendChild(b);
+    })(i);
+  }
+  dpMonthMenu.appendChild(frag2);
+}
+function dpCloseMenus(){ dpYearMenu.hidden = true; dpMonthMenu.hidden = true; }
+function dpToggleMenu(menu){
+  var openIt = menu.hidden;
+  dpCloseMenus();
+  if(!openIt) return;
+  menu.hidden = false;
+  /* 打开时把当前值滚到中间，不然 200 个年份要自己找 */
+  var cur = menu.querySelector(".on");
+  if(cur) cur.scrollIntoView({block:"center"});
+}
+
+function dpRender(){
+  var t = today();
+  document.getElementById("dpYearTxt").textContent = dpY;
+  document.getElementById("dpMonthTxt").textContent = dpM;
+  var i, bs = dpYearMenu.children;
+  for(i = 0; i < bs.length; i++) bs[i].className = (+bs[i].getAttribute("data-y") === dpY) ? "on" : "";
+  bs = dpMonthMenu.children;
+  for(i = 0; i < bs.length; i++) bs[i].className = (+bs[i].getAttribute("data-m") === dpM) ? "on" : "";
+
+  var first = new Date(dpY, dpM - 1, 1);
+  var lead = (first.getDay() + 6) % 7;               /* 周一开头 */
+  var total = new Date(dpY, dpM, 0).getDate();
+  if(dpD > total) dpD = total;                       /* 1月31日切到2月，日号要收回来 */
+  dpDays.innerHTML = "";
+  for(i = 0; i < lead; i++){
+    var e = document.createElement("button");
+    e.type = "button"; e.className = "dp-empty"; e.tabIndex = -1;
+    dpDays.appendChild(e);
+  }
+  for(i = 1; i <= total; i++){
+    (function(day){
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = day;
+      var cls = [];
+      if(day === dpD) cls.push("sel");
+      if(dpY === t.getFullYear() && dpM === t.getMonth() + 1 && day === t.getDate()) cls.push("today");
+      b.className = cls.join(" ");
+      b.addEventListener("click", function(){ dpD = day; dpRender(); });
+      dpDays.appendChild(b);
+    })(i);
+  }
+}
+
+function dpOpen(){
+  dpBuildMenus();
+  var d = parseYMD(fDate.value) || today();
+  dpY = d.getFullYear(); dpM = d.getMonth() + 1; dpD = d.getDate();
+  dpCloseMenus();
+  dpRender();
+  dpMask.hidden = false;
+}
+function dpClose(){ dpCloseMenus(); dpMask.hidden = true; }
+
+document.getElementById("fDateBtn").addEventListener("click", dpOpen);
+document.getElementById("dpYearBtn").addEventListener("click", function(e){ e.stopPropagation(); dpToggleMenu(dpYearMenu); });
+document.getElementById("dpMonthBtn").addEventListener("click", function(e){ e.stopPropagation(); dpToggleMenu(dpMonthMenu); });
+document.getElementById("dpToday").addEventListener("click", function(){
+  var t = today();
+  dpY = t.getFullYear(); dpM = t.getMonth() + 1; dpD = t.getDate();
+  dpCloseMenus(); dpRender();
+});
+document.getElementById("dpCancel").addEventListener("click", dpClose);
+document.getElementById("dpDone").addEventListener("click", function(){
+  setFormDate(ymd(new Date(dpY, dpM - 1, dpD)));
+  dpClose();
+});
+document.getElementById("dpCard").addEventListener("click", function(e){
+  if(!e.target.closest(".dp-sel")) dpCloseMenus();   /* 点空白处收起年/月菜单 */
+});
+dpMask.addEventListener("click", function(e){ if(e.target === dpMask) dpClose(); });
+
 /* ================= 云同步的界面 ================= */
 var syncMask = document.getElementById("syncMask");
 var sCode = document.getElementById("sCode");
@@ -1460,7 +1674,7 @@ function openForm(id){
   document.getElementById("sheetTitle").textContent = ev ? "编辑日程" : "新增日程";
   fTitle.value = ev ? (ev.title || "") : "";
   /* iOS 上空的 date 控件是完全空白的一个图标，所以永远给个默认值 */
-  fDate.value = ev ? ev.date : todayKey;
+  setFormDate(ev ? ev.date : todayKey);
   var m = ev ? modeOf(ev) : "down";
   var mr = form.querySelector('input[name="mode"][value="' + m + '"]');
   if(mr) mr.checked = true;
@@ -1486,6 +1700,7 @@ document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
   if(e.key === "Escape"){
+    if(!dpMask.hidden){ dpClose(); return; }
     if(!mask.hidden) closeForm();
     if(!syncMask.hidden) closeSyncSheet();
     if(!menu.hidden) closeMenu();
@@ -1839,7 +2054,7 @@ function commitOrder(items){
 document.addEventListener("pointerdown", function(e){
   if(!dragEnabled() || dragOn) return;
   if(e.pointerType === "mouse" && e.button !== 0) return;
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden) return;
   var scope = dragScope(e.target);
   if(!scope) return;
   var y0 = e.clientY, x0 = e.clientX, byTouch = (e.pointerType === "touch");
@@ -1893,7 +2108,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || !mask.hidden || !syncMask.hidden || !menu.hidden;
+  return ptrBusy || dragOn || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
