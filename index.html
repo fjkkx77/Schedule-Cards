@@ -391,6 +391,9 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .menu-mask{position:fixed;inset:0;z-index:40}
 .menu{
   position:fixed;z-index:41;
+  /* 这里的 top/right 只是 JS 没跑起来时的兜底。真实位置在 openMenu() 里
+     按 ⋯ 按钮的 rect 算——写死 right 在宽屏上会让菜单飞到屏幕最右缘，
+     而按钮在居中的内容列里，两者完全脱开（PC 上看着很割裂） */
   top:calc(58px + var(--safe-t));right:calc(12px + var(--safe-r));
   min-width:196px;max-width:calc(100vw - 24px);
   background:var(--surface);border-radius:14px;box-shadow:var(--shadow);
@@ -1571,8 +1574,22 @@ var menuMask = document.getElementById("menuMask");
 function openMenu(){
   document.getElementById("mDateState").textContent = state.showDateInList ? "开" : "关";
   applyTheme();
+  /* 先把 right 让开再量宽：left 和 right 同时生效会把元素拉伸，量出来的宽是错的 */
+  menu.style.right = "auto";
+  menu.style.left = "0px";
   menu.hidden = false; menuMask.hidden = false;
+  positionMenu();
 }
+/* 菜单右边缘对齐 ⋯ 按钮右边缘，向下 8px；两侧各留 12px 不许出屏 */
+function positionMenu(){
+  var b = document.getElementById("menuBtn").getBoundingClientRect();
+  var dw = document.documentElement.clientWidth;
+  var w = menu.offsetWidth || 196;
+  menu.style.left = Math.round(Math.max(12, Math.min(b.right - w, dw - w - 12))) + "px";
+  menu.style.top = Math.round(b.bottom + 8) + "px";
+}
+/* 转屏/改窗口大小时按钮会挪位置，菜单要跟上 */
+window.addEventListener("resize", function(){ if(!menu.hidden) positionMenu(); });
 function closeMenu(){ menu.hidden = true; menuMask.hidden = true; }
 document.getElementById("menuBtn").addEventListener("click", openMenu);
 menuMask.addEventListener("click", closeMenu);
