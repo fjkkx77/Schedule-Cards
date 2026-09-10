@@ -111,14 +111,20 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 }
 
 /* ---- 顶部 ---- */
-.topbar{display:flex;align-items:center;gap:10px;margin:4px 2px 14px}
+/* 顶栏：标题要有标题的份量。字号跟着视口走，别写死成某一台设备上好看的数
+   （320 下 28px，390 下约 31px，宽屏封顶 36px，和卡片上的大数字才配得上） */
+.topbar{display:flex;align-items:flex-start;gap:10px;margin:6px 2px 16px}
 .brand{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
-.brand h1{margin:0;font-size:19px;font-weight:800;letter-spacing:.5px}
-.brand .today{margin:2px 0 0;font-size:13px;color:var(--text-2);font-weight:500}
-.sync-line{margin:2px 0 0;font-size:12px;color:var(--text-3);font-weight:600}
+.brand h1{
+  margin:0;font-size:clamp(28px,8vw,36px);font-weight:800;
+  letter-spacing:-.2px;line-height:1.16;
+}
+.brand .today{margin:6px 0 0;font-size:14px;color:var(--text-2);font-weight:600}
+.sync-line{margin:3px 0 0;font-size:12px;color:var(--text-3);font-weight:600}
 .sync-line.bad{color:#e0483d}
 .icon-btn{
   flex:0 0 auto;width:44px;height:44px;border:0;border-radius:14px;
+  margin-top:2px;   /* 和放大后的标题首行视觉对齐 */
   background:var(--surface);color:var(--text-2);
   box-shadow:var(--shadow-sm);
   display:flex;align-items:center;justify-content:center;font-size:19px;
