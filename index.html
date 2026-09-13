@@ -30,6 +30,10 @@
   --safe-l:env(safe-area-inset-left,0px);
   --safe-r:env(safe-area-inset-right,0px);
   --safe-t:env(safe-area-inset-top,0px);
+  /* 左滑按钮（淡色调）。字色是按"垫在页面浅灰底 #e9eef4 上"实测对比度定的：
+     蓝 5.04 / 红 4.92，过 WCAG AA 小字 4.5。原先 #2266c4 / #c9352b 只有 4.18 / 3.85，别改回去 */
+  --lsw-pin-bg:rgba(47,134,246,.13); --lsw-pin-fg:#1d5aad;
+  --lsw-del-bg:rgba(224,72,61,.12);  --lsw-del-fg:#b0271e;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -45,6 +49,8 @@
     --shadow-sm:0 2px 8px rgba(0,0,0,.3);
     --stack-shadow:0 22px 46px rgba(0,0,0,.6);
     --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
+    --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
+    --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
   }
 }
 :root[data-theme="dark"]{
@@ -60,6 +66,8 @@
   --shadow-sm:0 2px 8px rgba(0,0,0,.3);
   --stack-shadow:0 22px 46px rgba(0,0,0,.6);
   --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
+  --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
+  --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
 }
 
 *{box-sizing:border-box}
@@ -380,15 +388,17 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   width:clamp(68px,19vw,80px);height:100%;
   border:0;padding:0;border-radius:var(--radius-card);   /* 跟卡片同一个圆角，看着是一套 */
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-  color:#fff;font-size:14px;font-weight:700;line-height:1.2;
+  font-size:14px;font-weight:700;line-height:1.2;
 }
-.list .lsw-btn{border-radius:var(--radius-row);font-size:13px;gap:1px}
-.lsw-btn .lsw-ico{font-size:19px;line-height:1}
-.list .lsw-btn .lsw-ico{font-size:16px}
-/* 白字对比度：#2670d0 ≈ 4.9:1、#d63a2f ≈ 4.7:1，都过 WCAG AA 小字的 4.5 */
-.lsw-pin{background:#2670d0}
-.lsw-del{background:#d63a2f}
-.lsw-btn:active{filter:brightness(.9)}
+.list .lsw-btn{border-radius:var(--radius-row);font-size:13px;gap:2px}
+/* 线条图标，跟着文字色走。不用 📌🗑 这类 emoji：它们自带颜色，按钮会显得花 */
+.lsw-ico{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.list .lsw-ico{width:18px;height:18px}
+/* 方案一「淡色调」：浅底 + 彩色字，只提示是哪类操作，不跟卡片抢眼（2026-09-13 用户觉得实色块喧宾夺主）。
+   颜色走变量，深浅色各一套，定义在文件顶部三个主题块里 */
+.lsw-pin{background:var(--lsw-pin-bg);color:var(--lsw-pin-fg)}
+.lsw-del{background:var(--lsw-del-bg);color:var(--lsw-del-fg)}
+.lsw-btn:active{filter:brightness(.94)}
 /* 置顶/取消置顶后卡片挪了位置，亮一下告诉用户它去哪了 */
 @keyframes lsw-flash{0%{box-shadow:0 0 0 0 rgba(47,134,246,.55)}100%{box-shadow:0 0 0 14px rgba(47,134,246,0)}}
 .lsw-flash{animation:lsw-flash .9s ease-out 1}
@@ -2760,6 +2770,10 @@ var lsw = null;           /* 进行中的手势 */
 var lswOpen = null;       /* 当前滑开停住的那张 {el, acts, w} */
 var lswEatUntil = 0;      /* 滑完浏览器可能补发一个 click，在这个时刻前吃掉一次 */
 
+/* 图钉 / 垃圾桶的线条图标（描边色 = currentColor，跟按钮文字同色） */
+var LSW_ICO_PIN = '<svg class="lsw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
+var LSW_ICO_DEL = '<svg class="lsw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
 function lswActive(){ return !!(lsw && lsw.locked); }
 function lswEvent(id){
   for(var i = 0; i < state.events.length; i++){ if(state.events[i].id === id) return state.events[i]; }
@@ -2784,11 +2798,11 @@ function lswMount(el){
   acts.className = "lsw-acts";
   var pin = document.createElement("button");
   pin.type = "button"; pin.className = "lsw-btn lsw-pin"; pin.setAttribute("data-act", "pin");
-  pin.innerHTML = '<span class="lsw-ico">📌</span><span class="lsw-txt"></span>';
+  pin.innerHTML = LSW_ICO_PIN + '<span class="lsw-txt"></span>';
   pin.querySelector(".lsw-txt").textContent = isPinned(ev) ? "取消置顶" : "置顶";
   var del = document.createElement("button");
   del.type = "button"; del.className = "lsw-btn lsw-del"; del.setAttribute("data-act", "del");
-  del.innerHTML = '<span class="lsw-ico">🗑</span><span class="lsw-txt">删除</span>';
+  del.innerHTML = LSW_ICO_DEL + '<span class="lsw-txt">删除</span>';
   acts.appendChild(pin); acts.appendChild(del);
   acts.style.top = el.offsetTop + "px";
   acts.style.height = el.offsetHeight + "px";
