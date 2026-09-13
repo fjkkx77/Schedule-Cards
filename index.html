@@ -484,6 +484,16 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   overscroll-behavior:contain;
 }
 @media (min-width:560px){ .sheet{border-radius:20px;padding-bottom:18px} }
+/* 顶部小横条：iOS 上"这张卡可以往下拉掉"的通用提示。只在从底部弹出的窄屏形态下显示，
+   宽屏上弹窗居中，没有"往下拉"的方向感，不画 */
+.sheet{position:relative}
+@media (max-width:559px){
+  .sheet::before{
+    content:"";position:absolute;top:7px;left:50%;
+    width:36px;height:5px;margin-left:-18px;border-radius:3px;
+    background:var(--text-3);opacity:.4;pointer-events:none;
+  }
+}
 .sheet h2{margin:2px 0 16px;font-size:19px;font-weight:800}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:6px}
@@ -911,6 +921,18 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
     <div class="actions">
       <button type="button" class="btn" id="cfCancel">取消</button>
       <button type="button" class="btn btn-danger" id="cfOk">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 下滑关闭时有没保存的改动：先问一句（苹果 HIG 对 sheet 的要求） -->
+<div class="mask" id="dcMask" hidden>
+  <div class="sheet" id="dcSheet" role="alertdialog" aria-labelledby="dcTitle">
+    <h2 id="dcTitle">放弃这次修改？</h2>
+    <p class="hint" style="margin-top:0">改动还没保存，关掉就没了。</p>
+    <div class="actions">
+      <button type="button" class="btn" id="dcKeep">继续编辑</button>
+      <button type="button" class="btn btn-danger" id="dcDrop">放弃修改</button>
     </div>
   </div>
 </div>
@@ -2377,6 +2399,7 @@ function openForm(id){
      ⚠️ focus() 必须在这次点击的同一拍里同步调用：放进 setTimeout 就脱离了用户手势，
      iOS 只会放一个光标、不弹键盘（原来写的 60ms 延迟就是这么坏的）。openForm 只从 click 里调用 */
   if(!ev){ try{ fTitle.focus(); }catch(e){} }
+  formOrig = formSnap();      /* 下滑关闭时拿它判断"有没有改过" */
 }
 function closeForm(){
   stopCountdown();
@@ -2389,6 +2412,7 @@ document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
   if(e.key === "Escape"){
+    if(!dcMask.hidden){ dcMask.hidden = true; return; }     /* Esc = 继续编辑，不是放弃 */
     if(!cfMask.hidden){ cfClose(); return; }
     if(!gmMenu.hidden){ closeGroupMenu(); return; }
     if(!gpMask.hidden){ closeGroupSheet(); return; }
@@ -3001,6 +3025,132 @@ document.addEventListener("touchcancel", function(){ lswEnd(true); }, {passive:t
 /* 页面滚动 / 转屏时，滑开的卡收回去（位置已经对不上了） */
 window.addEventListener("scroll", function(){ if(lswOpen && !lsw) lswClose(true); }, {passive:true});
 window.addEventListener("resize", function(){ lswClose(false); });
+
+/* ================= 下滑关闭弹窗 =================
+   从底部弹上来的弹窗（编辑日程 / 云同步 / 分组 / 删除确认），手指往下拉就跟着往下走，
+   拉够距离或甩得够快就关，不够就弹回。
+   为什么是下滑不是右滑：① 苹果 HIG 对 sheet 的原话是 "People expect to swipe vertically to dismiss a sheet"；
+   ② 网页里从左边缘右滑是浏览器自己的"返回"，抢不到，一划就退出整个网站。
+   有没保存的改动时不直接关，先问「放弃这次修改？」（同样是 HIG 的要求）。 */
+var SD_DEAD = 10;         /* 起手死区 */
+var dcMask = document.getElementById("dcMask");
+var formOrig = "";
+function formSnap(){
+  return JSON.stringify([fTitle.value, fDate.value, formTime, pickedMode(), groupMode, currentGroup(), pickedColor(), pinState]);
+}
+/* 按 DOM 顺序排：后面的盖在前面的上面，手势只归最上面那个打开着的 */
+var SHEETS = [
+  {mask: gpMask,   sheet: document.getElementById("gpSheet"),   close: closeGroupSheet,
+   dirty: function(){ return gpMode === "rename" && document.getElementById("gpInput").value.trim() !== gpTarget; }},
+  {mask: syncMask, sheet: document.getElementById("syncSheet"), close: closeSyncSheet},
+  {mask: mask,     sheet: form,                                 close: closeForm,
+   dirty: function(){ return formSnap() !== formOrig; }},
+  {mask: cfMask,   sheet: document.getElementById("cfSheet"),   close: cfClose},
+  {mask: dcMask,   sheet: document.getElementById("dcSheet"),   close: function(){ dcMask.hidden = true; }}
+];
+var sd = null, sdBusy = false, dcFor = null, sdTimer = 0;
+/* 拉完之后手指下面的按钮可能收到浏览器补发的 click：只吞"落在刚才被拉的那个弹窗里"的，
+   而且只吞 350ms。不能照搬左滑那个全局守卫——那样拉掉弹窗后立刻点 ＋ 也会被吞掉，表现成"点了没反应" */
+var sdEatUntil = 0, sdEatIn = null;
+document.addEventListener("click", function(e){
+  if(sdEatIn && Date.now() < sdEatUntil && sdEatIn.contains(e.target)){
+    sdEatIn = null; e.stopPropagation(); e.preventDefault();
+  }
+}, true);
+
+function sdReset(S){
+  S.sheet.style.transition = ""; S.sheet.style.transform = "";
+  S.mask.style.transition = "";  S.mask.style.backgroundColor = "";
+}
+document.getElementById("dcKeep").addEventListener("click", function(){ dcMask.hidden = true; dcFor = null; });
+document.getElementById("dcDrop").addEventListener("click", function(){
+  dcMask.hidden = true;
+  var S = dcFor; dcFor = null;
+  if(S) S.close();
+});
+dcMask.addEventListener("click", function(e){ if(e.target === dcMask){ dcMask.hidden = true; dcFor = null; } });
+
+document.addEventListener("touchstart", function(e){
+  sd = null;
+  if(sdBusy || e.touches.length !== 1 || !dpMask.hidden) return;
+  var S = null;
+  for(var i = SHEETS.length - 1; i >= 0; i--){ if(!SHEETS[i].mask.hidden){ S = SHEETS[i]; break; } }
+  if(!S) return;
+  var t = e.target;
+  if(!S.sheet.contains(t)) return;              /* 按在遮罩上的，交给原来的"点空白关闭" */
+  if(t.closest(".dp-menu")) return;             /* 时/分、分组这些下拉列表自己要滚 */
+  /* 弹窗内容（或手指下面任何一层可滚动的东西）没在顶部：这一下是滚内容，不是拉弹窗 */
+  for(var n = t; n && n !== S.mask; n = n.parentElement){ if(n.scrollTop > 0) return; }
+  var p = e.touches[0];
+  sd = {S:S, x0:p.clientX, y0:p.clientY, locked:false, dy:0, h:0, samples:[]};
+}, {passive:true});
+
+document.addEventListener("touchmove", function(e){
+  if(!sd || !e.touches[0]) return;
+  var p = e.touches[0];
+  var dx = p.clientX - sd.x0, dy = p.clientY - sd.y0;
+  if(!sd.locked){
+    if(dy <= 0 || Math.abs(dx) > Math.abs(dy)){
+      if(Math.abs(dx) >= SD_DEAD || Math.abs(dy) >= SD_DEAD) sd = null;   /* 往上 / 横着：这次不归我 */
+      return;
+    }
+    /* 顶在最上面还往下拉：死区里就先挡住浏览器的回弹，iOS 回弹一旦开始，后面的 touchmove 就拦不住了 */
+    if(e.cancelable) e.preventDefault();
+    if(dy < SD_DEAD) return;
+    sd.locked = true;
+    clearTimeout(sdTimer);   /* 上一次弹回的收尾还没跑：别让它在这次拉到一半时把位置清掉 */
+    sd.h = sd.S.sheet.getBoundingClientRect().height;
+    var ae = document.activeElement;
+    if(ae && sd.S.sheet.contains(ae) && ae.blur) ae.blur();   /* 拉的时候收起键盘，跟系统 sheet 一样 */
+  }
+  if(e.cancelable) e.preventDefault();
+  var y = dy - SD_DEAD;
+  /* 记下最近 100ms 的位置，松手时按这一段算平均速度。
+     别用"最后两次事件之间"算：同一帧里送来两个 touchmove 时间隔只有 1ms 左右，速度会虚高成"快甩" */
+  var tnow = performance.now();
+  sd.samples.push({y:p.clientY, t:tnow});
+  while(sd.samples.length > 2 && tnow - sd.samples[0].t > 100) sd.samples.shift();
+  sd.dy = y;
+  sd.S.sheet.style.transition = "none";
+  sd.S.sheet.style.transform = "translate3d(0," + y.toFixed(1) + "px,0)";
+  sd.S.mask.style.transition = "none";
+  sd.S.mask.style.backgroundColor = "rgba(12,16,22," + (0.42 * Math.max(0, 1 - y / sd.h)).toFixed(3) + ")";
+}, {passive:false});
+
+function sdEnd(cancel){
+  if(!sd) return;
+  var g = sd; sd = null;
+  if(!g.locked) return;
+  var S = g.S;
+  sdEatIn = S.mask; sdEatUntil = Date.now() + 350;
+  /* 距离阈值跟着弹窗高度走：矮的确认框拉 80 就够，高的编辑框要到 22%（封顶 160） */
+  var far = g.dy > Math.min(160, Math.max(80, g.h * 0.22));
+  var s0 = g.samples[0], s1 = g.samples[g.samples.length - 1];
+  var span = s1 && s0 ? s1.t - s0.t : 0;
+  var v = span >= 30 ? (s1.y - s0.y) / span : 0;          /* px/ms；采样不到 30ms 不算甩 */
+  if(s1 && performance.now() - s1.t > 100) v = 0;          /* 拉完停住再松手，不算甩 */
+  var flick = v > 0.6 && g.dy > 30;
+  var go = !cancel && (far || flick);
+  S.sheet.style.transition = "transform .28s cubic-bezier(.2,.8,.3,1)";
+  S.mask.style.transition = "background-color .28s ease";
+  if(go && S.dirty && S.dirty()){
+    S.sheet.style.transform = ""; S.mask.style.backgroundColor = "";
+    sdTimer = setTimeout(function(){ sdReset(S); }, 300);
+    dcFor = S; dcMask.hidden = false;
+    return;
+  }
+  if(go){
+    sdBusy = true;
+    S.sheet.style.transform = "translate3d(0," + Math.ceil(g.h + 24) + "px,0)";
+    S.mask.style.backgroundColor = "rgba(12,16,22,0)";
+    setTimeout(function(){ S.close(); sdReset(S); sdBusy = false; }, 280);
+  }else{
+    S.sheet.style.transform = ""; S.mask.style.backgroundColor = "";
+    sdTimer = setTimeout(function(){ sdReset(S); }, 300);
+  }
+}
+document.addEventListener("touchend", function(){ sdEnd(false); }, {passive:true});
+document.addEventListener("touchcancel", function(){ sdEnd(true); }, {passive:true});
 
 /* ================= 下拉刷新 =================
    参数与状态机沿用之前项目验证过的那一套（死区 16 / 阻尼 0.42 / 回弹 .25s）。
