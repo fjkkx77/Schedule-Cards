@@ -312,12 +312,15 @@ select.sort{
 }
 .group-head .g-more:active{background:var(--surface-2)}
 .g-name{overflow-wrap:anywhere;min-width:0}
-/* 数量：不要底色小圆牌（它跟名字抢主角）。用 --text-2 而不是 --text-3：
-   后者在页面浅灰底上对比度不到 3，是要读的数字就不能用 */
+/* 数量：白色小圆牌（2026-09-14 用户要求加回来——改色条标题时我把它去掉了，用户觉得少了这个更不好）。
+   形状、尺寸、底色、投影照旧；只有字色从 --text-3 换成 --text-2：前者在白底上对比度约 3.2，是要读的数字 */
 .g-count{
   flex:0 0 auto;
-  font-size:14px;font-weight:600;color:var(--text-2);letter-spacing:0;
+  font-size:12px;font-weight:700;color:var(--text-2);letter-spacing:.5px;
+  background:var(--surface);padding:2px 9px;border-radius:99px;
+  box-shadow:var(--shadow-sm);
 }
+.list .g-count{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)}
 /* 点击区必须 44×44（触摸标准），视觉上只是一个小箭头，按钮本身透明 */
 .g-chev{
   flex:0 0 auto;
