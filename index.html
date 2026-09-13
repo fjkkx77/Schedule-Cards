@@ -363,6 +363,37 @@ body.dragging{user-select:none;-webkit-user-select:none;touch-action:none}
 .drag-lift .card, .drag-lift .row{opacity:.96}
 body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{pointer-events:none}
 
+/* ============ 左滑：置顶 / 删除 ============
+   卡片本身往左平移，露出垫在它后面的两块按钮。按钮层只在滑动时才临时插进 DOM
+   （插在卡片前面，靠 DOM 顺序被卡片盖住），滑回去就拆掉，平时页面结构不变。
+   类名统一 lsw- 前缀：.sw / .row 这类短名在别的项目里撞过车 */
+.card, .row{touch-action:pan-y pinch-zoom}   /* 横向手势归页面自己处理，纵向照常滚动 */
+.row{position:relative}
+.cards, .list{position:relative}              /* 按钮层 absolute 定位的参照 */
+.lsw-anim{transition:transform .3s cubic-bezier(.2,.9,.3,1) !important}
+.lsw-acts{
+  position:absolute;display:flex;gap:8px;
+  pointer-events:none;
+}
+.lsw-acts.is-open{pointer-events:auto}
+.lsw-btn{
+  width:clamp(68px,19vw,80px);height:100%;
+  border:0;padding:0;border-radius:var(--radius-card);   /* 跟卡片同一个圆角，看着是一套 */
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  color:#fff;font-size:14px;font-weight:700;line-height:1.2;
+}
+.list .lsw-btn{border-radius:var(--radius-row);font-size:13px;gap:1px}
+.lsw-btn .lsw-ico{font-size:19px;line-height:1}
+.list .lsw-btn .lsw-ico{font-size:16px}
+/* 白字对比度：#2670d0 ≈ 4.9:1、#d63a2f ≈ 4.7:1，都过 WCAG AA 小字的 4.5 */
+.lsw-pin{background:#2670d0}
+.lsw-del{background:#d63a2f}
+.lsw-btn:active{filter:brightness(.9)}
+/* 置顶/取消置顶后卡片挪了位置，亮一下告诉用户它去哪了 */
+@keyframes lsw-flash{0%{box-shadow:0 0 0 0 rgba(47,134,246,.55)}100%{box-shadow:0 0 0 14px rgba(47,134,246,0)}}
+.lsw-flash{animation:lsw-flash .9s ease-out 1}
+@media (prefers-reduced-motion: reduce){ .lsw-anim{transition:none !important} .lsw-flash{animation:none} }
+
 /* ============ 空状态 ============ */
 .empty{
   text-align:center;padding:56px 20px;color:var(--text-2);
@@ -847,6 +878,18 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   </form>
 </div>
 
+<!-- 左滑删除的二次确认（不用原生 confirm：文案里要带上日程名字） -->
+<div class="mask" id="cfMask" hidden>
+  <div class="sheet" id="cfSheet" role="alertdialog" aria-labelledby="cfTitle">
+    <h2 id="cfTitle">删除这条日程？</h2>
+    <p class="hint" id="cfHint" style="margin-top:0"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="cfCancel">取消</button>
+      <button type="button" class="btn btn-danger" id="cfOk">删除</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
 "use strict";
@@ -1140,6 +1183,7 @@ function render(){
     ymd(t) + " " + WEEK[t.getDay()] + (lun ? " · " + lun : "");
 
   var list = sortedEvents();
+  lswForget();              /* 整块重建，之前滑开的那张卡已经不在了 */
   board.innerHTML = "";
 
   if(list.length === 0){
@@ -1896,7 +1940,8 @@ function openGroupSheet(mode){
       + "右边那个红色的会把这 " + n + " 条日程一起删掉。";
   gpMask.hidden = false;
   document.body.style.overflow = "hidden";
-  if(mode === "rename") setTimeout(function(){ try{ document.getElementById("gpInput").focus(); }catch(e){} }, 60);
+  /* 同步 focus，别套 setTimeout——iOS 脱离点击手势后不弹键盘（同 openForm） */
+  if(mode === "rename"){ try{ document.getElementById("gpInput").focus(); }catch(e){} }
 }
 function closeGroupSheet(){
   gpMask.hidden = true;
@@ -2211,7 +2256,7 @@ document.getElementById("fGroupNewBtn").addEventListener("click", function(){
   fGroup.value = "";
   fGroupMenu.hidden = true;
   syncGroupUI();
-  setTimeout(function(){ try{ fGroup.focus(); }catch(e){} }, 50);
+  try{ fGroup.focus(); }catch(e){}     /* 同步调用，iOS 才会弹键盘（同 openForm） */
 });
 /* 点表单里别处就把这个下拉收起来 */
 form.addEventListener("click", function(e){
@@ -2293,7 +2338,10 @@ function openForm(id){
   mask.hidden = false;
   document.body.style.overflow = "hidden";
   startCountdown();
-  if(!ev) setTimeout(function(){ try{ fTitle.focus(); }catch(e){} }, 60);
+  /* 新增时直接把光标放进事件名称并弹出键盘。
+     ⚠️ focus() 必须在这次点击的同一拍里同步调用：放进 setTimeout 就脱离了用户手势，
+     iOS 只会放一个光标、不弹键盘（原来写的 60ms 延迟就是这么坏的）。openForm 只从 click 里调用 */
+  if(!ev){ try{ fTitle.focus(); }catch(e){} }
 }
 function closeForm(){
   stopCountdown();
@@ -2306,6 +2354,7 @@ document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
   if(e.key === "Escape"){
+    if(!cfMask.hidden){ cfClose(); return; }
     if(!gmMenu.hidden){ closeGroupMenu(); return; }
     if(!gpMask.hidden){ closeGroupSheet(); return; }
     if(!dpMask.hidden){ dpClose(); return; }
@@ -2554,7 +2603,7 @@ function dragScope(target){
   /* 展开的分组内部才可以拖；收起时卡片是叠着的，拖了没有意义 */
   if(box.classList.contains("stack") && !box.classList.contains("is-open")) return null;
   var items = [].slice.call(box.children).filter(function(n){
-    return n.nodeType === 1 && !n.classList.contains("pinned-head");
+    return n.nodeType === 1 && !n.classList.contains("pinned-head") && !n.classList.contains("lsw-acts");
   });
   if(items.length < 2) return null;
   return {item:item, box:box, items:items};
@@ -2661,7 +2710,8 @@ function commitOrder(items){
 document.addEventListener("pointerdown", function(e){
   if(!dragEnabled() || dragOn) return;
   if(e.pointerType === "mouse" && e.button !== 0) return;
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden) return;
+  if(lswOpen) return;       /* 有卡片正滑开着：这一下是去收回它/点按钮的，不起拖拽 */
   var scope = dragScope(e.target);
   if(!scope) return;
   var y0 = e.clientY, x0 = e.clientX, byTouch = (e.pointerType === "touch");
@@ -2696,6 +2746,223 @@ document.addEventListener("click", function(e){
   if(document.body.classList.contains("just-dragged")){ e.stopPropagation(); e.preventDefault(); }
 }, true);
 
+/* ================= 左滑：置顶 / 删除 =================
+   手势分工（同一根手指在卡片上能做四件事，靠"出死区那一刻的方向"一锤定音）：
+     · 横向往左 → 左滑露出按钮（本段）      · 纵向 → 页面滚动 / 下拉刷新
+     · 原地按住 450ms → 拖拽排序            · 原地松手 → 点击（展开/编辑）
+   只在"看得见完整一张卡"的地方生效：平铺的、置顶区里的、展开的分组里的；
+   收起的那一摞不行——那里一摞只露一张，滑的是哪条说不清。 */
+var LSW_DEAD = 10;        /* 起手死区 */
+var LSW_EDGE = 28;        /* 屏幕左右边缘留给系统的前进/返回手势 */
+var LSW_OVER = 0.3;       /* 拉过头之后的阻尼 */
+var cfMask = document.getElementById("cfMask");
+var lsw = null;           /* 进行中的手势 */
+var lswOpen = null;       /* 当前滑开停住的那张 {el, acts, w} */
+var lswEatUntil = 0;      /* 滑完浏览器可能补发一个 click，在这个时刻前吃掉一次 */
+
+function lswActive(){ return !!(lsw && lsw.locked); }
+function lswEvent(id){
+  for(var i = 0; i < state.events.length; i++){ if(state.events[i].id === id) return state.events[i]; }
+  return null;
+}
+/* 吃 click 的守卫必须自己过期：touchmove 里 preventDefault 过之后浏览器往往根本不补 click，
+   守卫一直挂着会把用户下一次真实点击吃掉，表现成"点了没反应"（一日轨道踩过） */
+function lswEatClick(){ lswEatUntil = Date.now() + 450; }
+document.addEventListener("click", function(e){
+  if(lswEatUntil && Date.now() < lswEatUntil && !e.target.closest(".lsw-acts")){
+    lswEatUntil = 0;
+    e.stopPropagation(); e.preventDefault();
+  }
+}, true);
+
+/* 把两块按钮垫到卡片后面。按钮宽度用 CSS 的 clamp 决定，这里只量出来用，不再写一遍数 */
+function lswMount(el){
+  var host = el.parentElement;
+  var ev = lswEvent(el.getAttribute("data-id"));
+  if(!host || !ev) return null;
+  var acts = document.createElement("div");
+  acts.className = "lsw-acts";
+  var pin = document.createElement("button");
+  pin.type = "button"; pin.className = "lsw-btn lsw-pin"; pin.setAttribute("data-act", "pin");
+  pin.innerHTML = '<span class="lsw-ico">📌</span><span class="lsw-txt"></span>';
+  pin.querySelector(".lsw-txt").textContent = isPinned(ev) ? "取消置顶" : "置顶";
+  var del = document.createElement("button");
+  del.type = "button"; del.className = "lsw-btn lsw-del"; del.setAttribute("data-act", "del");
+  del.innerHTML = '<span class="lsw-ico">🗑</span><span class="lsw-txt">删除</span>';
+  acts.appendChild(pin); acts.appendChild(del);
+  acts.style.top = el.offsetTop + "px";
+  acts.style.height = el.offsetHeight + "px";
+  acts.style.right = (host.clientWidth - el.offsetLeft - el.offsetWidth) + "px";
+  host.insertBefore(acts, el);     /* 排在卡片前面 → 被卡片盖住 */
+  var id = ev.id;
+  pin.addEventListener("click", function(){ lswTogglePin(id); });
+  del.addEventListener("click", function(){ cfOpen(id); });
+  /* 卡片最终停在：按钮总宽 + 与卡片之间留 8px 缝 */
+  return {acts:acts, w:acts.offsetWidth + 8};
+}
+
+function lswSet(el, x, animate){
+  el.classList.toggle("lsw-anim", !!animate);
+  el.style.transform = x ? "translate3d(" + x.toFixed(1) + "px,0,0)" : "";
+}
+
+/* 收回当前滑开的那张；animate=false 用于马上要重绘的场合 */
+function lswClose(animate){
+  if(!lswOpen) return;
+  var o = lswOpen; lswOpen = null;
+  o.acts.classList.remove("is-open");
+  if(animate === false){ lswSet(o.el, 0, false); o.acts.remove(); return; }
+  lswSet(o.el, 0, true);
+  setTimeout(function(){
+    if(lswOpen && lswOpen.acts === o.acts) return;     /* 期间又被滑开了 */
+    o.el.classList.remove("lsw-anim");
+    o.acts.remove();
+  }, 320);
+}
+/* render() 整块重建时调用：旧节点都没了，只需要把引用丢掉 */
+function lswForget(){ lswOpen = null; lsw = null; }
+
+function lswTogglePin(id){
+  var ev = lswEvent(id);
+  if(!ev) return;
+  lswClose(false);
+  var now = Date.now();
+  ev.pinned = !isPinned(ev);
+  ev.updatedAt = now;
+  delete ev.demo;                     /* 动过的示例就是你自己的数据了，照常同步（同表单保存） */
+  save(); queueSync(); render();
+  /* 卡片换了区，滚过去并亮一下；回到了收起的分组里就指向那一摞 */
+  var el = board.querySelector('[data-id="' + id + '"]');
+  if(!el) return;
+  var st = el.closest(".stack");
+  var target = (st && !st.classList.contains("is-open")) ? st : el;
+  try{ target.scrollIntoView({block:"nearest", behavior:"smooth"}); }catch(e){ target.scrollIntoView(); }
+  var flash = st && !st.classList.contains("is-open") ? st.querySelector('[data-layer="0"] > [data-id]') : el;
+  if(flash){
+    flash.classList.remove("lsw-flash"); void flash.offsetWidth; flash.classList.add("lsw-flash");
+    setTimeout(function(){ flash.classList.remove("lsw-flash"); }, 1000);
+  }
+}
+
+/* ---- 删除的二次确认 ---- */
+var cfTarget = null;
+function cfOpen(id){
+  var ev = lswEvent(id);
+  if(!ev) return;
+  cfTarget = id;
+  document.getElementById("cfTitle").textContent = "删除「" + (ev.title || "未命名") + "」？";
+  document.getElementById("cfHint").textContent = (sync.on && sync.code)
+    ? "删除后不能撤销；已开启云同步，另一台设备上也会一起删掉。"
+    : "删除后不能撤销。";
+  cfMask.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+function cfClose(){
+  cfMask.hidden = true;
+  document.body.style.overflow = "";
+  cfTarget = null;
+  lswClose(true);                     /* 取消了就把卡片收回去 */
+}
+document.getElementById("cfCancel").addEventListener("click", cfClose);
+cfMask.addEventListener("click", function(e){ if(e.target === cfMask) cfClose(); });
+document.getElementById("cfOk").addEventListener("click", function(){
+  var id = cfTarget;
+  cfMask.hidden = true;
+  document.body.style.overflow = "";
+  cfTarget = null;
+  if(!id) return;
+  /* 走墓碑，不真删：否则另一台设备会把它当"我这儿没有的新条目"再同步回来 */
+  var tnow = Date.now();
+  state.events.forEach(function(x){
+    if(x.id === id){ x.deletedAt = tnow; x.updatedAt = tnow; }
+  });
+  lswClose(false);
+  pruneExpanded();
+  save(); queueSync(); render();
+});
+
+/* ---- 手势 ---- */
+document.addEventListener("touchstart", function(e){
+  lsw = null;
+  if(e.touches.length !== 1 || dragOn) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden) return;
+  var t = e.target;
+  if(lswOpen && t.closest(".lsw-acts")) return;              /* 点的是露出来的按钮，交给它的 click */
+  var el = t.closest("#board .card[data-id], #board .row[data-id]");
+  if(lswOpen && lswOpen.el !== el){
+    /* 已经有一张滑开着：点别处先把它收回去。点的是另一张卡，这一下只算"收回"，不进编辑 */
+    lswClose(true);
+    if(el) lswEatClick();
+    return;
+  }
+  if(!el) return;
+  var st = el.parentElement && el.parentElement.closest(".stack");
+  if(st && !st.classList.contains("is-open")) return;         /* 收起的一摞不参与 */
+  var x = e.touches[0].clientX;
+  var vw = document.documentElement.clientWidth;
+  var fromOpen = !!(lswOpen && lswOpen.el === el);
+  if(!fromOpen && (x < LSW_EDGE || x > vw - LSW_EDGE)) return;
+  lsw = {el:el, x0:x, y0:e.touches[0].clientY, fromOpen:fromOpen, locked:false, pos:0, w:0, acts:null};
+}, {passive:true});
+
+document.addEventListener("touchmove", function(e){
+  if(!lsw || !e.touches[0]) return;
+  if(dragOn){ if(lsw.locked) lswSet(lsw.el, 0, true); lsw = null; return; }
+  var dx = e.touches[0].clientX - lsw.x0;
+  var dy = e.touches[0].clientY - lsw.y0;
+  if(!lsw.locked){
+    if(Math.abs(dx) < LSW_DEAD && Math.abs(dy) < LSW_DEAD) return;
+    if(Math.abs(dx) <= Math.abs(dy)){                        /* 纵向：这次不归我管 */
+      if(lsw.fromOpen) lswClose(true);
+      lsw = null; return;
+    }
+    if(!lsw.fromOpen && dx > 0){ lsw = null; return; }        /* 没滑开的卡往右滑，没有意义 */
+    lsw.locked = true;
+    dragCancelHold();
+    var ps = document.querySelectorAll(".stack.is-pressed");
+    for(var i = 0; i < ps.length; i++) ps[i].classList.remove("is-pressed");
+    if(lsw.fromOpen){
+      lsw.acts = lswOpen.acts; lsw.w = lswOpen.w; lswOpen = null;
+    }else{
+      var m = lswMount(lsw.el);
+      if(!m){ lsw = null; return; }
+      lsw.acts = m.acts; lsw.w = m.w;
+    }
+    lsw.acts.classList.remove("is-open");
+  }
+  e.preventDefault();
+  var pos = (lsw.fromOpen ? -lsw.w : 0) + dx;
+  if(pos > 0) pos = pos * LSW_OVER;
+  else if(pos < -lsw.w) pos = -lsw.w + (pos + lsw.w) * LSW_OVER;
+  lsw.pos = pos;
+  lswSet(lsw.el, pos, false);
+}, {passive:false});
+
+function lswEnd(cancel){
+  if(!lsw) return;
+  var g = lsw; lsw = null;
+  if(!g.locked){
+    if(g.fromOpen && !cancel){ lswClose(true); lswEatClick(); }   /* 轻点滑开的那张 = 收回，不进编辑 */
+    return;
+  }
+  lswEatClick();
+  /* 从关着拉开：过 35% 就停在打开；从开着往回推：推回超过 35% 就收起 */
+  var open = !cancel && (g.fromOpen ? g.pos < -g.w * 0.65 : g.pos < -g.w * 0.35);
+  if(open){
+    lswSet(g.el, -g.w, true);
+    g.acts.classList.add("is-open");
+    lswOpen = {el:g.el, acts:g.acts, w:g.w};
+  }else{
+    lswOpen = {el:g.el, acts:g.acts, w:g.w};
+    lswClose(true);
+  }
+}
+document.addEventListener("touchend", function(){ lswEnd(false); }, {passive:true});
+document.addEventListener("touchcancel", function(){ lswEnd(true); }, {passive:true});
+/* 页面滚动 / 转屏时，滑开的卡收回去（位置已经对不上了） */
+window.addEventListener("scroll", function(){ if(lswOpen && !lsw) lswClose(true); }, {passive:true});
+window.addEventListener("resize", function(){ lswClose(false); });
+
 /* ================= 下拉刷新 =================
    参数与状态机沿用之前项目验证过的那一套（死区 16 / 阻尼 0.42 / 回弹 .25s）。
    关键是"一锤定音"：方向只在出死区那一刻判一次，判完不再回头，
@@ -2715,7 +2982,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden;
+  return ptrBusy || dragOn || lswActive() || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
