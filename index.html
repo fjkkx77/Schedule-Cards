@@ -34,6 +34,9 @@
      蓝 5.04 / 红 4.92，过 WCAG AA 小字 4.5。原先 #2266c4 / #c9352b 只有 4.18 / 3.85，别改回去 */
   --lsw-pin-bg:rgba(47,134,246,.13); --lsw-pin-fg:#1d5aad;
   --lsw-del-bg:rgba(224,72,61,.12);  --lsw-del-fg:#b0271e;
+  /* 已过期卡片的灰（2026-09-17 用户选的「整卡褪灰」）。白字压在上面按实测对比度定：
+     顶条 18px 粗体白字 3.11（大字 AA 要 3），列表单位块再压暗到 4.61（小字 AA 要 4.5）。对比图里的 #a3abb5 只有 2.32，别换回去 */
+  --over:#8a939e; --over-2:#6e767e;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -51,6 +54,7 @@
     --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
     --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
     --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
+    --over:#4a515b; --over-2:#3b4149;
   }
 }
 :root[data-theme="dark"]{
@@ -68,6 +72,7 @@
   --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
   --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
   --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
+  --over:#4a515b; --over-2:#3b4149;
 }
 
 *{box-sizing:border-box}
@@ -229,6 +234,12 @@ select.sort{
 .card-num.is-today .n{font-size:clamp(30px,9.4vw,52px);letter-spacing:0}
 .card-num.is-today .u{display:none}
 .card-num .n.past{color:var(--text-2)}
+/* 倒数已过期：整卡褪灰（2026-09-17 用户从三套里选的 A）。原来只有一个小标签 + 数字深灰，
+   彩色顶条没变，和没过期的几乎分不出来。天数照样看得清——过期几天了也是有用的信息 */
+.card.is-over .card-top{background:var(--over)}
+.card.is-over .card-title{color:var(--text-2)}
+.card.is-over .card-num .n,.card.is-over .card-num .u{color:var(--text-3)}
+.is-over .tag{color:var(--lsw-del-fg);background:color-mix(in srgb, var(--lsw-del-fg) 14%, transparent)}
 
 /* ============ 列表视图 ============ */
 .list{
@@ -278,6 +289,9 @@ select.sort{
   font-size:clamp(14px,4.2vw,18px);font-weight:700;
 }
 .row-badge .u.past-u{font-size:clamp(12px,3.6vw,15px);letter-spacing:0}
+.row.is-over .row-title{color:var(--text-2)}
+.row.is-over .row-badge .n{background:var(--over)}
+.row.is-over .row-badge .u{background:var(--over-2)}
 
 /* ============ 分组堆叠 ============ */
 /* 分组标题 = 小节标题（2026-09-13 用户嫌原来 14px 灰字"太素、没存在感"，从三套方案里选的「色条小节标题」）：
@@ -539,6 +553,15 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .time-clear:active{background:var(--surface-2)}
 .time-row .dp-menu{min-width:88px;max-height:220px}
+/* ---- 直接填天数 ---- */
+.days-row{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+#fDays{            /* 用 id：.field input[type="text"] 的 width:100% 优先级更高 */
+  width:5.5em;min-height:44px;padding:0 8px;border:0;border-radius:10px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  color:var(--text);font-size:16px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;
+}
+#fDays:focus{outline:2px solid #2f86f6;outline-offset:1px}
+.excl-toggle{margin-top:8px;font-size:15px}
 
 /* ---- 日期下面的实时倒计时 ---- */
 .countdown{
@@ -852,6 +875,14 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
         <span class="date-main"><span id="fDateTxt">请选择日期</span><span class="date-sub" id="fDateSub" hidden></span></span>
         <span class="date-ico">🗓</span>
       </button>
+      <!-- 直接填天数反推日期（2026-09-17 用户：订阅还有 21 天到期，不想自己算是哪天）。
+           和上面的日期双向联动：填天数→改日期；选日期→这里显示卡片上会出现的那个数 -->
+      <div class="days-row" id="fDaysRow">
+        <span class="time-lab" id="fDaysPre">或直接填：还有</span>
+        <input type="text" id="fDays" inputmode="numeric" maxlength="5" autocomplete="off"
+               placeholder="天数" aria-labelledby="fDaysPre fDaysSuf">
+        <span class="time-lab" id="fDaysSuf">天</span>
+      </div>
       <!-- 可选时刻：不填就按当天 00:00 算，填了倒计时就按这个点算 -->
       <div class="time-row" id="fTimeRow">
         <span class="time-lab" id="fTimeLab">具体时刻</span>
@@ -869,6 +900,13 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <div class="countdown" id="fCountdown" hidden>
         <span class="cd-num" id="fCdNum"></span>
         <span class="cd-base" id="fCdBase"></span>
+      </div>
+      <!-- 「不含到期当天」：只对倒数有意义，选正数时整块藏起来 -->
+      <div id="fExclWrap">
+        <button type="button" class="pin-toggle excl-toggle" id="fExclBtn" aria-pressed="false">
+          <span id="fExclTxt">按日历算天数</span><span class="pin-act" id="fExclAct">会员/订阅类点这里</span>
+        </button>
+        <p class="hint">会员、订阅这类 App 写着「9月25日到期」，通常是 25 日当天就失效了，剩余天数比日历上少 1 天。打开后和这类 App 显示的天数一致。</p>
       </div>
     </div>
 
@@ -1227,9 +1265,9 @@ function pruneExpanded(){
 }
 /* 未来的按“还剩几天”从小到大排前面；已过去的排后面，越近的越靠前 */
 function rank(ev, t){
-  var r = resolve(ev, t);
-  if(!r) return 1e9;
-  var d = dayDiff(r.date, t);
+  var info = numInfo(ev, t);
+  if(info.bad) return 1e9;
+  var d = info.diff;                /* 用卡片上显示的差值，「不含到期当天」的卡也按它显示的天数排 */
   return d >= 0 ? d : 500000 - d;
 }
 
@@ -1471,28 +1509,39 @@ if(document.fonts && document.fonts.ready && document.fonts.ready.then){
            overdue   倒数已过期——目标日已经过去 N 天
            elapsed   正数中——从起算日起已累计 N 天
            startToday正数起算日就是今天
-           notStarted正数的起算日还没到——N 天后开始   */
+           notStarted正数的起算日还没到——N 天后开始
+
+   「不含到期当天」（ev.excl，只对倒数起作用）：会员/订阅类 App 的口径——
+   写着"9月25日到期"，意思是 9月25日 0 点就失效了，所以剩余天数比按日历算少 1 天
+   （2026-09-17 用户对比 QQ 会员：QQ 显示 7 天，网站按日历算是 8 天）。
+   这个口径下：前一天是「最后一天」，到期日当天就已经算过期。   */
+function isExcl(ev){ return ev.excl === true && modeOf(ev) !== "up"; }
 function numInfo(ev, t){
   var r = resolve(ev, t);
   if(!r) return {bad:true};
   var d = dayDiff(r.date, t);              /* >0 在未来，<0 已过去 */
   var m = modeOf(ev);
   if(m === "auto") m = (d >= 0) ? "down" : "up";
+  var excl = (m === "down") && isExcl(ev);
+  var n = excl ? d - 1 : d;                /* 卡片上要显示的那个差值 */
 
   var state;
-  if(m === "down") state = d > 0 ? "left" : (d === 0 ? "dueToday" : "overdue");
+  if(m === "down") state = n > 0 ? "left" : (n === 0 ? "dueToday" : "overdue");
   else             state = d < 0 ? "elapsed" : (d === 0 ? "startToday" : "notStarted");
 
   var UNIT = {left:"天", overdue:"天前", elapsed:"天了", notStarted:"天后"};
-  var TEXT = {dueToday:"就是今天", startToday:"今天开始"};
+  var TEXT = {dueToday: excl ? "最后一天" : "就是今天", startToday:"今天开始"};
+  var big = TEXT[state] || "";
+  /* 不含当天时，到期日当天 n = -1，但"1 天前"过期读着不对——它就是今天失效的 */
+  if(excl && d === 0) big = "今天到期";
 
   return {
     mode: m,
     state: state,
-    diff: d,
-    abs: Math.abs(d),
+    diff: n,
+    abs: excl && state === "overdue" ? -d : Math.abs(n),
     unit: UNIT[state] || "",
-    bigText: TEXT[state] || "",
+    bigText: big,
     muted: state === "overdue" || state === "notStarted",
     target: r.date,
     dateLabel: (m === "down" ? "目标 " : "起算 ")
@@ -1522,7 +1571,7 @@ function cardEl(ev, t){
   var info = numInfo(ev, t);
   var el = document.createElement("button");
   el.type = "button";
-  el.className = "card";
+  el.className = "card" + (info.state === "overdue" ? " is-over" : "");
   el.style.setProperty("--c", ev.color || COLORS[0]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[0], -0.16));
   el.setAttribute("aria-label", (ev.title || "未命名") + "，点击编辑");
@@ -1595,7 +1644,7 @@ function rowEl(ev, t){
   var info = numInfo(ev, t);
   var el = document.createElement("button");
   el.type = "button";
-  el.className = "row";
+  el.className = "row" + (info.state === "overdue" ? " is-over" : "");
   el.style.setProperty("--c", ev.color || COLORS[1]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[1], -0.16));
   el.setAttribute("aria-label", (ev.title || "未命名") + "，点击编辑");
@@ -1742,7 +1791,8 @@ fileInput.addEventListener("change", function(){
           mode: (x.mode === "down" || x.mode === "up") ? x.mode : "auto",
           group: typeof x.group === "string" ? x.group.trim().slice(0,12) : "",
           pinned: x.pinned === true,
-          time: /^([01]d|2[0-3]):([0-5]d)$/.test(x.time || "") ? x.time : "",
+          time: validTime(x.time) ? x.time : "",      /* 原来正则里 \d 丢了反斜杠，导入时时刻全被清掉 */
+          excl: x.excl === true,
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
           createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
           updatedAt: (typeof x.updatedAt === "number" && x.updatedAt > 0) ? x.updatedAt : undefined
@@ -1872,6 +1922,7 @@ function paintCountdown(){
   var target = d.getTime() + (hh * 3600 + mi * 60) * 1000;   /* 有时刻就按时刻，没有就按 00:00 */
   var dayEnd = d.getTime() + 86400000;                        /* 目标日结束（这个始终按当天算） */
   if(mode === "auto") mode = (now.getTime() < dayEnd) ? "down" : "up";
+  if(mode === "down" && exclState) dayEnd = target;           /* 不含到期当天：到了那个点就过期，没有「就是今天」 */
 
   var num, base, cls = "";
   if(mode === "down"){
@@ -2066,6 +2117,7 @@ function setFormDate(s){                 /* 同时更新隐藏值和按钮上看
     sub.textContent = ""; sub.hidden = true;
     btn.classList.add("empty");
   }
+  if(!daysTyping){ daysSrc = false; syncDaysInput(); }   /* 正在填天数时别回写，免得光标跳 */
   if(cdTimer) paintCountdown();
 }
 
@@ -2251,7 +2303,49 @@ function syncModeUI(){
   if(cdTimer) paintCountdown();
   modeHint.textContent = MODE_HINT[m];
   dateLabel.textContent = (m === "up") ? "起算日期" : (m === "down" ? "目标日期" : "日期");
+  document.getElementById("fExclWrap").hidden = (m === "up");
+  document.getElementById("fDaysPre").textContent = (m === "up") ? "或直接填：已经" : "或直接填：还有";
+  syncDaysInput();
 }
+
+/* ---- 直接填天数 ↔ 日期 ----
+   填的数 = 卡片上将要显示的数：倒数 → 今天 + N（不含到期当天再 +1）；正数 → 今天 − N */
+var fDays = document.getElementById("fDays");
+var daysTyping = false;
+var daysSrc = false;       /* 日期最后一次是不是从「填天数」来的——决定切换口径时挪日期还是挪天数 */
+function syncDaysInput(){
+  var d = parseYMD(fDate.value);
+  if(!d){ fDays.value = ""; return; }
+  var diff = dayDiff(d, today());
+  var n = (pickedMode() === "up") ? -diff : diff - (exclState ? 1 : 0);
+  fDays.value = n >= 0 ? String(n) : "";    /* 日期在另一个方向上（比如倒数选了过去的日子）就留空 */
+}
+fDays.addEventListener("input", function(){
+  var v = fDays.value.replace(/\D/g, "").slice(0, 5);
+  if(v !== fDays.value) fDays.value = v;
+  if(v === "") return;
+  var n = +v, t = today();
+  var off = (pickedMode() === "up") ? -n : n + (exclState ? 1 : 0);
+  daysTyping = true; daysSrc = true;
+  setFormDate(ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + off)));
+  daysTyping = false;
+});
+fDays.addEventListener("blur", syncDaysInput);   /* 清空后离开，恢复成当前日期对应的数 */
+
+var exclState = false;
+function setExcl(on){
+  exclState = !!on;
+  var btn = document.getElementById("fExclBtn");
+  btn.classList.toggle("on", exclState);
+  btn.setAttribute("aria-pressed", exclState ? "true" : "false");
+  document.getElementById("fExclTxt").textContent = exclState ? "不含到期当天" : "按日历算天数";
+  document.getElementById("fExclAct").textContent = exclState ? "点这里改回日历" : "会员/订阅类点这里";
+  /* 刚填的是天数 → 天数不变、日期挪一天；日期是自己选的（比如照着 App 填了 9月25日）→ 日期不动、天数变 */
+  if(daysSrc && fDays.value !== "") fDays.dispatchEvent(new Event("input"));
+  else syncDaysInput();
+  if(cdTimer) paintCountdown();
+}
+document.getElementById("fExclBtn").addEventListener("click", function(){ setExcl(!exclState); });
 fModes.addEventListener("change", syncModeUI);
 var fColors = document.getElementById("fColors");
 var fGroup = document.getElementById("fGroup");
@@ -2382,6 +2476,7 @@ function openForm(id){
   /* iOS 上空的 date 控件是完全空白的一个图标，所以永远给个默认值 */
   buildTimeMenus();
   setFormTime(ev ? (ev.time || "") : "");
+  exclState = !!(ev && ev.excl === true);   /* 先定口径再填日期，天数框才算得对；按钮外观在下面 setExcl 里刷 */
   setFormDate(ev ? ev.date : todayKey);
   var m = ev ? modeOf(ev) : "down";
   var mr = form.querySelector('input[name="mode"][value="' + m + '"]');
@@ -2395,6 +2490,7 @@ function openForm(id){
   setColor(ev ? ev.color : COLORS[0]);
   fDelete.hidden = !ev;
   setPinState(!!(ev && ev.pinned));
+  fDays.value = ""; setExcl(exclState); syncDaysInput();
   mask.hidden = false;
   document.body.style.overflow = "hidden";
   startCountdown();
@@ -2443,6 +2539,7 @@ form.addEventListener("submit", function(e){
         state.events[i].mode = mode;
         state.events[i].group = group;
         state.events[i].time = formTime;
+        state.events[i].excl = exclState;
         state.events[i].color = pickedColor();
         state.events[i].pinned = pinnedNow;
         state.events[i].updatedAt = now;
@@ -2451,7 +2548,7 @@ form.addEventListener("submit", function(e){
     }
   }else{
     state.events.push({id:uid(), title:title, date:date, mode:mode,
-                       group:group, time:formTime, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
+                       group:group, time:formTime, excl:exclState, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
                        createdAt:now, updatedAt:now});
   }
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
@@ -3039,7 +3136,7 @@ var SD_DEAD = 10;         /* 起手死区 */
 var dcMask = document.getElementById("dcMask");
 var formOrig = "";
 function formSnap(){
-  return JSON.stringify([fTitle.value, fDate.value, formTime, pickedMode(), groupMode, currentGroup(), pickedColor(), pinState]);
+  return JSON.stringify([fTitle.value, fDate.value, formTime, pickedMode(), groupMode, currentGroup(), pickedColor(), pinState, exclState]);
 }
 /* 按 DOM 顺序排：后面的盖在前面的上面，手势只归最上面那个打开着的 */
 var SHEETS = [
