@@ -34,9 +34,11 @@
      蓝 5.04 / 红 4.92，过 WCAG AA 小字 4.5。原先 #2266c4 / #c9352b 只有 4.18 / 3.85，别改回去 */
   --lsw-pin-bg:rgba(47,134,246,.13); --lsw-pin-fg:#1d5aad;
   --lsw-del-bg:rgba(224,72,61,.12);  --lsw-del-fg:#b0271e;
-  /* 已过期卡片的灰（2026-09-17 用户选的「整卡褪灰」）。白字压在上面按实测对比度定：
-     顶条 18px 粗体白字 3.11（大字 AA 要 3），列表单位块再压暗到 4.61（小字 AA 要 4.5）。对比图里的 #a3abb5 只有 2.32，别换回去 */
-  --over:#8a939e; --over-2:#6e767e;
+  /* 已过期：浅灰 + 斜纹，深色字（2026-09-17 第二轮，用户从三套里选的「乙」）。
+     第一版是实心中灰 #8a939e + 白字，用户实机截图指出和颜色板第 6 个深灰 #4b5563 太像——深色模式下两者对比只有 1.06。
+     颜色板里没有带条纹的颜色，所以斜纹才是真正不会撞的区分手段；别再换回实心灰。
+     字色按压在「深的那条纹」上算：#4f5864 on #d3d9e0 = 5.07（小字 AA 要 4.5） */
+  --over:#e3e7ec; --over-2:#d3d9e0; --over-fg:#4f5864;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -54,7 +56,7 @@
     --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
     --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
     --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
-    --over:#4a515b; --over-2:#3b4149;
+    --over:#2b3038; --over-2:#353b44; --over-fg:#a8b1bd;
   }
 }
 :root[data-theme="dark"]{
@@ -72,7 +74,7 @@
   --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
   --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
   --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
-  --over:#4a515b; --over-2:#3b4149;
+  --over:#2b3038; --over-2:#353b44; --over-fg:#a8b1bd;
 }
 
 *{box-sizing:border-box}
@@ -236,7 +238,10 @@ select.sort{
 .card-num .n.past{color:var(--text-2)}
 /* 倒数已过期：整卡褪灰（2026-09-17 用户从三套里选的 A）。原来只有一个小标签 + 数字深灰，
    彩色顶条没变，和没过期的几乎分不出来。天数照样看得清——过期几天了也是有用的信息 */
-.card.is-over .card-top{background:var(--over)}
+.card.is-over .card-top,.row.is-over .row-badge .n{
+  background:repeating-linear-gradient(135deg, var(--over) 0 9px, var(--over-2) 9px 18px);
+  color:var(--over-fg);
+}
 .card.is-over .card-title{color:var(--text-2)}
 .card.is-over .card-num .n,.card.is-over .card-num .u{color:var(--text-3)}
 .is-over .tag{color:var(--lsw-del-fg);background:color-mix(in srgb, var(--lsw-del-fg) 14%, transparent)}
@@ -290,8 +295,7 @@ select.sort{
 }
 .row-badge .u.past-u{font-size:clamp(12px,3.6vw,15px);letter-spacing:0}
 .row.is-over .row-title{color:var(--text-2)}
-.row.is-over .row-badge .n{background:var(--over)}
-.row.is-over .row-badge .u{background:var(--over-2)}
+.row.is-over .row-badge .u{background:var(--over-2);color:var(--over-fg)}
 
 /* ============ 分组堆叠 ============ */
 /* 分组标题 = 小节标题（2026-09-13 用户嫌原来 14px 灰字"太素、没存在感"，从三套方案里选的「色条小节标题」）：
