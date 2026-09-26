@@ -1574,6 +1574,9 @@ function render(){
   board.innerHTML = "";
 
   document.body.classList.toggle("od-mode", odView);
+  /* 短期倒计时界面的显隐也必须在这里、在排版之前切好：原先只在 scRender() 里切，
+     退出时 render() 先跑，卡片区还是 display:none，量出来的高度全是 0，展开的分组叠成一坨（2026-09-26 用户截图） */
+  document.body.classList.toggle("sc-mode", scView);
   document.getElementById("odHead").hidden = !odView;
   var odN = odView ? 0 : overdueEvents(t).length;
   var odBar = document.getElementById("odBar");
@@ -1709,6 +1712,9 @@ function stackGap(){ return state.view === "card" ? 14 : 10; }
 function layoutStacks(animate){
   var stacks = board.querySelectorAll(".stack");
   if(!stacks.length) return;
+  /* 卡片区没显示出来（在短期倒计时界面里）时量不到真实高度，量了只会写进一堆 0。
+     这时不排，回到日程时 render() 会重新排 */
+  if(!board.getClientRects().length) return;
   if(!animate) board.classList.add("no-anim");
 
   for(var s = 0; s < stacks.length; s++){
