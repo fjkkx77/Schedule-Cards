@@ -362,6 +362,7 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
   font:inherit;font-size:14px;font-weight:700;touch-action:manipulation;
 }
 .sc-wake[aria-pressed="true"]{background:#f5a13c;color:#fff;box-shadow:none}
+.sc-sync-err{margin:6px 6px 0;color:#e0483d}
 .sc-sec{margin:14px 6px 8px;font-size:13px;font-weight:800;color:var(--text-3);letter-spacing:.5px}
 
 /* 倒计时数字：数字大、单位小；等宽数字 + 分秒固定两位——每秒跳动时整行宽度不变，不会左右抖。
@@ -913,6 +914,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <button type="button" class="sc-wake" id="scWake" aria-pressed="false" hidden>☀ 常亮</button>
       <button type="button" class="od-done" id="scDone">完成</button>
     </div>
+    <p class="hint sc-sync-err" id="scSyncErr" hidden></p>
     <div id="scList"></div>
   </section>
 
@@ -1528,7 +1530,8 @@ window.addEventListener("popstate", function(){
   var backY = scView && !wantSc ? scScrollY : odScrollY;
   odView = wantOd; scView = wantSc;
   lswClose(false);
-  render(); scRender(); scWakeSync();
+  render();
+  scSafe(function(){ scRender(); scWakeSync(); });
   window.scrollTo(0, (wantOd || wantSc) ? 0 : backY);
 });
 document.getElementById("odBar").addEventListener("click", enterOd);
@@ -3005,11 +3008,14 @@ async function syncNow(){
     }else{
       sync.version = data.version;
     }
-    await syncShort();          /* 短期倒计时那一份（服务端 space=short），和日程互不相干 */
     sync.lastAt = Date.now();
     pendingChange = false;      /* 本地改动已经上去了，页面被切走时就不用再冲一次 */
     saveSync();
     setSync("ok");
+    /* 短期倒计时那一份（服务端 space=short）排在日程**完全同步完之后**，而且自己兜错：
+       它失败只在短期界面里提示，日程的「已同步」状态和待上传标记都不受影响 */
+    try{ await syncShort(); scSyncErr(""); }
+    catch(e2){ scSyncErr((e2 && e2.message) || "网络异常"); }
   }catch(e){
     setSync("error", (e && e.message) || "网络异常");
   }finally{
@@ -3582,7 +3588,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || lswActive() || !scMask.hidden || !scActMask.hidden || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
+  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scActMask && !scActMask.hidden) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -3680,6 +3686,25 @@ document.addEventListener("visibilitychange", function(){ if(!document.hidden) t
    三种状态：进行中 = 没 doneAt 且还没到点；已超时 = 没 doneAt 但过点了；已结束 = 有 doneAt。
    用户定的规则：过点先红色「已超时」→ 点「知道了」归入「已结束」→ 第二天自动清掉。
    删除和自动清理都走墓碑（同步配方第一条：真删的话另一台设备会把它同步回来） */
+/* 故障隔离：短期倒计时的初始化、每秒刷新、以及日程代码里调用它的几处，都走 scSafe。
+   它出任何错都只停掉它自己（控制台留记录、⏱ 按钮隐藏），**日程卡片照常加载、照常同步**——日程是主力，不能被新功能拖累 */
+var scBroken = false;
+function scSafe(fn){
+  if(scBroken) return;
+  try{ fn(); }
+  catch(e){
+    scBroken = true;
+    try{ console.error("[短期倒计时] 出错，已停用这一块，日程不受影响：", e); }catch(_){}
+    try{ document.getElementById("scBtn").hidden = true; }catch(_){}
+  }
+}
+/* 短期那份同步失败时，只在短期界面里提示 */
+function scSyncErr(msg){
+  var el = document.getElementById("scSyncErr");
+  if(!el) return;
+  el.hidden = !msg;
+  el.textContent = msg ? "倒计时同步失败：" + msg + "（稍后自动重试，日程不受影响）" : "";
+}
 var SC_KEY = "schedule-cards-short-v1";
 var SC_WAKE_KEY = "schedule-cards-short-wake";
 var sc = { items: [] };
@@ -3875,10 +3900,12 @@ function scRender(){
 
 /* 每秒跳一次，对齐到整秒——多张卡、多个设备看着都是同一刻翻页；页面藏起来时不跑 */
 function scLoop(){
-  if(!document.hidden) scTick();
+  if(!document.hidden) scSafe(scTick);
   setTimeout(scLoop, 1000 - (Date.now() % 1000) + 8);
 }
+scSafe(function(){
 document.addEventListener("visibilitychange", function(){ if(!document.hidden) scTick(); });
+});
 
 /* ---- 进出（和「只看已过期」同一套历史记录写法，Safari 右滑返回能退回主页） ---- */
 function enterSc(){
@@ -3901,8 +3928,10 @@ function leaveSc(){
   if(st && st.sc){ history.back(); return; }
   scView = false; render(); scRender(); scWakeSync(); window.scrollTo(0, scScrollY);
 }
+scSafe(function(){
 document.getElementById("scBtn").addEventListener("click", function(){ scView ? leaveSc() : enterSc(); });
 document.getElementById("scDone").addEventListener("click", leaveSc);
+});
 
 /* ---- 屏幕常亮（Screen Wake Lock，iOS Safari 16.4 起支持；切走页面会被系统自动释放，回来要重新要） ---- */
 var scWakeLock = null, scWakeWant = false;
@@ -3927,12 +3956,14 @@ function scWakeSync(){
   }
   scWakePaint();
 }
+scSafe(function(){
 document.getElementById("scWake").addEventListener("click", function(){
   scWakeWant = !scWakeLock;
   try{ localStorage.setItem(SC_WAKE_KEY, scWakeWant ? "1" : "0"); }catch(e){}
   scWakeSync();
 });
 document.addEventListener("visibilitychange", scWakeSync);
+});
 
 /* ---- 快速添加 ---- */
 var scMask = document.getElementById("scMask");
@@ -3992,6 +4023,7 @@ function scOpenAdd(){
   scTitle.focus();       /* 必须在 click 里同步调用，iOS 才会弹键盘（移动端配方 §2） */
 }
 function scCloseAdd(){ scMask.hidden = true; if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+scSafe(function(){
 document.getElementById("scChips").addEventListener("click", function(e){
   var b = e.target.closest("button[data-min]");
   if(!b) return;
@@ -4016,6 +4048,7 @@ scSheet.addEventListener("submit", function(e){
   scSave(); queueSync();
   scCloseAdd();
   scRender();
+});
 });
 
 /* ---- 点一条：操作面板 ---- */
@@ -4047,8 +4080,10 @@ function scOpenAct(id){
   scActMask.hidden = false;
 }
 function scCloseAct(){ scActMask.hidden = true; scActId = null; }
+scSafe(function(){
 document.getElementById("scActCancel").addEventListener("click", scCloseAct);
 scActMask.addEventListener("click", function(e){ if(e.target === scActMask) scCloseAct(); });
+});
 
 function scAck(id){ var x = scFind(id); if(!x) return; x.doneAt = Date.now(); scTouch(x); scRender(); }
 /* 延后：还没到点的往后挪；已经超时的从现在起算 */
@@ -4067,10 +4102,12 @@ function scAgain(x){
 }
 
 /* 两张底部弹窗也登记进「下拉关闭」；快速添加填了名字才算有改动，拉掉前问一句 */
+scSafe(function(){
 SHEETS.push(
   {mask: scMask,    sheet: scSheet, close: scCloseAdd, dirty: function(){ return scTitle.value.trim() !== ""; }},
   {mask: scActMask, sheet: document.getElementById("scActSheet"), close: scCloseAct}
 );
+});
 
 /* ---- 同步：同一个同步码，服务端 space=short 那一份。合并规则和日程完全一样（按 id + updatedAt） ---- */
 async function syncShort(){
@@ -4104,11 +4141,9 @@ viewList.setAttribute("aria-pressed", state.view === "list" ? "true" : "false");
 sortSel.value = state.sort;
 try{ odView = !!(history.state && history.state.od); }catch(e){}   /* 在「只看已过期」里刷新，还留在里面 */
 try{ scView = !!(history.state && history.state.sc); }catch(e){}   /* 短期倒计时同理 */
-scLoad();
-scPurge();
+scSafe(function(){ scLoad(); scPurge(); });
 render();
-scRender();
-scWakeSync();
+scSafe(function(){ scRender(); scWakeSync(); });
 scLoop();
 document.getElementById("mSyncState").textContent = sync.on ? "已开启" : "未开启";
 if(sync.on && sync.code){ setSync("syncing"); syncNow(); }
