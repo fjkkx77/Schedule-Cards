@@ -244,7 +244,10 @@ select.sort{
 }
 .card.is-over .card-title{color:var(--text-2)}
 .card.is-over .card-num .n,.card.is-over .card-num .u{color:var(--text-3)}
-.is-over .tag{color:var(--lsw-del-fg);background:color-mix(in srgb, var(--lsw-del-fg) 14%, transparent)}
+/* 过期卡上只有「已过期」这一枚是红的；分组名、「原属 X」这类说明性标签退成中性灰——
+   卡片本色已经褪掉了，它们再跟着变红，一行里就是两三个"警告"（2026-09-26 加分组标签时改） */
+.is-over .tag{color:var(--text-2);background:color-mix(in srgb, var(--text-2) 12%, transparent)}
+.is-over .tag.tag-over{color:var(--lsw-del-fg);background:color-mix(in srgb, var(--lsw-del-fg) 14%, transparent)}
 
 /* ============ 列表视图 ============ */
 .list{
@@ -296,6 +299,41 @@ select.sort{
 .row-badge .u.past-u{font-size:clamp(12px,3.6vw,15px);letter-spacing:0}
 .row.is-over .row-title{color:var(--text-2)}
 .row.is-over .row-badge .u{background:var(--over-2);color:var(--over-fg)}
+
+/* ============ 过期汇总 ============ */
+/* 首页提示条（2026-09-26 用户从四套里选的「A 淡红通栏」）：分组默认叠成一摞，压在下面的过期卡从外面看不见，
+   所以要一个不依赖卡片露脸的入口。配色沿用「已过期」小标签 / 左滑删除的那套红，不新增颜色；
+   没有过期时整条不出现——常驻「0 个已过期」只会被看成背景 */
+.od-bar{
+  display:flex;align-items:center;gap:10px;
+  width:calc(100% - 4px);min-height:50px;margin:-2px 2px 16px;padding:0 14px;
+  border:0;border-radius:14px;
+  background:var(--lsw-del-bg);color:var(--lsw-del-fg);
+  font:inherit;font-size:16px;font-weight:600;text-align:left;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  transition:transform .18s var(--spring);
+}
+.od-bar:active{transform:scale(.98)}
+@media (hover:hover){ .od-bar:hover{filter:brightness(.97)} }
+.od-ic{
+  flex:0 0 auto;width:22px;height:22px;border-radius:99px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--lsw-del-fg);color:var(--surface);font-size:14px;font-weight:800;
+}
+.od-t{flex:1 1 auto;min-width:0}
+.od-go{flex:0 0 auto;display:flex;align-items:center;gap:3px;font-size:15px}
+.od-go i{font-style:normal;font-size:20px;line-height:1}
+/* 「只看已过期」的标题行：复用置顶区的色条标题，色条换成过期红；工具条和＋在这个视图里不出现 */
+.od-head{--gc:var(--lsw-del-fg);margin:0 2px 10px;width:auto}
+.od-head .g-name{flex:0 1 auto}
+.od-done{
+  margin-left:auto;flex:0 0 auto;min-height:44px;padding:0 18px;border:0;border-radius:12px;
+  background:var(--surface);color:var(--text);box-shadow:var(--shadow-sm);
+  font:inherit;font-size:15px;font-weight:700;letter-spacing:0;
+  touch-action:manipulation;
+}
+.od-done:active{transform:scale(.95)}
+body.od-mode .toolbar, body.od-mode .fab{display:none}
 
 /* ============ 分组堆叠 ============ */
 /* 分组标题 = 小节标题（2026-09-13 用户嫌原来 14px 灰字"太素、没存在感"，从三套方案里选的「色条小节标题」）：
@@ -749,6 +787,17 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
         <option value="updated">按最近修改</option>
       </select>
     </div>
+  </div>
+
+  <!-- 过期汇总：有过期的倒数日才出现，点进去是「只看已过期」 -->
+  <button type="button" class="od-bar" id="odBar" hidden>
+    <span class="od-ic" aria-hidden="true">!</span>
+    <span class="od-t"><b id="odNum">0</b> 个日程已过期</span>
+    <span class="od-go" aria-hidden="true">查看<i>›</i></span>
+  </button>
+  <div class="group-head pinned-head od-head" id="odHead" hidden>
+    <span class="g-name">已过期</span><span class="g-count" id="odCount">0</span>
+    <button type="button" class="od-done" id="odDone">完成</button>
   </div>
 
   <main id="board"></main>
@@ -1272,7 +1321,65 @@ function rank(ev, t){
   var info = numInfo(ev, t);
   if(info.bad) return 1e9;
   var d = info.diff;                /* 用卡片上显示的差值，「不含到期当天」的卡也按它显示的天数排 */
+  /* 「不含到期当天」的卡在到期日当天 diff 是 -1，但它是「今天到期」不是过期，排最前 */
+  if(info.state === "dueToday") return d < 0 ? -1 : 0;
   return d >= 0 ? d : 500000 - d;
+}
+
+/* ---- 过期汇总 ----
+   只有「倒数且已过期」算（numInfo 的 overdue）：正数没有过期；自动模式过了日期转正数；
+   到期当天是「今天到期」不算。置顶的也算——置顶了照样可能过期。
+   「只看已过期」不是弹窗而是主页换个筛选：卡片还是那些卡片，点开编辑、左滑删除都照常能用 */
+var odView = false;       /* 是否处于「只看已过期」 */
+var odScrollY = 0;        /* 进来前主页滚到哪，回去时还原 */
+function overdueEvents(t){
+  return liveEvents().filter(function(e){ return numInfo(e, t).state === "overdue"; })
+    .sort(function(a, b){                       /* 刚过期的在最上面：最可能还想处理的是它们 */
+      return resolve(b, t).date - resolve(a, t).date || (a.order || 0) - (b.order || 0);
+    });
+}
+/* 进出都走浏览器历史：Safari 左边缘右滑 / 返回键会退回主页，而不是直接离开网站。
+   history.state 刷新后还在，所以在这个视图里下拉刷新也会留在这个视图 */
+function enterOd(){
+  if(odView) return;
+  odScrollY = window.scrollY;
+  try{ history.pushState({od:1}, ""); }catch(e){}
+  odView = true;
+  render();
+  window.scrollTo(0, 0);
+}
+function leaveOd(){
+  if(!odView) return;
+  var st = null;
+  try{ st = history.state; }catch(e){}
+  if(st && st.od){ history.back(); return; }   /* 交给 popstate 统一收尾 */
+  odView = false; render(); window.scrollTo(0, odScrollY);
+}
+window.addEventListener("popstate", function(){
+  var want = !!(history.state && history.state.od);
+  if(want === odView) return;
+  odView = want;
+  lswClose(false);
+  render();
+  window.scrollTo(0, want ? 0 : odScrollY);
+});
+document.getElementById("odBar").addEventListener("click", enterOd);
+document.getElementById("odDone").addEventListener("click", leaveOd);
+
+function renderOverdue(t, make, isCard){
+  var list = overdueEvents(t);
+  document.getElementById("odCount").textContent = list.length;
+  if(!list.length){
+    var e = document.createElement("div");
+    e.className = "empty";
+    e.innerHTML = '<div class="big">✓</div><p>过期的日程都处理完了</p><p style="color:var(--text-3);font-size:13px">点右上角「完成」回到全部日程</p>';
+    board.appendChild(e);
+    return;
+  }
+  var box = document.createElement("div");
+  box.className = isCard ? "cards" : "list";
+  list.forEach(function(ev){ box.appendChild(make(ev)); });   /* 平铺、不分组、不叠放 */
+  board.appendChild(box);
 }
 
 function render(){
@@ -1285,6 +1392,18 @@ function render(){
   var list = sortedEvents();
   lswForget();              /* 整块重建，之前滑开的那张卡已经不在了 */
   board.innerHTML = "";
+
+  document.body.classList.toggle("od-mode", odView);
+  document.getElementById("odHead").hidden = !odView;
+  var odN = odView ? 0 : overdueEvents(t).length;
+  var odBar = document.getElementById("odBar");
+  odBar.hidden = odView || odN === 0;
+  document.getElementById("odNum").textContent = odN;
+  odBar.setAttribute("aria-label", odN + " 个日程已过期，点击查看");
+  if(odView){
+    renderOverdue(t, function(ev){ return state.view === "card" ? cardEl(ev, t) : rowEl(ev, t); }, state.view === "card");
+    return;
+  }
 
   if(list.length === 0){
     var e = document.createElement("div");
@@ -1518,7 +1637,9 @@ if(document.fonts && document.fonts.ready && document.fonts.ready.then){
    「不含到期当天」（ev.excl，只对倒数起作用）：会员/订阅类 App 的口径——
    写着"9月25日到期"，意思是 9月25日 0 点就失效了，所以剩余天数比按日历算少 1 天
    （2026-09-17 用户对比 QQ 会员：QQ 显示 7 天，网站按日历算是 8 天）。
-   这个口径下：前一天是「最后一天」，到期日当天就已经算过期。   */
+   这个口径下：前一天是「最后一天」，到期日当天显示「今天到期」，第二天起才算过期。
+   （2026-09-26 起：到期当天不算过期——原先当天就褪灰挂「已过期」，
+     和首页「N 个日程已过期」的汇总口径对不上，用户定的规则是"今天到期不算过期"）   */
 function isExcl(ev){ return ev.excl === true && modeOf(ev) !== "up"; }
 function numInfo(ev, t){
   var r = resolve(ev, t);
@@ -1530,7 +1651,7 @@ function numInfo(ev, t){
   var n = excl ? d - 1 : d;                /* 卡片上要显示的那个差值 */
 
   var state;
-  if(m === "down") state = n > 0 ? "left" : (n === 0 ? "dueToday" : "overdue");
+  if(m === "down") state = n > 0 ? "left" : (n === 0 || (excl && d === 0) ? "dueToday" : "overdue");
   else             state = d < 0 ? "elapsed" : (d === 0 ? "startToday" : "notStarted");
 
   var UNIT = {left:"天", overdue:"天前", elapsed:"天了", notStarted:"天后"};
@@ -1560,13 +1681,14 @@ function groupCount(g){
 /* 收起状态下点这一叠＝展开；展开状态（或没分组、组里只有一条）下点＝编辑 */
 function activate(ev){
   var g = (ev.group || "").trim();
-  if(g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
+  /* 「只看已过期」里是平铺的，不存在"先展开那一摞"，点了就是编辑 */
+  if(!odView && g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
   openForm(ev.id);
 }
 
-function tagEl(text){
+function tagEl(text, extra){
   var s = document.createElement("span");
-  s.className = "tag";
+  s.className = "tag" + (extra ? " " + extra : "");
   s.textContent = text;
   return s;
 }
@@ -1600,11 +1722,13 @@ function cardEl(ev, t){
   }else{
     sub.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()]
                       + (ev.time ? " " + ev.time : "");
-    if(info.state === "overdue")    sub.appendChild(tagEl("已过期"));
+    if(info.state === "overdue")    sub.appendChild(tagEl("已过期", "tag-over"));
     if(info.state === "elapsed")    sub.appendChild(tagEl("已累计"));
     if(info.state === "notStarted") sub.appendChild(tagEl("未开始"));
     /* 置顶的卡片离开了原分组，把它原来属于哪组标出来，免得找不着 */
     if(isPinned(ev) && (ev.group || "").trim()) sub.appendChild(tagEl("原属 " + ev.group.trim()));
+    /* 「只看已过期」是打散分组平铺的，标出它原来在哪组 */
+    else if(odView && (ev.group || "").trim()) sub.appendChild(tagEl(ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
   /* 目标日下面单独一行显示农历 */
@@ -2749,7 +2873,8 @@ var DRAG_SLOP = 10;       /* 按住期间手指动超过这么多，就当是滚
 var dragTimer = null, dragOn = false, dragEl = null, dragItems = null, dragTouch = false;
 var dragFrom = 0, dragTo = 0, dragStartY = 0, dragOffset = 0, dragH = 0;
 
-function dragEnabled(){ return state.sort === "manual"; }
+/* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
+function dragEnabled(){ return state.sort === "manual" && !odView; }
 
 /* 从被按住的元素往上找：它属于哪个容器、容器里的同级项有哪些 */
 function dragScope(target){
@@ -3370,6 +3495,7 @@ applyTheme();
 viewCard.setAttribute("aria-pressed", state.view === "card" ? "true" : "false");
 viewList.setAttribute("aria-pressed", state.view === "list" ? "true" : "false");
 sortSel.value = state.sort;
+try{ odView = !!(history.state && history.state.od); }catch(e){}   /* 在「只看已过期」里刷新，还留在里面 */
 render();
 document.getElementById("mSyncState").textContent = sync.on ? "已开启" : "未开启";
 if(sync.on && sync.code){ setSync("syncing"); syncNow(); }
