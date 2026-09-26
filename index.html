@@ -396,8 +396,10 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
 .sc-card:active{filter:brightness(.97)}       /* 不用 transform：左滑靠行内 transform 平移，别互相打架 */
 .sc-body{display:flex;align-items:center;gap:12px;padding:14px 18px 16px}
 .sc-main{flex:1 1 auto;min-width:0}
-.sc-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
-.sc-title{font-size:18px;font-weight:800;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.sc-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 10px;margin-bottom:6px}
+/* 标题至少留 7 个字宽：放不下时「目标 …」自己换到标题下面一行，而不是把标题挤成一列一行三个字
+   （320 宽的超时卡片右边还有「知道了」，2026-09-26 加「目标」两个字后被挤到每行 3 个字） */
+.sc-title{flex:1 1 7em;font-size:18px;font-weight:800;color:var(--text);min-width:0;overflow-wrap:anywhere}
 .sc-sub{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--text-3)}
 .sc-bar{height:6px;border-radius:99px;background:var(--surface-2);margin-top:12px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
 .sc-bar span{display:block;height:100%;border-radius:99px;background:var(--c);transition:width .9s linear}
@@ -3847,8 +3849,9 @@ function scCard(x, st, now){
   var top = document.createElement("div"); top.className = "sc-top";
   var tt = document.createElement("span"); tt.className = "sc-title"; tt.textContent = x.title || "倒计时";
   var sub = document.createElement("span"); sub.className = "sc-sub";
-  sub.textContent = st === "done" ? (x.doneAt < x.target ? "提前完成" : "已结束") + " · " + when
-                                  : (x.pinned ? "📌 " : "") + when;
+  /* 「目标 今天 17:55」：和日程卡片的「目标 2027-01-10 星期日」同一种说法——光写「今天 17:55」看不出这是当初定的到点时间（2026-09-26 用户提） */
+  sub.textContent = st === "done" ? (x.doneAt < x.target ? "提前完成" : "已结束") + " · 目标 " + when
+                                  : (x.pinned ? "📌 " : "") + "目标 " + when;
   top.appendChild(tt); top.appendChild(sub); main.appendChild(top);
   if(st !== "done"){
     var num = document.createElement("div"); num.className = "sc-num";
