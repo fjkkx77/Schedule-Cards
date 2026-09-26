@@ -135,6 +135,7 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
   letter-spacing:-.2px;line-height:1.16;
 }
 .brand .today{margin:6px 0 0;font-size:14px;color:var(--text-2);font-weight:600}
+.brand .today .nw{white-space:nowrap}
 .sync-line{margin:3px 0 0;font-size:12px;color:var(--text-3);font-weight:600}
 .sync-line.bad{color:#e0483d}
 .icon-btn{
@@ -338,6 +339,100 @@ select.sort{
 }
 .od-done:active{transform:scale(.95)}
 body.od-mode .toolbar, body.od-mode .fab{display:none}
+
+/* ============ 短期倒计时 ============ */
+/* 右上角入口：和 ⋯ 同款按钮，右上角叠一个数量；有超时的变红。进入后按钮高亮 */
+.sc-btn{position:relative}
+.sc-btn[aria-pressed="true"]{background:#2f86f6;color:#fff}
+.sc-badge{
+  position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;
+  border-radius:99px;background:#2f86f6;color:#fff;
+  font-style:normal;font-size:11px;font-weight:800;line-height:18px;text-align:center;
+  box-shadow:0 0 0 2px var(--bg);font-variant-numeric:tabular-nums;
+}
+.sc-badge.hot{background:#e0483d}
+.sc-btn[aria-pressed="true"] .sc-badge{background:var(--surface);color:#2f86f6}
+body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #board{display:none !important}
+
+.sc-head{display:flex;align-items:center;gap:8px;margin:0 2px 4px}
+.sc-head h2{margin:0 auto 0 4px;font-size:20px;font-weight:800;min-width:0}
+.sc-wake{
+  flex:0 0 auto;min-height:44px;padding:0 12px;border:0;border-radius:12px;
+  background:var(--surface);box-shadow:var(--shadow-sm);color:var(--text-2);
+  font:inherit;font-size:14px;font-weight:700;touch-action:manipulation;
+}
+.sc-wake[aria-pressed="true"]{background:#f5a13c;color:#fff;box-shadow:none}
+.sc-sec{margin:14px 6px 8px;font-size:13px;font-weight:800;color:var(--text-3);letter-spacing:.5px}
+
+/* 倒计时数字：数字大、单位小；等宽数字 + 分秒固定两位——每秒跳动时整行宽度不变，不会左右抖。
+   主页大数字用的是比例数字（用户要求三位数收窄），这里故意不同：那边不跳，这边每秒都跳 */
+.sc-num{display:flex;align-items:baseline;flex-wrap:wrap;font-variant-numeric:tabular-nums;line-height:1.15}
+.sc-num b{font-size:clamp(28px,9vw,36px);font-weight:800;letter-spacing:-.5px;color:var(--text)}
+.sc-num i{font-style:normal;font-size:14px;font-weight:700;color:var(--text-2);margin:0 7px 0 3px}
+.sc-num i:last-child{margin-right:0}
+.sc-num .sc-pre{font-size:14px;font-weight:800;color:inherit;margin-right:8px}
+
+.sc-card{
+  display:block;width:100%;text-align:left;font:inherit;color:inherit;border:0;
+  background:var(--surface);border-radius:20px;box-shadow:var(--shadow);
+  padding:14px 18px 16px;margin:0 0 12px;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  transition:transform .18s var(--spring);
+}
+.sc-card:active{transform:scale(.985)}
+.sc-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.sc-title{font-size:18px;font-weight:800;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.sc-sub{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--text-3)}
+.sc-bar{height:6px;border-radius:99px;background:var(--surface-2);margin-top:12px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.sc-bar span{display:block;height:100%;border-radius:99px;background:#2f86f6;transition:width .9s linear}
+.sc-card.warm .sc-bar span{background:#ef7d20}                  /* 1 小时内 */
+.sc-card.hot .sc-bar span{background:#e0483d}                   /* 10 分钟内 */
+.sc-card.hot .sc-num b{color:#e0483d}
+/* 已超时：沿用过期提示条那套淡红，一眼和"还在跑的"分开 */
+.sc-card.over{background:var(--lsw-del-bg);box-shadow:none;display:flex;align-items:center;gap:12px}
+.sc-card.over .sc-main{flex:1 1 auto;min-width:0}
+.sc-card.over .sc-title,.sc-card.over .sc-num b,.sc-card.over .sc-num i,.sc-card.over .sc-num .sc-pre{color:var(--lsw-del-fg)}
+.sc-ack{
+  flex:0 0 auto;min-height:44px;padding:0 14px;border:0;border-radius:12px;
+  background:var(--surface);color:var(--lsw-del-fg);font:inherit;font-size:14px;font-weight:800;
+  box-shadow:var(--shadow-sm);touch-action:manipulation;
+}
+/* 已结束：灰掉、变矮，只是留个底，第二天自动清掉 */
+.sc-card.done{padding:12px 18px;box-shadow:var(--shadow-sm);opacity:.72}
+.sc-card.done .sc-title{font-size:16px;color:var(--text-2);text-decoration:line-through;text-decoration-color:var(--text-3)}
+.sc-card.done .sc-top{margin:0}
+.sc-fold{
+  width:100%;min-height:48px;border:0;background:transparent;padding:0 8px;margin-top:4px;
+  display:flex;justify-content:space-between;align-items:center;
+  color:var(--text-3);font:inherit;font-size:14px;font-weight:800;touch-action:manipulation;
+}
+.sc-fold span{font-size:20px;transition:transform .25s}
+.sc-fold[aria-expanded="true"] span{transform:rotate(90deg)}
+
+/* 快速添加 */
+.sc-modes{margin-bottom:12px}
+.sc-chips{display:flex;flex-wrap:wrap;gap:8px}
+.sc-chips button{
+  min-height:44px;padding:0 14px;border:0;border-radius:12px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  color:var(--text);font:inherit;font-size:15px;font-weight:700;touch-action:manipulation;
+}
+.sc-chips button.on{background:#2f86f6;color:#fff;box-shadow:none}
+.sc-custom{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.sc-custom input,.sc-time{
+  min-height:48px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);
+  color:var(--text);font:inherit;font-size:17px;font-weight:700;padding:0 12px;box-sizing:border-box;
+}
+.sc-custom input{width:84px;text-align:center}
+.sc-custom span{font-size:15px;font-weight:700;color:var(--text-2)}
+.sc-time{width:100%;-webkit-appearance:none;appearance:none}
+.sc-preview{margin:14px 2px 0;min-height:20px;font-size:14px;color:var(--text-2)}
+.sc-preview b{color:var(--text)}
+.sc-preview.bad{color:#e0483d}
+/* 点一条之后的操作列表 */
+.sc-acts{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.sc-acts .btn, .sc-act-cancel{width:100%}
+.sc-act-cancel{margin-top:14px}
 
 /* ============ 分组堆叠 ============ */
 /* 分组标题 = 小节标题（2026-09-13 用户嫌原来 14px 灰字"太素、没存在感"，从三套方案里选的「色条小节标题」）：
@@ -774,6 +869,11 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <p class="today" id="todayLine">今天</p>
       <p class="sync-line" id="syncLine" hidden></p>
     </div>
+    <!-- 短期倒计时入口（2026-09-26 用户从四套里选的「C 右上角按钮 + 数量」）：数字＝还在跑的 + 已超时的条数，有超时时变红 -->
+    <button class="icon-btn sc-btn" id="scBtn" aria-label="短期倒计时" aria-pressed="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2"/><path d="M9.5 2.5h5"/><path d="M12 2.5V6"/></svg>
+      <em class="sc-badge" id="scBadge" hidden>0</em>
+    </button>
     <button class="icon-btn" id="menuBtn" aria-label="更多设置" aria-haspopup="true">⋯</button>
   </div>
 
@@ -805,6 +905,16 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   </div>
 
   <main id="board"></main>
+
+  <!-- 短期倒计时：和日程卡片完全隔离的一块（自己的数据、自己的同步分区），只是共用这个页面 -->
+  <section class="sc-view" id="scView" hidden>
+    <div class="sc-head">
+      <h2>短期倒计时</h2>
+      <button type="button" class="sc-wake" id="scWake" aria-pressed="false" hidden>☀ 常亮</button>
+      <button type="button" class="od-done" id="scDone">完成</button>
+    </div>
+    <div id="scList"></div>
+  </section>
 
   <p class="foot">数据保存在本机浏览器里，换设备或清理缓存会丢失，重要日程记得用「导出备份」。</p>
 </div>
@@ -1032,6 +1142,52 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <button type="button" class="btn" id="dcKeep">继续编辑</button>
       <button type="button" class="btn btn-danger" id="dcDrop">放弃修改</button>
     </div>
+  </div>
+</div>
+
+<!-- 短期倒计时 · 快速添加 -->
+<div class="mask" id="scMask" hidden>
+  <form class="sheet" id="scSheet" autocomplete="off">
+    <h2>新的倒计时</h2>
+    <div class="field">
+      <label for="scTitle">名称</label>
+      <input type="text" id="scTitle" maxlength="40" placeholder="比如：开会、泡面好了" enterkeyhint="done">
+    </div>
+    <div class="modes sc-modes" role="radiogroup" aria-label="怎么定时间">
+      <input type="radio" name="scKind" id="scKindIn" value="in" checked><label for="scKindIn">多久后</label>
+      <input type="radio" name="scKind" id="scKindAt" value="at"><label for="scKindAt">到点</label>
+    </div>
+    <div class="sc-pane" id="scPaneIn">
+      <div class="sc-chips" id="scChips">
+        <button type="button" data-min="15">15 分钟</button>
+        <button type="button" data-min="30">30 分钟</button>
+        <button type="button" data-min="60">1 小时</button>
+        <button type="button" data-min="120">2 小时</button>
+        <button type="button" data-min="custom">自定义</button>
+      </div>
+      <div class="sc-custom" id="scCustom" hidden>
+        <input type="number" id="scH" inputmode="numeric" min="0" max="99" placeholder="0" aria-label="小时"><span>小时</span>
+        <input type="number" id="scM" inputmode="numeric" min="0" max="59" placeholder="0" aria-label="分钟"><span>分钟</span>
+      </div>
+    </div>
+    <div class="sc-pane" id="scPaneAt" hidden>
+      <input type="time" id="scAt" class="sc-time" aria-label="几点">
+    </div>
+    <p class="sc-preview" id="scPreview"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="scCancel">取消</button>
+      <button type="submit" class="btn primary" id="scStart">开始倒计时</button>
+    </div>
+  </form>
+</div>
+
+<!-- 短期倒计时 · 点一条之后的操作（Apple 的 action sheet 写法：一列按钮 + 取消） -->
+<div class="mask" id="scActMask" hidden>
+  <div class="sheet" id="scActSheet" role="dialog" aria-labelledby="scActTitle">
+    <h2 id="scActTitle"></h2>
+    <p class="hint" id="scActHint" style="margin-top:-8px"></p>
+    <div class="sc-acts" id="scActs"></div>
+    <button type="button" class="btn sc-act-cancel" id="scActCancel">取消</button>
   </div>
 </div>
 
@@ -1364,13 +1520,16 @@ function leaveOd(){
   if(st && st.od){ history.back(); return; }   /* 交给 popstate 统一收尾 */
   odView = false; render(); window.scrollTo(0, odScrollY);
 }
+/* 「只看已过期」和「短期倒计时」共用这一个出口：历史记录里记着当前该是哪个界面 */
 window.addEventListener("popstate", function(){
-  var want = !!(history.state && history.state.od);
-  if(want === odView) return;
-  odView = want;
+  var st = history.state || {};
+  var wantOd = !!st.od, wantSc = !!st.sc;
+  if(wantOd === odView && wantSc === scView) return;
+  var backY = scView && !wantSc ? scScrollY : odScrollY;
+  odView = wantOd; scView = wantSc;
   lswClose(false);
-  render();
-  window.scrollTo(0, want ? 0 : odScrollY);
+  render(); scRender(); scWakeSync();
+  window.scrollTo(0, (wantOd || wantSc) ? 0 : backY);
 });
 document.getElementById("odBar").addEventListener("click", enterOd);
 document.getElementById("odDone").addEventListener("click", leaveOd);
@@ -1395,8 +1554,17 @@ function render(){
   var t = today();
   todayKey = ymd(t);
   var lun = lunarLabel(t);
-  document.getElementById("todayLine").textContent =
-    ymd(t) + " " + WEEK[t.getDay()] + (lun ? " · " + lun : "");
+  /* 「日期 星期」和「农历」各自不拆行：窄屏放不下时农历整段换到第二行，
+     不会断成「农历八｜月十六」（右上角加了 ⏱ 按钮后 320 宽屏上出现过） */
+  var tl = document.getElementById("todayLine");
+  tl.textContent = "";
+  var p1 = document.createElement("span"); p1.className = "nw"; p1.textContent = ymd(t) + " " + WEEK[t.getDay()];
+  tl.appendChild(p1);
+  if(lun){
+    tl.appendChild(document.createTextNode(" · "));
+    var p2 = document.createElement("span"); p2.className = "nw"; p2.textContent = lun;
+    tl.appendChild(p2);
+  }
 
   var list = sortedEvents();
   lswForget();              /* 整块重建，之前滑开的那张卡已经不在了 */
@@ -2643,7 +2811,8 @@ function closeForm(){
   document.body.style.overflow = "";
   editingId = null;
 }
-document.getElementById("addBtn").addEventListener("click", function(){ openForm(null); });
+/* 同一个＋：在短期倒计时界面里是「新的倒计时」，其它时候是新增日程 */
+document.getElementById("addBtn").addEventListener("click", function(){ if(scView) scOpenAdd(); else openForm(null); });
 document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
@@ -2836,6 +3005,7 @@ async function syncNow(){
     }else{
       sync.version = data.version;
     }
+    await syncShort();          /* 短期倒计时那一份（服务端 space=short），和日程互不相干 */
     sync.lastAt = Date.now();
     pendingChange = false;      /* 本地改动已经上去了，页面被切走时就不用再冲一次 */
     saveSync();
@@ -2848,13 +3018,16 @@ async function syncNow(){
   }
 }
 
-async function pushDoc(events, baseVersion){
-  var body = JSON.stringify({ code: sync.code, baseVersion: baseVersion, doc: { events: events } });
+async function pushDoc(events, baseVersion, space){
+  var payload = { code: sync.code, baseVersion: baseVersion, doc: { events: events } };
+  if(space) payload.space = space;
+  var body = JSON.stringify(payload);
   /* keepalive 让请求在页面被关掉之后也能发完（浏览器限制 64KB，超了就走普通请求） */
   var opts = { method: "POST", headers: {"Content-Type": "application/json"}, body: body };
   if(body.length < 60000) opts.keepalive = true;
   var r = await fetch("/api/sync", opts);
   var d = await r.json();
+  if(space && d.space !== space) throw new Error("服务端不认识这份数据的分区");   /* 旧服务端会把它写进日程那一份 */
   if(r.status === 409) return { conflict: true, version: d.version, doc: d.doc };
   if(!d.ok) throw new Error(d.error || ("上传失败 " + r.status));
   return { conflict: false, version: d.version };
@@ -3409,7 +3582,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || lswActive() || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
+  return ptrBusy || dragOn || lswActive() || !scMask.hidden || !scActMask.hidden || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -3497,6 +3670,431 @@ function tick(){
 setInterval(tick, 30000);
 document.addEventListener("visibilitychange", function(){ if(!document.hidden) tick(); });
 
+/* ================= 短期倒计时 =================
+   2026-09-26 用户的「一天之内」需求：今天下午三点开会、30 分钟后泡面好了……要秒级看着它走。
+   和日程卡片**完全隔离**：自己的本地存储、自己的同步分区（服务端 space=short），
+   日程卡片的数据、规则、显示一行都没动——用户明确不想影响原有逻辑。
+
+   一条的样子：{id, title, target(到点的毫秒时间戳), startAt(从哪一刻开始算进度), createdAt, updatedAt,
+               doneAt?(提前完成/超时后点了「知道了」), deletedAt?(墓碑)}
+   三种状态：进行中 = 没 doneAt 且还没到点；已超时 = 没 doneAt 但过点了；已结束 = 有 doneAt。
+   用户定的规则：过点先红色「已超时」→ 点「知道了」归入「已结束」→ 第二天自动清掉。
+   删除和自动清理都走墓碑（同步配方第一条：真删的话另一台设备会把它同步回来） */
+var SC_KEY = "schedule-cards-short-v1";
+var SC_WAKE_KEY = "schedule-cards-short-wake";
+var sc = { items: [] };
+var scView = false;           /* 是否处于短期倒计时界面 */
+var scScrollY = 0;
+var scShowDone = false;       /* 「已结束」是否展开 */
+var scActId = null;           /* 操作面板正对着哪一条 */
+var scDayKey = "";            /* 上次清理时是哪一天 */
+var scKey = "";               /* 上次整块重建时各条所处的状态，变了才重建，没变只改数字 */
+
+function scLoad(){
+  try{
+    var d = JSON.parse(localStorage.getItem(SC_KEY) || "null");
+    if(d && Array.isArray(d.items)) sc.items = d.items.filter(function(x){ return x && x.id && typeof x.target === "number"; });
+  }catch(e){ sc.items = []; }
+}
+function scSave(){ try{ localStorage.setItem(SC_KEY, JSON.stringify(sc)); }catch(e){} }
+function scLive(){ return sc.items.filter(function(x){ return !x.deletedAt; }); }
+function scState(x, now){ return x.doneAt ? "done" : (x.target <= now ? "over" : "run"); }
+function scFind(id){ for(var i = 0; i < sc.items.length; i++){ if(sc.items[i].id === id) return sc.items[i]; } return null; }
+function scTouch(x){ x.updatedAt = Date.now(); scSave(); queueSync(); }
+
+/* 第二天自动清：已结束 / 已超时的，结束那一刻早于今天 0 点就打墓碑。
+   每台设备各自按同一条规则清，结果一致；墓碑留 30 天，够另一台设备回来收到 */
+function scPurge(){
+  var t0 = today().getTime(), now = Date.now(), changed = false;
+  sc.items.forEach(function(x){
+    if(x.deletedAt) return;
+    var st = scState(x, now);
+    if(st === "run") return;
+    var end = x.doneAt || x.target;
+    if(end < t0){ x.deletedAt = now; x.updatedAt = now; changed = true; }
+  });
+  var keep = sc.items.filter(function(x){ return !x.deletedAt || now - x.deletedAt < 30 * 86400000; });
+  if(keep.length !== sc.items.length){ sc.items = keep; changed = true; }
+  if(changed){ scSave(); queueSync(); }
+  scDayKey = ymd(today());
+}
+
+/* 「5 小时 02 分 09 秒」：小时不补零，分秒固定两位（等宽数字下宽度不跳） */
+function scParts(ms){
+  var s = Math.max(0, Math.floor(ms / 1000));
+  var d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600);  s -= h * 3600;
+  var m = Math.floor(s / 60);    s -= m * 60;
+  var out = [];
+  if(d) out.push([d, "天"]);
+  if(d || h) out.push([h, "小时"]);
+  out.push([pad(m), "分"], [pad(s), "秒"]);
+  return out;
+}
+function scPaintNum(el, ms, pre){
+  var html = pre ? '<span class="sc-pre">' + pre + '</span>' : "";
+  scParts(ms).forEach(function(p){ html += "<b>" + p[0] + "</b><i>" + p[1] + "</i>"; });
+  el.innerHTML = html;                      /* 只有数字和固定的汉字，没有用户输入 */
+}
+/* 还剩多少：用向上取整，到点那一刻正好显示 00 分 00 秒，而不是提前一秒就归零 */
+function scLeft(x, now){ return Math.ceil((x.target - now) / 1000) * 1000; }
+
+function scWhen(ts){
+  var d = new Date(ts), t0 = today().getTime();
+  var dd = midnight(d).getTime();
+  var hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  if(dd === t0) return "今天 " + hm;
+  if(dd === t0 + 86400000) return "明天 " + hm;
+  if(dd === t0 - 86400000) return "昨天 " + hm;
+  return (d.getMonth() + 1) + "月" + d.getDate() + "日 " + hm;
+}
+function scHeat(ms){ return ms <= 10 * 60000 ? "hot" : (ms <= 60 * 60000 ? "warm" : ""); }
+function scPct(x, now){
+  var span = x.target - x.startAt;
+  if(span <= 0) return 100;
+  return Math.max(0, Math.min(100, (now - x.startAt) / span * 100));
+}
+
+function scCounts(now){
+  var run = 0, over = 0;
+  scLive().forEach(function(x){ var st = scState(x, now); if(st === "run") run++; else if(st === "over") over++; });
+  return {run:run, over:over};
+}
+function scPaintBadge(now){
+  var c = scCounts(now), n = c.run + c.over, b = document.getElementById("scBadge");
+  b.hidden = n === 0;
+  b.textContent = n > 99 ? "99+" : n;
+  b.classList.toggle("hot", c.over > 0);
+  document.getElementById("scBtn").setAttribute("aria-label",
+    "短期倒计时" + (n ? "，" + c.run + " 条进行中" + (c.over ? "，" + c.over + " 条已超时" : "") : ""));
+}
+
+function scCard(x, st, now){
+  var el = document.createElement(st === "over" ? "div" : "button");
+  if(st !== "over") el.type = "button";
+  el.className = "sc-card" + (st === "over" ? " over" : st === "done" ? " done" : "");
+  el.setAttribute("data-sc", x.id);
+  var main = st === "over" ? document.createElement("div") : el;
+  if(st === "over"){ main.className = "sc-main"; el.appendChild(main); }
+
+  var top = document.createElement("div"); top.className = "sc-top";
+  var tt = document.createElement("span"); tt.className = "sc-title"; tt.textContent = x.title || "倒计时";
+  var sub = document.createElement("span"); sub.className = "sc-sub";
+  sub.textContent = st === "done" ? (x.doneAt < x.target ? "提前完成" : "已结束") + " · " + scWhen(x.target)
+                                  : scWhen(x.target) + (st === "over" ? " 到点" : "");
+  top.appendChild(tt); top.appendChild(sub); main.appendChild(top);
+
+  if(st !== "done"){
+    var num = document.createElement("div"); num.className = "sc-num";
+    main.appendChild(num);
+    if(st === "run"){
+      var bar = document.createElement("div"); bar.className = "sc-bar";
+      bar.appendChild(document.createElement("span"));
+      main.appendChild(bar);
+    }
+  }
+  if(st === "over"){
+    var ack = document.createElement("button");
+    ack.type = "button"; ack.className = "sc-ack"; ack.textContent = "知道了";
+    ack.addEventListener("click", function(e){ e.stopPropagation(); scAck(x.id); });
+    el.appendChild(ack);
+    main.addEventListener("click", function(){ scOpenAct(x.id); });
+  }else{
+    el.addEventListener("click", function(){ scOpenAct(x.id); });
+  }
+  return el;
+}
+
+/* 每秒只改数字和进度条；某一条换了状态（到点了/被别的设备改了）才整块重建 */
+function scTick(){
+  var now = Date.now();
+  if(ymd(today()) !== scDayKey){ scPurge(); scRender(); return; }
+  scPaintBadge(now);
+  if(!scView) return;
+  var key = scLive().map(function(x){ return x.id + scState(x, now); }).join("|");
+  if(key !== scKey){ scRender(); return; }
+  var cards = document.querySelectorAll("#scList [data-sc]");
+  for(var i = 0; i < cards.length; i++) scPaintCard(cards[i], now);
+}
+function scPaintCard(el, now){
+  var x = scFind(el.getAttribute("data-sc"));
+  if(!x) return;
+  var st = scState(x, now), num = el.querySelector(".sc-num");
+  if(st === "run"){
+    var left = scLeft(x, now);
+    scPaintNum(num, left);
+    el.classList.remove("hot", "warm");
+    var heat = scHeat(left);
+    if(heat) el.classList.add(heat);
+    el.querySelector(".sc-bar span").style.width = scPct(x, now).toFixed(2) + "%";
+  }else if(st === "over"){
+    scPaintNum(num, now - x.target, "已超时");
+  }
+}
+
+function scRender(){
+  var now = Date.now(), box = document.getElementById("scList");
+  scPaintBadge(now);
+  document.body.classList.toggle("sc-mode", scView);
+  document.getElementById("scView").hidden = !scView;
+  var btn = document.getElementById("scBtn");
+  btn.setAttribute("aria-pressed", scView ? "true" : "false");
+  if(!scView){ scKey = ""; return; }
+
+  var live = scLive();
+  scKey = live.map(function(x){ return x.id + scState(x, now); }).join("|");
+  var over = [], run = [], done = [];
+  live.forEach(function(x){ var st = scState(x, now); (st === "over" ? over : st === "run" ? run : done).push(x); });
+  over.sort(function(a, b){ return b.target - a.target; });          /* 刚超时的在上 */
+  run.sort(function(a, b){ return a.target - b.target || (a.createdAt || 0) - (b.createdAt || 0); });  /* 先到的在上 */
+  done.sort(function(a, b){ return (b.doneAt || 0) - (a.doneAt || 0); });
+
+  box.innerHTML = "";
+  if(!live.length){
+    var e = document.createElement("div");
+    e.className = "empty";
+    e.innerHTML = '<div class="big">⏱</div><p>还没有短期倒计时</p><p style="color:var(--text-3);font-size:13px">点右下角「＋」，比如「30 分钟后 · 泡面好了」</p>';
+    box.appendChild(e);
+    return;
+  }
+  function sec(text){ var h = document.createElement("div"); h.className = "sc-sec"; h.textContent = text; box.appendChild(h); }
+  if(over.length){ sec("已超时 · " + over.length); over.forEach(function(x){ box.appendChild(scCard(x, "over", now)); }); }
+  if(run.length){ sec("进行中 · " + run.length); run.forEach(function(x){ box.appendChild(scCard(x, "run", now)); }); }
+  if(done.length){
+    var f = document.createElement("button");
+    f.type = "button"; f.className = "sc-fold";
+    f.setAttribute("aria-expanded", scShowDone ? "true" : "false");
+    f.innerHTML = '<em style="font-style:normal">已结束 · ' + done.length + '（明天自动清掉）</em><span>›</span>';
+    f.addEventListener("click", function(){ scShowDone = !scShowDone; scRender(); });
+    box.appendChild(f);
+    if(scShowDone) done.forEach(function(x){ box.appendChild(scCard(x, "done", now)); });
+  }
+  var cards = box.querySelectorAll("[data-sc]");
+  for(var i = 0; i < cards.length; i++) scPaintCard(cards[i], now);
+}
+
+/* 每秒跳一次，对齐到整秒——多张卡、多个设备看着都是同一刻翻页；页面藏起来时不跑 */
+function scLoop(){
+  if(!document.hidden) scTick();
+  setTimeout(scLoop, 1000 - (Date.now() % 1000) + 8);
+}
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) scTick(); });
+
+/* ---- 进出（和「只看已过期」同一套历史记录写法，Safari 右滑返回能退回主页） ---- */
+function enterSc(){
+  if(scView) return;
+  var st = null; try{ st = history.state; }catch(e){}
+  if(odView && st && st.od){           /* 从「只看已过期」直接跳过来：替换那一格，返回时回主页 */
+    try{ history.replaceState({sc:1}, ""); }catch(e){}
+    odView = false;
+  }else{
+    scScrollY = window.scrollY;
+    try{ history.pushState({sc:1}, ""); }catch(e){}
+  }
+  scView = true;
+  render(); scRender(); scWakeSync();
+  window.scrollTo(0, 0);
+}
+function leaveSc(){
+  if(!scView) return;
+  var st = null; try{ st = history.state; }catch(e){}
+  if(st && st.sc){ history.back(); return; }
+  scView = false; render(); scRender(); scWakeSync(); window.scrollTo(0, scScrollY);
+}
+document.getElementById("scBtn").addEventListener("click", function(){ scView ? leaveSc() : enterSc(); });
+document.getElementById("scDone").addEventListener("click", leaveSc);
+
+/* ---- 屏幕常亮（Screen Wake Lock，iOS Safari 16.4 起支持；切走页面会被系统自动释放，回来要重新要） ---- */
+var scWakeLock = null, scWakeWant = false;
+try{ scWakeWant = localStorage.getItem(SC_WAKE_KEY) === "1"; }catch(e){}
+function scWakePaint(){
+  var b = document.getElementById("scWake");
+  b.hidden = !("wakeLock" in navigator);
+  b.setAttribute("aria-pressed", scWakeLock ? "true" : "false");
+  b.textContent = scWakeLock ? "☀ 常亮中" : "☀ 常亮";
+}
+function scWakeSync(){
+  var need = scWakeWant && scView && !document.hidden && ("wakeLock" in navigator);
+  if(need && !scWakeLock){
+    navigator.wakeLock.request("screen").then(function(lock){
+      scWakeLock = lock;
+      lock.addEventListener("release", function(){ if(scWakeLock === lock) scWakeLock = null; scWakePaint(); });
+      if(!(scWakeWant && scView)){ lock.release(); }
+      scWakePaint();
+    }).catch(function(){ scWakeLock = null; scWakePaint(); });
+  }else if(!need && scWakeLock){
+    var l = scWakeLock; scWakeLock = null; l.release().catch(function(){});
+  }
+  scWakePaint();
+}
+document.getElementById("scWake").addEventListener("click", function(){
+  scWakeWant = !scWakeLock;
+  try{ localStorage.setItem(SC_WAKE_KEY, scWakeWant ? "1" : "0"); }catch(e){}
+  scWakeSync();
+});
+document.addEventListener("visibilitychange", scWakeSync);
+
+/* ---- 快速添加 ---- */
+var scMask = document.getElementById("scMask");
+var scSheet = document.getElementById("scSheet");
+var scTitle = document.getElementById("scTitle");
+var scAt = document.getElementById("scAt");
+var scMin = 30;               /* 「多久后」当前选的分钟数；"custom" 表示用下面两个输入框 */
+
+function scKind(){ return document.getElementById("scKindAt").checked ? "at" : "in"; }
+/* 按当前表单算出到点时刻；算不出来返回 null */
+function scFormTarget(){
+  var now = Date.now();
+  if(scKind() === "at"){
+    var m = /^(\d{1,2}):(\d{2})/.exec(scAt.value || "");
+    if(!m) return null;
+    var d = new Date(); d.setHours(+m[1], +m[2], 0, 0);
+    if(d.getTime() <= now) d.setDate(d.getDate() + 1);   /* 这个钟点今天已经过了，就是明天的 */
+    return d.getTime();
+  }
+  var mins = scMin;
+  if(scMin === "custom"){
+    var h = parseInt(document.getElementById("scH").value, 10) || 0;
+    var mm = parseInt(document.getElementById("scM").value, 10) || 0;
+    mins = h * 60 + mm;
+  }
+  if(!(mins > 0)) return null;
+  return now + mins * 60000;
+}
+function scPaintForm(){
+  var inMode = scKind() === "in";
+  document.getElementById("scPaneIn").hidden = !inMode;
+  document.getElementById("scPaneAt").hidden = inMode;
+  [].forEach.call(document.querySelectorAll("#scChips button"), function(b){
+    var v = b.getAttribute("data-min");
+    b.classList.toggle("on", String(scMin) === v);
+  });
+  document.getElementById("scCustom").hidden = scMin !== "custom";
+  var t = scFormTarget(), pv = document.getElementById("scPreview");
+  pv.classList.toggle("bad", !t);
+  if(!t){ pv.textContent = inMode ? "填一下几小时几分钟" : "选一个时刻"; return; }
+  pv.innerHTML = "将在 <b></b> 到点，还有 <b></b>";
+  var bs = pv.querySelectorAll("b");
+  bs[0].textContent = scWhen(t);
+  var mins = Math.round((t - Date.now()) / 60000), h = Math.floor(mins / 60), m = mins % 60;
+  bs[1].textContent = ((h ? h + " 小时 " : "") + (m || !h ? m + " 分钟" : "")).trim();
+}
+function scOpenAdd(){
+  scTitle.value = "";
+  document.getElementById("scKindIn").checked = true;
+  scMin = 30;
+  document.getElementById("scH").value = ""; document.getElementById("scM").value = "";
+  var d = new Date(Date.now() + 60 * 60000);            /* 「到点」默认一小时后，取整到 5 分钟 */
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+  scAt.value = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  scPaintForm();
+  scMask.hidden = false;
+  scTitle.focus();       /* 必须在 click 里同步调用，iOS 才会弹键盘（移动端配方 §2） */
+}
+function scCloseAdd(){ scMask.hidden = true; if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+document.getElementById("scChips").addEventListener("click", function(e){
+  var b = e.target.closest("button[data-min]");
+  if(!b) return;
+  var v = b.getAttribute("data-min");
+  scMin = v === "custom" ? "custom" : +v;
+  scPaintForm();
+  if(v === "custom") document.getElementById("scH").focus();
+});
+["scKindIn", "scKindAt"].forEach(function(id){ document.getElementById(id).addEventListener("change", scPaintForm); });
+["scH", "scM", "scAt"].forEach(function(id){ document.getElementById(id).addEventListener("input", scPaintForm); });
+document.getElementById("scCancel").addEventListener("click", scCloseAdd);
+scMask.addEventListener("click", function(e){ if(e.target === scMask) scCloseAdd(); });
+scSheet.addEventListener("submit", function(e){
+  e.preventDefault();
+  var t = scFormTarget();
+  if(!t){ scPaintForm(); return; }
+  var now = Date.now(), title = scTitle.value.trim();
+  if(!title){                            /* 没起名字就用时间当名字，列表里也分得清 */
+    title = scKind() === "at" ? scWhen(t) + " 到点" : document.getElementById("scPreview").querySelectorAll("b")[1].textContent.trim() + "倒计时";
+  }
+  sc.items.push({ id: uid(), title: title, target: t, startAt: now, createdAt: now, updatedAt: now });
+  scSave(); queueSync();
+  scCloseAdd();
+  scRender();
+});
+
+/* ---- 点一条：操作面板 ---- */
+var scActMask = document.getElementById("scActMask");
+function scOpenAct(id){
+  var x = scFind(id);
+  if(!x) return;
+  scActId = id;
+  var now = Date.now(), st = scState(x, now);
+  document.getElementById("scActTitle").textContent = x.title || "倒计时";
+  document.getElementById("scActHint").textContent =
+    st === "run" ? scWhen(x.target) + " 到点" : st === "over" ? scWhen(x.target) + " 到点，已经过了" : "已结束";
+  var acts = document.getElementById("scActs");
+  acts.innerHTML = "";
+  function add(text, fn, cls){
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "btn" + (cls ? " " + cls : ""); b.textContent = text;
+    b.addEventListener("click", function(){ fn(x); scCloseAct(); });
+    acts.appendChild(b);
+  }
+  if(st === "over") add("知道了（移到已结束）", function(v){ scAck(v.id); }, "primary");
+  if(st !== "done"){
+    add("延后 10 分钟", function(v){ scSnooze(v, 10); });
+    add("延后 30 分钟", function(v){ scSnooze(v, 30); });
+  }
+  if(st === "run") add("提前完成", function(v){ v.doneAt = Date.now(); scTouch(v); scRender(); });
+  if(st !== "run") add("再来一次（同样时长）", scAgain);
+  add("删除", function(v){ v.deletedAt = Date.now(); scTouch(v); scRender(); }, "btn-danger");
+  scActMask.hidden = false;
+}
+function scCloseAct(){ scActMask.hidden = true; scActId = null; }
+document.getElementById("scActCancel").addEventListener("click", scCloseAct);
+scActMask.addEventListener("click", function(e){ if(e.target === scActMask) scCloseAct(); });
+
+function scAck(id){ var x = scFind(id); if(!x) return; x.doneAt = Date.now(); scTouch(x); scRender(); }
+/* 延后：还没到点的往后挪；已经超时的从现在起算 */
+function scSnooze(x, mins){
+  var now = Date.now();
+  x.target = Math.max(x.target, now) + mins * 60000;
+  delete x.doneAt;
+  scTouch(x); scRender();
+}
+/* 再来一次：按原来的时长，从现在重新开始（"泡面 3 分钟"用完再来一碗） */
+function scAgain(x){
+  var now = Date.now(), dur = Math.max(60000, x.target - x.startAt);
+  x.startAt = now; x.target = now + dur;
+  delete x.doneAt;
+  scTouch(x); scRender();
+}
+
+/* 两张底部弹窗也登记进「下拉关闭」；快速添加填了名字才算有改动，拉掉前问一句 */
+SHEETS.push(
+  {mask: scMask,    sheet: scSheet, close: scCloseAdd, dirty: function(){ return scTitle.value.trim() !== ""; }},
+  {mask: scActMask, sheet: document.getElementById("scActSheet"), close: scCloseAct}
+);
+
+/* ---- 同步：同一个同步码，服务端 space=short 那一份。合并规则和日程完全一样（按 id + updatedAt） ---- */
+async function syncShort(){
+  var r = await fetch("/api/sync?space=short&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
+  if(r.status === 404) return;
+  var data = await r.json();
+  if(!data.ok) throw new Error(data.error || ("短期倒计时读取失败 " + r.status));
+  /* 服务端还是旧版时它会忽略 space、把**日程**数据还回来——不核对就会把两份数据搅在一起 */
+  if(data.space !== "short") return;
+  var remote = (data.doc && data.doc.events) || [];
+  var before = fingerprint(sc.items);
+  var merged = mergeEvents(sc.items, remote);
+  if(fingerprint(merged) !== before){ sc.items = merged; scSave(); scRender(); }
+  if(fingerprint(merged) !== fingerprint(remote)){
+    var pushed = await pushDoc(merged, data.version, "short");
+    if(pushed.conflict){
+      var again = mergeEvents(merged, (pushed.doc && pushed.doc.events) || []);
+      sc.items = again; scSave(); scRender();
+      pushed = await pushDoc(again, pushed.version, "short");
+      if(pushed.conflict) throw new Error("另一台设备正在写入，稍后会自动重试");
+    }
+  }
+}
+
 /* ================= 启动 ================= */
 load();
 loadSync();
@@ -3505,7 +4103,13 @@ viewCard.setAttribute("aria-pressed", state.view === "card" ? "true" : "false");
 viewList.setAttribute("aria-pressed", state.view === "list" ? "true" : "false");
 sortSel.value = state.sort;
 try{ odView = !!(history.state && history.state.od); }catch(e){}   /* 在「只看已过期」里刷新，还留在里面 */
+try{ scView = !!(history.state && history.state.sc); }catch(e){}   /* 短期倒计时同理 */
+scLoad();
+scPurge();
 render();
+scRender();
+scWakeSync();
+scLoop();
 document.getElementById("mSyncState").textContent = sync.on ? "已开启" : "未开启";
 if(sync.on && sync.code){ setSync("syncing"); syncNow(); }
 startSyncLoops();
