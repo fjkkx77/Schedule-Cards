@@ -11,6 +11,12 @@
  *   GET  /api/sync?code=xxxx       → 取回该同步码下的数据 {ok, version, doc}
  *   POST /api/sync  {code, baseVersion, doc}
  *        → baseVersion 与服务端当前版本一致才写入；不一致返回 409 + 服务端最新数据
+ *
+ * 可选参数 space（GET 放在查询串、POST 放在请求体）：同一个同步码下再分出一份**互不相干**的数据。
+ *   不传 / 空串 → 日程卡片本身，存储键和以前完全一样（老页面照常工作）
+ *   "short"     → 「短期倒计时」（2026-09-26 加）
+ * 只认白名单里的值；响应里回传 space，客户端据此确认服务端是新版——
+ * 旧版服务端会忽略 space、把日程数据还回去，客户端要是不核对就会把两份数据合到一起。
  */
 
 const crypto = require("crypto");
@@ -40,9 +46,17 @@ async function redis(command){
   return j.result;
 }
 
-/* 同步码本身不落库，只存它的哈希，拿到数据库也反推不出同步码 */
-function keyOf(code){
-  return "sched:" + crypto.createHash("sha256").update("scv1|" + code).digest("hex").slice(0, 40);
+/* 同步码本身不落库，只存它的哈希，拿到数据库也反推不出同步码。
+   默认分区的键保持原样（改了就等于把所有人已有的数据弄丢） */
+function keyOf(code, space){
+  const h = crypto.createHash("sha256").update("scv1|" + code).digest("hex").slice(0, 40);
+  return space ? "sched:" + space + ":" + h : "sched:" + h;
+}
+
+const SPACES = ["", "short"];
+function cleanSpace(v){
+  const s = String(v == null ? "" : v).trim();
+  return SPACES.indexOf(s) > -1 ? s : null;
 }
 
 function cleanCode(v){
@@ -70,15 +84,18 @@ module.exports = async (req, res) => {
 
       const code = cleanCode(raw);
       if(!code) return send(res, 400, { ok: false, error: "同步码只能是 8~64 位的字母、数字、- 或 _" });
+      const space = cleanSpace(req.query && req.query.space);
+      if(space === null) return send(res, 400, { ok: false, error: "不认识的 space" });
 
-      const val = await redis(["GET", keyOf(code)]);
-      if(!val) return send(res, 200, { ok: true, version: 0, doc: { events: [] }, empty: true });
+      const val = await redis(["GET", keyOf(code, space)]);
+      if(!val) return send(res, 200, { ok: true, space, version: 0, doc: { events: [] }, empty: true });
 
       let parsed;
       try{ parsed = JSON.parse(val); }
       catch(e){ return send(res, 500, { ok: false, error: "服务端数据损坏" }); }
       return send(res, 200, {
         ok: true,
+        space,
         version: parsed.version || 0,
         updatedAt: parsed.updatedAt || 0,
         doc: { events: Array.isArray(parsed.events) ? parsed.events : [] }
@@ -96,6 +113,8 @@ module.exports = async (req, res) => {
 
       const code = cleanCode(body.code);
       if(!code) return send(res, 400, { ok: false, error: "同步码只能是 8~64 位的字母、数字、- 或 _" });
+      const space = cleanSpace(body.space);
+      if(space === null) return send(res, 400, { ok: false, error: "不认识的 space" });
 
       const events = body.doc && Array.isArray(body.doc.events) ? body.doc.events : null;
       if(!events) return send(res, 400, { ok: false, error: "缺少 doc.events" });
@@ -106,7 +125,7 @@ module.exports = async (req, res) => {
         return send(res, 413, { ok: false, error: "数据超过 400KB 上限" });
       }
 
-      const key = keyOf(code);
+      const key = keyOf(code, space);
       const cur = await redis(["GET", key]);
       let curVersion = 0, curDoc = { events: [] };
       if(cur){
@@ -120,7 +139,7 @@ module.exports = async (req, res) => {
       const base = Number(body.baseVersion || 0);
       if(base !== curVersion){
         /* 另一台设备抢先写了：把最新版还给客户端，让它重新合并后再来一次 */
-        return send(res, 409, { ok: false, conflict: true, version: curVersion, doc: curDoc });
+        return send(res, 409, { ok: false, conflict: true, space, version: curVersion, doc: curDoc });
       }
 
       const next = {
@@ -129,7 +148,7 @@ module.exports = async (req, res) => {
         events: events
       };
       await redis(["SET", key, JSON.stringify(next), "EX", String(TTL_SECONDS)]);
-      return send(res, 200, { ok: true, version: next.version, updatedAt: next.updatedAt });
+      return send(res, 200, { ok: true, space, version: next.version, updatedAt: next.updatedAt });
     }
 
     res.setHeader("Allow", "GET, POST");
