@@ -324,7 +324,11 @@ select.sort{
 .od-go{flex:0 0 auto;display:flex;align-items:center;gap:3px;font-size:15px}
 .od-go i{font-style:normal;font-size:20px;line-height:1}
 /* 「只看已过期」的标题行：复用置顶区的色条标题，色条换成过期红；工具条和＋在这个视图里不出现 */
-.od-head{--gc:var(--lsw-del-fg);margin:0 2px 10px;width:auto}
+/* 必须写成 .group-head.od-head：只写 .od-head 的话，后面那条同优先级的 .group-head{margin:0;width:100%}
+   会把这里盖掉，「完成」按钮就直接贴在第一张卡上（2026-09-26 用户截图指出）。
+   下边距 14 = 主页工具条到第一张卡的距离，两个视图切换时卡片起点不跳 */
+.group-head.od-head{--gc:var(--lsw-del-fg);margin:0 2px 14px;padding-right:0;width:auto}
+/* 右内边距归零：「完成」的右边和上面 ⋯、主页排序框同一条线（都是距内容边 2px） */
 .od-head .g-name{flex:0 1 auto}
 .od-done{
   margin-left:auto;flex:0 0 auto;min-height:44px;padding:0 18px;border:0;border-radius:12px;
