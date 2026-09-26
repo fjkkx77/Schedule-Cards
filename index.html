@@ -374,24 +374,32 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
 .sc-num .sc-pre{font-size:14px;font-weight:800;color:inherit;margin-right:8px}
 
 .sc-card{
-  display:block;width:100%;text-align:left;font:inherit;color:inherit;border:0;
-  background:var(--surface);border-radius:20px;box-shadow:var(--shadow);
-  padding:14px 18px 16px;margin:0 0 12px;
-  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
-  transition:transform .18s var(--spring);
+  --c:#2f86f6;--cd:#2670d0;
+  position:relative;display:block;width:100%;text-align:left;color:inherit;
+  background:var(--surface);border-radius:var(--radius-card);box-shadow:var(--shadow);
+  overflow:hidden;margin:0 0 12px;cursor:pointer;
+  touch-action:pan-y pinch-zoom;              /* 横向手势归左滑，纵向照常滚动 */
+  -webkit-tap-highlight-color:transparent;
 }
-.sc-card:active{transform:scale(.985)}
+.sc-card:active{filter:brightness(.97)}       /* 不用 transform：左滑靠行内 transform 平移，别互相打架 */
+.sc-body{display:flex;align-items:center;gap:12px;padding:14px 18px 16px}
+.sc-main{flex:1 1 auto;min-width:0}
 .sc-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
 .sc-title{font-size:18px;font-weight:800;color:var(--text);min-width:0;overflow-wrap:anywhere}
 .sc-sub{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--text-3)}
 .sc-bar{height:6px;border-radius:99px;background:var(--surface-2);margin-top:12px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
-.sc-bar span{display:block;height:100%;border-radius:99px;background:#2f86f6;transition:width .9s linear}
-.sc-card.warm .sc-bar span{background:#ef7d20}                  /* 1 小时内 */
-.sc-card.hot .sc-bar span{background:#e0483d}                   /* 10 分钟内 */
-.sc-card.hot .sc-num b{color:#e0483d}
-/* 已超时：沿用过期提示条那套淡红，一眼和"还在跑的"分开 */
-.sc-card.over{background:var(--lsw-del-bg);box-shadow:none;display:flex;align-items:center;gap:12px}
-.sc-card.over .sc-main{flex:1 1 auto;min-width:0}
+.sc-bar span{display:block;height:100%;border-radius:99px;background:var(--c);transition:width .9s linear}
+.sc-card.hot .sc-num b{color:#e0483d !important}                /* 10 分钟内：不管卡片是什么色，数字一律变红 */
+
+/* 配色（2026-09-26 用户嫌「太素，不像日程卡片那样有很多颜色」，从三套里选的「B 白卡 + 左侧彩色竖条」）：
+   竖条和进度条用卡片自己的颜色；数字 = 卡片色往文字色里混 22%——浅色模式下是略深的同色（≈ 图上那样），
+   深色模式下自动变亮。原先用固定加深的 --cd，深色背景上蓝、紫的数字发暗看不清 */
+.sc-card.run::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--c)}
+.sc-card.run .sc-body{padding-left:24px}
+.sc-card.run .sc-num b{color:color-mix(in srgb, var(--c) 78%, var(--text))}
+
+/* 已超时：一律用过期提示条那套淡红，一眼和"还在跑的"分开 */
+.sc-card.over{background:var(--lsw-del-bg);box-shadow:none}
 .sc-card.over .sc-title,.sc-card.over .sc-num b,.sc-card.over .sc-num i,.sc-card.over .sc-num .sc-pre{color:var(--lsw-del-fg)}
 .sc-ack{
   flex:0 0 auto;min-height:44px;padding:0 14px;border:0;border-radius:12px;
@@ -399,7 +407,8 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
   box-shadow:var(--shadow-sm);touch-action:manipulation;
 }
 /* 已结束：灰掉、变矮，只是留个底，第二天自动清掉 */
-.sc-card.done{padding:12px 18px;box-shadow:var(--shadow-sm);opacity:.72}
+.sc-card.done{box-shadow:var(--shadow-sm);opacity:.72}
+.sc-card.done .sc-body{padding:12px 18px}
 .sc-card.done .sc-title{font-size:16px;color:var(--text-2);text-decoration:line-through;text-decoration-color:var(--text-3)}
 .sc-card.done .sc-top{margin:0}
 .sc-fold{
@@ -430,10 +439,9 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
 .sc-preview{margin:14px 2px 0;min-height:20px;font-size:14px;color:var(--text-2)}
 .sc-preview b{color:var(--text)}
 .sc-preview.bad{color:#e0483d}
-/* 点一条之后的操作列表 */
-.sc-acts{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.sc-acts .btn, .sc-act-cancel{width:100%}
-.sc-act-cancel{margin-top:14px}
+/* 编辑时顶部那排常用动作 */
+.sc-quick{margin:-4px 0 16px}
+.sc-color-field{margin:14px 0 0}
 
 /* ============ 分组堆叠 ============ */
 /* 分组标题 = 小节标题（2026-09-13 用户嫌原来 14px 灰字"太素、没存在感"，从三套方案里选的「色条小节标题」）：
@@ -1135,22 +1143,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   </div>
 </div>
 
-<!-- 下滑关闭时有没保存的改动：先问一句（苹果 HIG 对 sheet 的要求） -->
-<div class="mask" id="dcMask" hidden>
-  <div class="sheet" id="dcSheet" role="alertdialog" aria-labelledby="dcTitle">
-    <h2 id="dcTitle">放弃这次修改？</h2>
-    <p class="hint" style="margin-top:0">改动还没保存，关掉就没了。</p>
-    <div class="actions">
-      <button type="button" class="btn" id="dcKeep">继续编辑</button>
-      <button type="button" class="btn btn-danger" id="dcDrop">放弃修改</button>
-    </div>
-  </div>
-</div>
-
 <!-- 短期倒计时 · 快速添加 -->
 <div class="mask" id="scMask" hidden>
   <form class="sheet" id="scSheet" autocomplete="off">
-    <h2>新的倒计时</h2>
+    <h2 id="scSheetTitle">新的倒计时</h2>
+    <!-- 编辑已有的一条时才出现：常用的几个动作一点就走 -->
+    <div class="sc-chips sc-quick" id="scQuick" hidden></div>
     <div class="field">
       <label for="scTitle">名称</label>
       <input type="text" id="scTitle" maxlength="40" placeholder="比如：开会、泡面好了" enterkeyhint="done">
@@ -1176,20 +1174,40 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <input type="time" id="scAt" class="sc-time" aria-label="几点">
     </div>
     <p class="sc-preview" id="scPreview"></p>
+    <div class="field sc-color-field">
+      <label>颜色</label>
+      <div class="colors" id="scColors"></div>
+    </div>
     <div class="actions">
       <button type="button" class="btn" id="scCancel">取消</button>
       <button type="submit" class="btn primary" id="scStart">开始倒计时</button>
     </div>
+    <div class="danger-row" id="scDelRow" hidden>
+      <button type="button" class="btn btn-danger" id="scDel">删除这条倒计时</button>
+    </div>
   </form>
 </div>
 
-<!-- 短期倒计时 · 点一条之后的操作（Apple 的 action sheet 写法：一列按钮 + 取消） -->
-<div class="mask" id="scActMask" hidden>
-  <div class="sheet" id="scActSheet" role="dialog" aria-labelledby="scActTitle">
-    <h2 id="scActTitle"></h2>
-    <p class="hint" id="scActHint" style="margin-top:-8px"></p>
-    <div class="sc-acts" id="scActs"></div>
-    <button type="button" class="btn sc-act-cancel" id="scActCancel">取消</button>
+<!-- 短期倒计时 · 删除确认（和日程的左滑删除一样先问一句） -->
+<div class="mask" id="scCfMask" hidden>
+  <div class="sheet" id="scCfSheet" role="alertdialog" aria-labelledby="scCfTitle">
+    <h2 id="scCfTitle">删除这条倒计时？</h2>
+    <div class="actions">
+      <button type="button" class="btn" id="scCfCancel">取消</button>
+      <button type="button" class="btn btn-danger" id="scCfOk">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 下滑关闭时有没保存的改动：先问一句（苹果 HIG 对 sheet 的要求） -->
+<div class="mask" id="dcMask" hidden>
+  <div class="sheet" id="dcSheet" role="alertdialog" aria-labelledby="dcTitle">
+    <h2 id="dcTitle">放弃这次修改？</h2>
+    <p class="hint" style="margin-top:0">改动还没保存，关掉就没了。</p>
+    <div class="actions">
+      <button type="button" class="btn" id="dcKeep">继续编辑</button>
+      <button type="button" class="btn btn-danger" id="dcDrop">放弃修改</button>
+    </div>
   </div>
 </div>
 
@@ -3594,7 +3612,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scActMask && !scActMask.hidden) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
+  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -3717,7 +3735,6 @@ var sc = { items: [] };
 var scView = false;           /* 是否处于短期倒计时界面 */
 var scScrollY = 0;
 var scShowDone = false;       /* 「已结束」是否展开 */
-var scActId = null;           /* 操作面板正对着哪一条 */
 var scDayKey = "";            /* 上次清理时是哪一天 */
 var scKey = "";               /* 上次整块重建时各条所处的状态，变了才重建，没变只改数字 */
 
@@ -3779,7 +3796,6 @@ function scWhen(ts){
   if(dd === t0 - 86400000) return "昨天 " + hm;
   return (d.getMonth() + 1) + "月" + d.getDate() + "日 " + hm;
 }
-function scHeat(ms){ return ms <= 10 * 60000 ? "hot" : (ms <= 60 * 60000 ? "warm" : ""); }
 function scPct(x, now){
   var span = x.target - x.startAt;
   if(span <= 0) return 100;
@@ -3800,21 +3816,27 @@ function scPaintBadge(now){
     "短期倒计时" + (n ? "，" + c.run + " 条进行中" + (c.over ? "，" + c.over + " 条已超时" : "") : ""));
 }
 
+/* 一张卡：左侧彩色竖条 + 标题 + 大数字 + 进度条。颜色走 --c，和日程卡片同一套色板。
+   整张卡是个 div（已超时的卡里还有「知道了」按钮，button 里不能套 button），用 role=button 保住可点的语义 */
 function scCard(x, st, now){
-  var el = document.createElement(st === "over" ? "div" : "button");
-  if(st !== "over") el.type = "button";
-  el.className = "sc-card" + (st === "over" ? " over" : st === "done" ? " done" : "");
+  var el = document.createElement("div");
+  el.className = "sc-card " + st;
   el.setAttribute("data-sc", x.id);
-  var main = st === "over" ? document.createElement("div") : el;
-  if(st === "over"){ main.className = "sc-main"; el.appendChild(main); }
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  var c = x.color || COLORS[0];
+  el.style.setProperty("--c", c);
 
+  var when = scWhen(x.target);
+
+  var body = document.createElement("div"); body.className = "sc-body";
+  var main = document.createElement("div"); main.className = "sc-main";
   var top = document.createElement("div"); top.className = "sc-top";
   var tt = document.createElement("span"); tt.className = "sc-title"; tt.textContent = x.title || "倒计时";
   var sub = document.createElement("span"); sub.className = "sc-sub";
-  sub.textContent = st === "done" ? (x.doneAt < x.target ? "提前完成" : "已结束") + " · " + scWhen(x.target)
-                                  : scWhen(x.target) + (st === "over" ? " 到点" : "");
+  sub.textContent = st === "done" ? (x.doneAt < x.target ? "提前完成" : "已结束") + " · " + when
+                                  : (x.pinned ? "📌 " : "") + when;
   top.appendChild(tt); top.appendChild(sub); main.appendChild(top);
-
   if(st !== "done"){
     var num = document.createElement("div"); num.className = "sc-num";
     main.appendChild(num);
@@ -3824,15 +3846,17 @@ function scCard(x, st, now){
       main.appendChild(bar);
     }
   }
+  body.appendChild(main);
   if(st === "over"){
     var ack = document.createElement("button");
     ack.type = "button"; ack.className = "sc-ack"; ack.textContent = "知道了";
     ack.addEventListener("click", function(e){ e.stopPropagation(); scAck(x.id); });
-    el.appendChild(ack);
-    main.addEventListener("click", function(){ scOpenAct(x.id); });
-  }else{
-    el.addEventListener("click", function(){ scOpenAct(x.id); });
+    body.appendChild(ack);
   }
+  el.appendChild(body);
+  /* 点卡片 = 编辑（和日程卡片一样）；左滑 = 置顶 / 删除 */
+  el.addEventListener("click", function(){ scOpenEdit(x.id); });
+  el.addEventListener("keydown", function(e){ if(e.key === "Enter" || e.key === " "){ e.preventDefault(); scOpenEdit(x.id); } });
   return el;
 }
 
@@ -3842,7 +3866,7 @@ function scTick(){
   if(ymd(today()) !== scDayKey){ scPurge(); scRender(); return; }
   scPaintBadge(now);
   if(!scView) return;
-  var key = scLive().map(function(x){ return x.id + scState(x, now); }).join("|");
+  var key = scLive().map(function(x){ return x.id + scState(x, now) + (x.pinned ? "p" : ""); }).join("|");
   if(key !== scKey){ scRender(); return; }
   var cards = document.querySelectorAll("#scList [data-sc]");
   for(var i = 0; i < cards.length; i++) scPaintCard(cards[i], now);
@@ -3854,9 +3878,7 @@ function scPaintCard(el, now){
   if(st === "run"){
     var left = scLeft(x, now);
     scPaintNum(num, left);
-    el.classList.remove("hot", "warm");
-    var heat = scHeat(left);
-    if(heat) el.classList.add(heat);
+    el.classList.toggle("hot", left <= 10 * 60000);   /* 10 分钟内数字变红；进度条用卡片自己的颜色 */
     el.querySelector(".sc-bar span").style.width = scPct(x, now).toFixed(2) + "%";
   }else if(st === "over"){
     scPaintNum(num, now - x.target, "已超时");
@@ -3872,10 +3894,12 @@ function scRender(){
   btn.setAttribute("aria-pressed", scView ? "true" : "false");
   if(!scView){ scKey = ""; return; }
 
+  if(scSwipe) scSwipe.forget();          /* 整块重建，之前滑开的那张已经不在了 */
   var live = scLive();
-  scKey = live.map(function(x){ return x.id + scState(x, now); }).join("|");
-  var over = [], run = [], done = [];
-  live.forEach(function(x){ var st = scState(x, now); (st === "over" ? over : st === "run" ? run : done).push(x); });
+  scKey = live.map(function(x){ return x.id + scState(x, now) + (x.pinned ? "p" : ""); }).join("|");
+  var over = [], pins = [], run = [], done = [];
+  live.forEach(function(x){ var st = scState(x, now); (st === "over" ? over : st === "done" ? done : x.pinned ? pins : run).push(x); });
+  pins.sort(function(a, b){ return a.target - b.target; });
   over.sort(function(a, b){ return b.target - a.target; });          /* 刚超时的在上 */
   run.sort(function(a, b){ return a.target - b.target || (a.createdAt || 0) - (b.createdAt || 0); });  /* 先到的在上 */
   done.sort(function(a, b){ return (b.doneAt || 0) - (a.doneAt || 0); });
@@ -3890,6 +3914,7 @@ function scRender(){
   }
   function sec(text){ var h = document.createElement("div"); h.className = "sc-sec"; h.textContent = text; box.appendChild(h); }
   if(over.length){ sec("已超时 · " + over.length); over.forEach(function(x){ box.appendChild(scCard(x, "over", now)); }); }
+  if(pins.length){ sec("📌 置顶 · " + pins.length); pins.forEach(function(x){ box.appendChild(scCard(x, "run", now)); }); }
   if(run.length){ sec("进行中 · " + run.length); run.forEach(function(x){ box.appendChild(scCard(x, "run", now)); }); }
   if(done.length){
     var f = document.createElement("button");
@@ -3971,14 +3996,28 @@ document.getElementById("scWake").addEventListener("click", function(){
 document.addEventListener("visibilitychange", scWakeSync);
 });
 
-/* ---- 快速添加 ---- */
+/* ---- 添加 / 编辑（同一张弹窗） ----
+   2026-09-26 用户反馈「只能设置一次时间，之后改不了，设错了怎么办」：点卡片 = 编辑，名称、时间、颜色都能改，
+   常用动作（延后 / 提前完成 / 再来一次）放在弹窗顶部一点就走，删除在最下面 */
 var scMask = document.getElementById("scMask");
 var scSheet = document.getElementById("scSheet");
 var scTitle = document.getElementById("scTitle");
 var scAt = document.getElementById("scAt");
 var scMin = 30;               /* 「多久后」当前选的分钟数；"custom" 表示用下面两个输入框 */
+var scEditId = null;          /* 正在编辑哪一条；null = 新建 */
+var scTimeTouched = false;    /* 编辑时动没动过时间：没动就保持原来的到点时刻，不重新计时 */
+var scOrig = "";              /* 打开时的表单快照，用来判断下拉关闭前要不要问一句 */
 
 function scKind(){ return document.getElementById("scKindAt").checked ? "at" : "in"; }
+function scPickedColor(){ var r = scSheet.querySelector('input[name="scColor"]:checked'); return r ? r.value : COLORS[0]; }
+function scSetColor(c){ var r = scSheet.querySelector('input[name="scColor"][value="' + c + '"]'); if(r) r.checked = true; }
+/* 新建时默认颜色：按条数在色板里轮换，一屏卡片自然就是彩色的 */
+function scNextColor(){ return COLORS[scLive().filter(function(x){ return !x.doneAt; }).length % COLORS.length]; }
+function scFormSnap(){
+  return JSON.stringify([scTitle.value.trim(), scPickedColor(), scKind(), scMin, scAt.value,
+    document.getElementById("scH").value, document.getElementById("scM").value]);
+}
+
 /* 按当前表单算出到点时刻；算不出来返回 null */
 function scFormTarget(){
   var now = Date.now();
@@ -3998,97 +4037,158 @@ function scFormTarget(){
   if(!(mins > 0)) return null;
   return now + mins * 60000;
 }
+function scDur(ms){
+  var mins = Math.round(ms / 60000), h = Math.floor(mins / 60), m = mins % 60;
+  return ((h ? h + " 小时 " : "") + (m || !h ? m + " 分钟" : "")).trim();
+}
 function scPaintForm(){
   var inMode = scKind() === "in";
   document.getElementById("scPaneIn").hidden = !inMode;
   document.getElementById("scPaneAt").hidden = inMode;
   [].forEach.call(document.querySelectorAll("#scChips button"), function(b){
-    var v = b.getAttribute("data-min");
-    b.classList.toggle("on", String(scMin) === v);
+    b.classList.toggle("on", String(scMin) === b.getAttribute("data-min"));
   });
   document.getElementById("scCustom").hidden = scMin !== "custom";
-  var t = scFormTarget(), pv = document.getElementById("scPreview");
+  var pv = document.getElementById("scPreview"), x = scEditId && scFind(scEditId);
+  if(x && !scTimeTouched){                 /* 编辑但还没动时间：说清楚现在是几点到，动了才会变 */
+    pv.classList.remove("bad");
+    pv.innerHTML = "现在是 <b></b> 到点；改上面的时间才会重新计时";
+    pv.querySelector("b").textContent = scWhen(x.target);
+    return;
+  }
+  var t = scFormTarget();
   pv.classList.toggle("bad", !t);
   if(!t){ pv.textContent = inMode ? "填一下几小时几分钟" : "选一个时刻"; return; }
   pv.innerHTML = "将在 <b></b> 到点，还有 <b></b>";
   var bs = pv.querySelectorAll("b");
   bs[0].textContent = scWhen(t);
-  var mins = Math.round((t - Date.now()) / 60000), h = Math.floor(mins / 60), m = mins % 60;
-  bs[1].textContent = ((h ? h + " 小时 " : "") + (m || !h ? m + " 分钟" : "")).trim();
+  bs[1].textContent = scDur(t - Date.now());
 }
-function scOpenAdd(){
-  scTitle.value = "";
+function scResetTimeFields(){
   document.getElementById("scKindIn").checked = true;
   scMin = 30;
   document.getElementById("scH").value = ""; document.getElementById("scM").value = "";
   var d = new Date(Date.now() + 60 * 60000);            /* 「到点」默认一小时后，取整到 5 分钟 */
   d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
   scAt.value = pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+function scOpenAdd(){
+  scEditId = null; scTimeTouched = true;
+  document.getElementById("scSheetTitle").textContent = "新的倒计时";
+  document.getElementById("scStart").textContent = "开始倒计时";
+  document.getElementById("scQuick").hidden = true;
+  document.getElementById("scDelRow").hidden = true;
+  scTitle.value = "";
+  scResetTimeFields();
+  scSetColor(scNextColor());
   scPaintForm();
+  scOrig = scFormSnap();
   scMask.hidden = false;
   scTitle.focus();       /* 必须在 click 里同步调用，iOS 才会弹键盘（移动端配方 §2） */
 }
-function scCloseAdd(){ scMask.hidden = true; if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+function scOpenEdit(id){
+  var x = scFind(id);
+  if(!x) return;
+  if(scSwipe) scSwipe.close(false);
+  scEditId = id; scTimeTouched = false;
+  var st = scState(x, Date.now());
+  document.getElementById("scSheetTitle").textContent = "编辑倒计时";
+  document.getElementById("scStart").textContent = "保存";
+  document.getElementById("scDelRow").hidden = false;
+  scTitle.value = x.title || "";
+  scResetTimeFields();
+  /* 时间栏预先摆成「到点 + 原来的钟点」，改钟点就是改到点时刻；想从现在重新算就切到「多久后」 */
+  document.getElementById("scKindAt").checked = true;
+  var d = new Date(x.target);
+  scAt.value = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  scSetColor(x.color || COLORS[0]);
+  /* 常用动作 */
+  var q = document.getElementById("scQuick");
+  q.innerHTML = "";
+  function add(text, fn){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = text;
+    b.addEventListener("click", function(){ var v = scFind(id); if(v) fn(v); scCloseAdd(); });
+    q.appendChild(b);
+  }
+  if(st === "over") add("知道了", function(v){ scAck(v.id); });
+  if(st !== "done"){ add("延后 10 分钟", function(v){ scSnooze(v, 10); }); add("延后 30 分钟", function(v){ scSnooze(v, 30); }); }
+  if(st === "run") add("提前完成", function(v){ v.doneAt = Date.now(); scTouch(v); scRender(); });
+  if(st !== "run") add("再来一次", scAgain);
+  q.hidden = false;
+  scPaintForm();
+  scOrig = scFormSnap();
+  scMask.hidden = false;
+}
+function scCloseAdd(){
+  scMask.hidden = true; scEditId = null;
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+function scTouchTime(){ scTimeTouched = true; scPaintForm(); }
+
+/* ---- 删除确认 ---- */
+var scCfMask = document.getElementById("scCfMask");
+var scCfId = null;
+function scCfOpen(id){
+  var x = scFind(id);
+  if(!x) return;
+  scCfId = id;
+  document.getElementById("scCfTitle").textContent = "删除「" + (x.title || "倒计时") + "」？";
+  scCfMask.hidden = false;
+}
+function scCfClose(){ scCfMask.hidden = true; scCfId = null; if(scSwipe) scSwipe.close(true); }
+
 scSafe(function(){
+COLORS.forEach(function(c, i){
+  var input = document.createElement("input");
+  input.type = "radio"; input.name = "scColor"; input.value = c; input.id = "scClr" + i;
+  var label = document.createElement("label");
+  label.setAttribute("for", "scClr" + i); label.style.background = c; label.title = c;
+  var box = document.getElementById("scColors");
+  box.appendChild(input); box.appendChild(label);
+});
 document.getElementById("scChips").addEventListener("click", function(e){
   var b = e.target.closest("button[data-min]");
   if(!b) return;
   var v = b.getAttribute("data-min");
   scMin = v === "custom" ? "custom" : +v;
-  scPaintForm();
+  scTouchTime();
   if(v === "custom") document.getElementById("scH").focus();
 });
-["scKindIn", "scKindAt"].forEach(function(id){ document.getElementById(id).addEventListener("change", scPaintForm); });
-["scH", "scM", "scAt"].forEach(function(id){ document.getElementById(id).addEventListener("input", scPaintForm); });
+["scKindIn", "scKindAt"].forEach(function(id){ document.getElementById(id).addEventListener("change", scTouchTime); });
+["scH", "scM", "scAt"].forEach(function(id){ document.getElementById(id).addEventListener("input", scTouchTime); });
 document.getElementById("scCancel").addEventListener("click", scCloseAdd);
 scMask.addEventListener("click", function(e){ if(e.target === scMask) scCloseAdd(); });
 scSheet.addEventListener("submit", function(e){
   e.preventDefault();
-  var t = scFormTarget();
+  var now = Date.now(), x = scEditId && scFind(scEditId);
+  var t = (x && !scTimeTouched) ? x.target : scFormTarget();
   if(!t){ scPaintForm(); return; }
-  var now = Date.now(), title = scTitle.value.trim();
+  var title = scTitle.value.trim();
   if(!title){                            /* 没起名字就用时间当名字，列表里也分得清 */
-    title = scKind() === "at" ? scWhen(t) + " 到点" : document.getElementById("scPreview").querySelectorAll("b")[1].textContent.trim() + "倒计时";
+    title = scKind() === "at" ? scWhen(t) + " 到点" : scDur(t - now) + "倒计时";
   }
-  sc.items.push({ id: uid(), title: title, target: t, startAt: now, createdAt: now, updatedAt: now });
-  scSave(); queueSync();
+  if(x){
+    x.title = title; x.color = scPickedColor();
+    if(scTimeTouched && t !== x.target){ x.target = t; x.startAt = now; delete x.doneAt; }   /* 改了时间：从现在重新算进度 */
+    scTouch(x);
+  }else{
+    sc.items.push({ id: uid(), title: title, color: scPickedColor(), target: t, startAt: now, createdAt: now, updatedAt: now });
+    scSave(); queueSync();
+  }
   scCloseAdd();
   scRender();
 });
+document.getElementById("scDel").addEventListener("click", function(){ if(scEditId) scCfOpen(scEditId); });
+document.getElementById("scCfCancel").addEventListener("click", scCfClose);
+scCfMask.addEventListener("click", function(e){ if(e.target === scCfMask) scCfClose(); });
+document.getElementById("scCfOk").addEventListener("click", function(){
+  var x = scCfId && scFind(scCfId);
+  scCfMask.hidden = true; scCfId = null;
+  if(scSwipe) scSwipe.close(false);
+  if(!scMask.hidden) scCloseAdd();       /* 从编辑弹窗里点的删除：一起关掉 */
+  if(x){ x.deletedAt = Date.now(); scTouch(x); scRender(); }
 });
-
-/* ---- 点一条：操作面板 ---- */
-var scActMask = document.getElementById("scActMask");
-function scOpenAct(id){
-  var x = scFind(id);
-  if(!x) return;
-  scActId = id;
-  var now = Date.now(), st = scState(x, now);
-  document.getElementById("scActTitle").textContent = x.title || "倒计时";
-  document.getElementById("scActHint").textContent =
-    st === "run" ? scWhen(x.target) + " 到点" : st === "over" ? scWhen(x.target) + " 到点，已经过了" : "已结束";
-  var acts = document.getElementById("scActs");
-  acts.innerHTML = "";
-  function add(text, fn, cls){
-    var b = document.createElement("button");
-    b.type = "button"; b.className = "btn" + (cls ? " " + cls : ""); b.textContent = text;
-    b.addEventListener("click", function(){ fn(x); scCloseAct(); });
-    acts.appendChild(b);
-  }
-  if(st === "over") add("知道了（移到已结束）", function(v){ scAck(v.id); }, "primary");
-  if(st !== "done"){
-    add("延后 10 分钟", function(v){ scSnooze(v, 10); });
-    add("延后 30 分钟", function(v){ scSnooze(v, 30); });
-  }
-  if(st === "run") add("提前完成", function(v){ v.doneAt = Date.now(); scTouch(v); scRender(); });
-  if(st !== "run") add("再来一次（同样时长）", scAgain);
-  add("删除", function(v){ v.deletedAt = Date.now(); scTouch(v); scRender(); }, "btn-danger");
-  scActMask.hidden = false;
-}
-function scCloseAct(){ scActMask.hidden = true; scActId = null; }
-scSafe(function(){
-document.getElementById("scActCancel").addEventListener("click", scCloseAct);
-scActMask.addEventListener("click", function(e){ if(e.target === scActMask) scCloseAct(); });
 });
 
 function scAck(id){ var x = scFind(id); if(!x) return; x.doneAt = Date.now(); scTouch(x); scRender(); }
@@ -4107,11 +4207,150 @@ function scAgain(x){
   scTouch(x); scRender();
 }
 
-/* 两张底部弹窗也登记进「下拉关闭」；快速添加填了名字才算有改动，拉掉前问一句 */
+/* ---- 左滑：置顶 / 删除（2026-09-26 用户反馈手机上没有）----
+   用存档里的 iOS 手势组件 SwipeActions（references/组件_iOS手势，参数与坑见 feedback-ios-gesture-recipe），
+   按钮样式、图标和日程卡片的左滑是同一套（用户选定的淡色调） */
+/* ================= 组件 JS ①：左滑操作（原样取自 references/组件_iOS手势/ios-gestures.html） ================= */
+function SwipeActions(o){
+  var DEAD = 10;          /* 起手死区 */
+  var EDGE = 28;          /* 屏幕左右边缘让给系统手势 */
+  var OVER = 0.3;         /* 拉过头的阻尼 */
+  var OPEN_AT = 0.35;     /* 从关着拉开：过按钮总宽的 35% 就停在打开；从开着推回：推回超过 35% 就收起 */
+  var g = null, open = null, eatUntil = 0;
+
+  /* 滑完浏览器可能补一个 click。守卫必须自己过期（450ms）：preventDefault 过 touchmove 后
+     浏览器往往根本不补 click，挂着不走会把下一次真实点击吃掉。按钮层上的点击永远放行 */
+  function eat(){ eatUntil = Date.now() + 450; }
+  document.addEventListener("click", function(e){
+    if(eatUntil && Date.now() < eatUntil && !e.target.closest(".lsw-acts")){
+      eatUntil = 0; e.stopPropagation(); e.preventDefault();
+    }
+  }, true);
+
+  function set(el, x, anim){
+    el.classList.toggle("lsw-anim", !!anim);
+    el.style.transform = x ? "translate3d(" + x.toFixed(1) + "px,0,0)" : "";
+  }
+  /* 按钮层只在滑动时临时插进 DOM（插在条目前面，靠 DOM 顺序被条目盖住），收回就拆掉 */
+  function mount(el){
+    var host = el.parentElement, list = o.actions(el);
+    if(!host || !list || !list.length) return null;
+    if(getComputedStyle(host).position === "static") host.style.position = "relative";
+    var acts = document.createElement("div");
+    acts.className = "lsw-acts";
+    list.forEach(function(a){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "lsw-btn " + (a.cls || "");
+      b.innerHTML = (a.icon || "") + '<span class="lsw-txt"></span>';
+      b.querySelector(".lsw-txt").textContent = a.label;
+      b.addEventListener("click", function(){ a.onClick(el); });
+      acts.appendChild(b);
+    });
+    acts.style.top = el.offsetTop + "px";
+    acts.style.height = el.offsetHeight + "px";
+    acts.style.right = (host.clientWidth - el.offsetLeft - el.offsetWidth) + "px";
+    host.insertBefore(acts, el);
+    return {acts:acts, w:acts.offsetWidth + 8};     /* 条目停在：按钮总宽 + 8px 缝 */
+  }
+  function close(anim){
+    if(!open) return;
+    var x = open; open = null;
+    x.acts.classList.remove("is-open");
+    if(anim === false){ set(x.el, 0, false); x.acts.remove(); return; }
+    set(x.el, 0, true);
+    setTimeout(function(){
+      if(open && open.acts === x.acts) return;
+      x.el.classList.remove("lsw-anim"); x.acts.remove();
+    }, 320);
+  }
+
+  document.addEventListener("touchstart", function(e){
+    g = null;
+    if(e.touches.length !== 1 || (o.blocked && o.blocked())) return;
+    var t = e.target;
+    if(open && t.closest(".lsw-acts")) return;               /* 点露出来的按钮，交给它的 click */
+    var el = t.closest(o.item);
+    if(el && !o.root.contains(el)) el = null;
+    if(open && open.el !== el){                               /* 点别处先收回；点的是另一条就只算收回 */
+      close(true); if(el) eat(); return;
+    }
+    if(!el || (o.canSwipe && !o.canSwipe(el))) return;
+    var x = e.touches[0].clientX, vw = document.documentElement.clientWidth;
+    var fromOpen = !!(open && open.el === el);
+    if(!fromOpen && (x < EDGE || x > vw - EDGE)) return;
+    g = {el:el, x0:x, y0:e.touches[0].clientY, fromOpen:fromOpen, locked:false, pos:0, w:0, acts:null};
+  }, {passive:true});
+
+  document.addEventListener("touchmove", function(e){
+    if(!g || !e.touches[0]) return;
+    var dx = e.touches[0].clientX - g.x0, dy = e.touches[0].clientY - g.y0;
+    if(!g.locked){
+      if(Math.abs(dx) < DEAD && Math.abs(dy) < DEAD) return;
+      if(Math.abs(dx) <= Math.abs(dy)){ if(g.fromOpen) close(true); g = null; return; }   /* 纵向不归我 */
+      if(!g.fromOpen && dx > 0){ g = null; return; }                                    /* 关着的往右滑没意义 */
+      g.locked = true;
+      if(o.onLock) o.onLock();
+      if(g.fromOpen){ g.acts = open.acts; g.w = open.w; open = null; }
+      else{ var m = mount(g.el); if(!m){ g = null; return; } g.acts = m.acts; g.w = m.w; }
+      g.acts.classList.remove("is-open");
+    }
+    e.preventDefault();
+    var pos = (g.fromOpen ? -g.w : 0) + dx;
+    if(pos > 0) pos = pos * OVER;
+    else if(pos < -g.w) pos = -g.w + (pos + g.w) * OVER;
+    g.pos = pos;
+    set(g.el, pos, false);
+  }, {passive:false});
+
+  function end(cancel){
+    if(!g) return;
+    var x = g; g = null;
+    if(!x.locked){ if(x.fromOpen && !cancel){ close(true); eat(); } return; }   /* 轻点开着的那条 = 收回 */
+    eat();
+    var stay = !cancel && (x.fromOpen ? x.pos < -x.w * (1 - OPEN_AT) : x.pos < -x.w * OPEN_AT);
+    open = {el:x.el, acts:x.acts, w:x.w};
+    if(stay){ set(x.el, -x.w, true); x.acts.classList.add("is-open"); }
+    else close(true);
+  }
+  document.addEventListener("touchend", function(){ end(false); }, {passive:true});
+  document.addEventListener("touchcancel", function(){ end(true); }, {passive:true});
+  window.addEventListener("scroll", function(){ if(open && !g) close(true); }, {passive:true});
+  window.addEventListener("resize", function(){ close(false); });
+
+  return {
+    close: close,
+    forget: function(){ open = null; g = null; },     /* 宿主整块重建列表 DOM 时调用 */
+    active: function(){ return !!(g && g.locked); },  /* 给下拉刷新的 blocked() 用 */
+    isOpen: function(){ return !!open; }
+  };
+}
+/* ================= 组件 JS ①  到这里结束 ================= */
+
+var scSwipe = null;
 scSafe(function(){
-SHEETS.push(
-  {mask: scMask,    sheet: scSheet, close: scCloseAdd, dirty: function(){ return scTitle.value.trim() !== ""; }},
-  {mask: scActMask, sheet: document.getElementById("scActSheet"), close: scCloseAct}
+  scSwipe = SwipeActions({
+    root: document.getElementById("scList"), item: "[data-sc]",
+    blocked: function(){ return !scView || !scMask.hidden || !scCfMask.hidden; },
+    actions: function(el){
+      var x = scFind(el.getAttribute("data-sc"));
+      if(!x) return null;
+      var list = [];
+      if(!x.doneAt) list.push({label: x.pinned ? "取消置顶" : "置顶", icon: LSW_ICO_PIN, cls: "lsw-pin", onClick: function(){
+        scSwipe.close(false);
+        if(x.pinned) delete x.pinned; else x.pinned = true;
+        scTouch(x); scRender();
+      }});
+      list.push({label: "删除", icon: LSW_ICO_DEL, cls: "lsw-del", onClick: function(){ scCfOpen(x.id); }});
+      return list;
+    }
+  });
+});
+
+/* 两张底部弹窗也登记进「下拉关闭」；表单跟打开时比有改动，拉掉前问一句 */
+scSafe(function(){
+SHEETS.splice(SHEETS.length - 1, 0,        /* 插在「放弃修改」确认框前面：数组顺序 = DOM 顺序，它要盖在最上面 */
+  {mask: scMask,   sheet: scSheet, close: scCloseAdd, dirty: function(){ return scFormSnap() !== scOrig; }},
+  {mask: scCfMask, sheet: document.getElementById("scCfSheet"), close: scCfClose}
 );
 });
 
