@@ -20,6 +20,7 @@
   --text-3:#8a929c;
   --line:#e3e8ee;
   --shadow:0 6px 20px rgba(17,26,38,.10);
+  --lbox-shadow:0 6px 20px 10px rgba(17,26,38,.10);   /* 列表视图每组那个框的外阴影：比 --shadow 多 10px 扩展，和框一样大 */
   --shadow-sm:0 2px 8px rgba(17,26,38,.06);
   --stack-shadow:0 22px 46px rgba(17,26,38,.24);
   --stack-shadow-sm:0 12px 24px rgba(17,26,38,.18);
@@ -51,6 +52,7 @@
     --text-3:#7c8593;
     --line:#2c323b;
     --shadow:0 6px 20px rgba(0,0,0,.45);
+    --lbox-shadow:0 6px 20px 10px rgba(0,0,0,.45);
     --shadow-sm:0 2px 8px rgba(0,0,0,.3);
     --stack-shadow:0 22px 46px rgba(0,0,0,.6);
     --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
@@ -69,6 +71,7 @@
   --text-3:#7c8593;
   --line:#2c323b;
   --shadow:0 6px 20px rgba(0,0,0,.45);
+  --lbox-shadow:0 6px 20px 10px rgba(0,0,0,.45);
   --shadow-sm:0 2px 8px rgba(0,0,0,.3);
   --stack-shadow:0 22px 46px rgba(0,0,0,.6);
   --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
@@ -258,6 +261,15 @@ select.sort{
   box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:10px;
 }
+/* 列表视图：每个分组、每条没分组的日程各一个框，分组标题在框外（2026-09-26 用户从三套里选的「A 像 iPhone 设置」）。
+   原先除置顶外全挤在一个大框里，没分组的那条紧跟在某组后面，看着就像那组的。
+   框用 box-shadow 的 10px 扩展画，**不改任何布局**：堆叠卡片的位置是 JS 按 transform 算的，拖拽排序也按 DOM 同级项算，
+   动结构会牵连这两套逻辑。置顶区（.pinned）和「只看已过期」里的列表保持原样一个框 */
+body:not(.od-mode) #board > .list:not(.pinned){background:transparent;box-shadow:none;gap:24px}
+body:not(.od-mode) #board > .list:not(.pinned) > .row{box-shadow:var(--shadow-sm), 0 0 0 10px var(--surface-2), var(--lbox-shadow)}
+body:not(.od-mode) #board > .list:not(.pinned) > .group > .stack{border-radius:var(--radius-row);box-shadow:0 0 0 10px var(--surface-2), var(--lbox-shadow)}
+body:not(.od-mode) #board > .list:not(.pinned) > .group{padding-top:0}
+body:not(.od-mode) #board > .list:not(.pinned) > .group > .group-head{margin-bottom:12px}   /* 框往上扩 10px，标题留出 2px 缝 */
 .row{
   --c:#f5a13c;--cd:#ef7d20;
   display:flex;align-items:stretch;
@@ -3121,7 +3133,8 @@ function dragBegin(scope, clientY, byTouch){
   dragStartY = clientY;
   dragOffset = 0;
   dragH = dragEl.getBoundingClientRect().height +
-          (scope.box.classList.contains("stack") ? stackGap() : (state.view === "card" ? 14 : 10));
+          (scope.box.classList.contains("stack") ? stackGap() : (parseFloat(getComputedStyle(scope.box).rowGap) || 10));
+  /* ↑ 同级项之间的间距读 CSS 实际值：原先写死「卡片 14 / 列表 10」，列表视图改成每组一个框后间距变了（2026-09-26） */
   /* 记下每一项当前的 transform，拖动时在它基础上叠加偏移（堆叠里的项本来就带 transform） */
   dragItems.forEach(function(n){
     n.__base = n.style.transform || "";
