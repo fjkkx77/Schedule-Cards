@@ -1258,7 +1258,12 @@ function sortedEvents(){
   var t = today();
   var arr = liveEvents();
   if(state.sort === "manual"){                /* 自定义顺序按 order 字段，跨设备合并后也稳定 */
-    arr.sort(function(a,b){ return (a.order || 0) - (b.order || 0); });
+    /* order 并列时必须有确定的兜底：两台设备离线各新建一条，会各自算出同一个 order 值；
+       不兜底的话先后就落在数组次序上，而两边合并时都把自己的放前面——两块屏幕顺序正好相反 */
+    arr.sort(function(a,b){
+      return (a.order || 0) - (b.order || 0) || (a.createdAt || 0) - (b.createdAt || 0) ||
+             (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
   }else if(state.sort === "days"){
     arr.sort(function(a,b){
       return rank(a,t) - rank(b,t);
