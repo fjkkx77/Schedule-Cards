@@ -877,6 +877,25 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .btn.btn-danger:active{background:rgba(224,72,61,.08)}
 .btn:active{transform:scale(.98)}
+/* 删除确认：屏幕正中的警告框（用户 2026-10-08 从三套里选的 A）。
+   不是底部面板，所以不画小横条、也不能下拉关闭（SHEETS 里标了 noDrag） */
+.mask.alert-mask{align-items:center;padding:24px;animation:alert-fade .2s ease-out}
+.sheet.alert{
+  width:min(300px,100%);border-radius:26px;padding:22px 18px 16px;
+  text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.28);
+  animation:alert-pop .26s cubic-bezier(.2,.9,.3,1.15);
+}
+.sheet.alert::before{display:none}
+.sheet.alert h2{font-size:17px;margin:0 0 6px}
+.sheet.alert .hint{font-size:13px;line-height:1.45}
+.sheet.alert .actions{margin-top:18px}
+.sheet.alert .btn{min-height:46px;border-radius:999px}
+.sheet.alert .btn.btn-danger{background:#e0483d;color:#fff;box-shadow:none}
+.sheet.alert .btn.btn-danger:active{background:#c93c32}
+/* 出现时从稍大缩回原大小并淡入（iOS 警告框的观感，是我对系统的观察，HIG 没写参数） */
+@keyframes alert-pop{from{opacity:0;transform:scale(1.12)}to{opacity:1;transform:none}}
+@keyframes alert-fade{from{background-color:rgba(12,16,22,0)}}
+@media (prefers-reduced-motion: reduce){ .mask.alert-mask,.sheet.alert{animation:none} }
 .extra-row{display:flex;gap:10px;margin-top:6px}
 .extra-row .btn{min-height:44px;font-size:14px}
 
@@ -1146,8 +1165,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 </div>
 
 <!-- 左滑删除的二次确认（不用原生 confirm：文案里要带上日程名字） -->
-<div class="mask" id="cfMask" hidden>
-  <div class="sheet" id="cfSheet" role="alertdialog" aria-labelledby="cfTitle">
+<div class="mask alert-mask" id="cfMask" hidden>
+  <div class="sheet alert" id="cfSheet" role="alertdialog" aria-labelledby="cfTitle">
     <h2 id="cfTitle">删除这条日程？</h2>
     <p class="hint" id="cfHint" style="margin-top:0"></p>
     <div class="actions">
@@ -1203,8 +1222,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 </div>
 
 <!-- 短期倒计时 · 删除确认（和日程的左滑删除一样先问一句） -->
-<div class="mask" id="scCfMask" hidden>
-  <div class="sheet" id="scCfSheet" role="alertdialog" aria-labelledby="scCfTitle">
+<div class="mask alert-mask" id="scCfMask" hidden>
+  <div class="sheet alert" id="scCfSheet" role="alertdialog" aria-labelledby="scCfTitle">
     <h2 id="scCfTitle">删除这条倒计时？</h2>
     <div class="actions">
       <button type="button" class="btn" id="scCfCancel">取消</button>
@@ -3501,7 +3520,7 @@ var SHEETS = [
   {mask: syncMask, sheet: document.getElementById("syncSheet"), close: closeSyncSheet},
   {mask: mask,     sheet: form,                                 close: closeForm,
    dirty: function(){ return formSnap() !== formOrig; }},
-  {mask: cfMask,   sheet: document.getElementById("cfSheet"),   close: cfClose},
+  {mask: cfMask,   sheet: document.getElementById("cfSheet"),   close: cfClose, noDrag: true},
   {mask: dcMask,   sheet: document.getElementById("dcSheet"),   close: function(){ dcMask.hidden = true; }}
 ];
 var sd = null, sdBusy = false, dcFor = null, sdTimer = 0;
@@ -3531,7 +3550,7 @@ document.addEventListener("touchstart", function(e){
   if(sdBusy || e.touches.length !== 1 || !dpMask.hidden) return;
   var S = null;
   for(var i = SHEETS.length - 1; i >= 0; i--){ if(!SHEETS[i].mask.hidden){ S = SHEETS[i]; break; } }
-  if(!S) return;
+  if(!S || S.noDrag) return;                    /* 正中的警告框不能拉掉；仍登记在 SHEETS 里，免得拉到下面那层表单 */
   var t = e.target;
   if(!S.sheet.contains(t)) return;              /* 按在遮罩上的，交给原来的"点空白关闭" */
   if(t.closest(".dp-menu")) return;             /* 时/分、分组这些下拉列表自己要滚 */
@@ -4366,7 +4385,7 @@ scSafe(function(){
 scSafe(function(){
 SHEETS.splice(SHEETS.length - 1, 0,        /* 插在「放弃修改」确认框前面：数组顺序 = DOM 顺序，它要盖在最上面 */
   {mask: scMask,   sheet: scSheet, close: scCloseAdd, dirty: function(){ return scFormSnap() !== scOrig; }},
-  {mask: scCfMask, sheet: document.getElementById("scCfSheet"), close: scCfClose}
+  {mask: scCfMask, sheet: document.getElementById("scCfSheet"), close: scCfClose, noDrag: true}
 );
 });
 
