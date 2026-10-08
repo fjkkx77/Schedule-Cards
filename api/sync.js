@@ -53,6 +53,17 @@ function keyOf(code, space){
   return space ? "sched:" + space + ":" + h : "sched:" + h;
 }
 
+/* 原子的「版本对得上才写」。返回 {1, 新版本} 或 {0, 当前版本, 当前整份数据}。
+   数据损坏（取不到版本号）时当作版本 0，和原来"坏数据让这次写入覆盖掉"的行为一致 */
+const CAS_SCRIPT = [
+  "local cur = redis.call('GET', KEYS[1])",
+  "local v = 0",
+  "if cur then v = tonumber(string.match(cur, '^{\"version\":(%d+)')) or 0 end",
+  "if v ~= tonumber(ARGV[1]) then return {0, v, cur or ''} end",
+  "redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])",
+  "return {1, v + 1}"
+].join("\n");
+
 const SPACES = ["", "short"];
 function cleanSpace(v){
   const s = String(v == null ? "" : v).trim();
@@ -126,28 +137,24 @@ module.exports = async (req, res) => {
       }
 
       const key = keyOf(code, space);
-      const cur = await redis(["GET", key]);
-      let curVersion = 0, curDoc = { events: [] };
-      if(cur){
-        try{
-          const p = JSON.parse(cur);
-          curVersion = p.version || 0;
-          curDoc = { events: Array.isArray(p.events) ? p.events : [] };
-        }catch(e){ /* 坏数据直接当作空，让这次写入覆盖掉 */ }
-      }
-
       const base = Number(body.baseVersion || 0);
-      if(base !== curVersion){
-        /* 另一台设备抢先写了：把最新版还给客户端，让它重新合并后再来一次 */
-        return send(res, 409, { ok: false, conflict: true, space, version: curVersion, doc: curDoc });
-      }
-
       const next = {
-        version: curVersion + 1,
+        version: base + 1,
         updatedAt: Date.now(),
         events: events
       };
-      await redis(["SET", key, JSON.stringify(next), "EX", String(TTL_SECONDS)]);
+      /* 「核对版本 + 写入」必须在存储那边一步做完：原先先 GET 再 SET，两台设备同时写时
+         两边都读到同一个版本、都写成功，后写的把先写的整份盖掉（2026-10-08 实测 10 次 10 次都中）。
+         脚本只用字符串匹配取版本号，不依赖 cjson（Upstash 文档没写脚本里有哪些库）；
+         版本号永远是 JSON 的第一个字段，因为 next 对象就是这么写的 */
+      const r = await redis(["EVAL", CAS_SCRIPT, "1", key, String(base), JSON.stringify(next), String(TTL_SECONDS)]);
+      if(Number(r[0]) !== 1){
+        /* 另一台设备抢先写了：把最新版还给客户端，让它重新合并后再来一次 */
+        let curDoc = { events: [] };
+        try{ const p = JSON.parse(r[2] || "null"); if(p && Array.isArray(p.events)) curDoc = { events: p.events }; }
+        catch(e){ /* 坏数据当作空 */ }
+        return send(res, 409, { ok: false, conflict: true, space, version: Number(r[1]) || 0, doc: curDoc });
+      }
       return send(res, 200, { ok: true, space, version: next.version, updatedAt: next.updatedAt });
     }
 
