@@ -1237,9 +1237,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   </div>
 </div>
 
-<!-- 下滑关闭时有没保存的改动：先问一句（苹果 HIG 对 sheet 的要求） -->
-<div class="mask" id="dcMask" hidden>
-  <div class="sheet" id="dcSheet" role="alertdialog" aria-labelledby="dcTitle">
+<!-- 下滑关闭时有没保存的改动：先问一句（苹果 HIG 对 sheet 的要求）。
+     2026-10-08 起和删除确认一样放屏幕正中（用户定的，HIG 原文推荐底部 action sheet，用户知情后选正中求全站统一） -->
+<div class="mask alert-mask" id="dcMask" hidden>
+  <div class="sheet alert" id="dcSheet" role="alertdialog" aria-labelledby="dcTitle">
     <h2 id="dcTitle">放弃这次修改？</h2>
     <p class="hint" style="margin-top:0">改动还没保存，关掉就没了。</p>
     <div class="actions">
@@ -3723,7 +3724,7 @@ var SHEETS = [
   {mask: mask,     sheet: form,                                 close: closeForm,
    dirty: function(){ return formSnap() !== formOrig; }},
   {mask: cfMask,   sheet: document.getElementById("cfSheet"),   close: cfClose, noDrag: true},
-  {mask: dcMask,   sheet: document.getElementById("dcSheet"),   close: function(){ dcMask.hidden = true; }}
+  {mask: dcMask,   sheet: document.getElementById("dcSheet"),   close: function(){ dcMask.hidden = true; }, noDrag: true}
 ];
 var sd = null, sdBusy = false, dcFor = null, sdTimer = 0;
 /* 拉完之后手指下面的按钮可能收到浏览器补发的 click：只吞"落在刚才被拉的那个弹窗里"的，
