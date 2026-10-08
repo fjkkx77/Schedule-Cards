@@ -138,7 +138,7 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
   letter-spacing:-.2px;line-height:1.16;
 }
 .brand .today{margin:6px 0 0;font-size:14px;color:var(--text-2);font-weight:600}
-.brand .today .nw{white-space:nowrap}
+.nw{white-space:nowrap}   /* 日期、星期、农历这类整段不许从中间断开（顶栏和卡片、列表的说明行共用） */
 .sync-line{margin:3px 0 0;font-size:12px;color:var(--text-3);font-weight:600}
 .sync-line.bad{color:#e0483d}
 .icon-btn{
@@ -838,10 +838,13 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .dp-actions{display:flex;gap:12px;margin-top:14px}
 
-.colors{display:flex;flex-wrap:wrap;gap:10px}
+/* 6 个色块永远排成一行（320 宽时原来第 6 个单独掉到第二行）：每格 44~52，多出的空间均分成间距。
+   column-gap 4 是最小缝：不写的话 320 宽时格子会长到把缝吃光、6 块粘成一条（第一版就这么错了）。
+   最窄 320：可用 284 = 6×44 + 5×4，正好放下，触摸尺寸不缩 */
+.colors{display:grid;grid-template-columns:repeat(6, minmax(44px, 52px));justify-content:space-between;column-gap:4px;row-gap:10px}
 .colors input{position:absolute;opacity:0;width:0;height:0}
 .colors label{
-  width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  width:100%;aspect-ratio:1;border-radius:14px;display:flex;align-items:center;justify-content:center;
   margin:0;color:#fff;font-size:18px;font-weight:800;
 }
 .colors input:checked + label::after{content:"✓"}
@@ -959,7 +962,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
     <div id="scList"></div>
   </section>
 
-  <p class="foot">数据保存在本机浏览器里，换设备或清理缓存会丢失，重要日程记得用「导出备份」。</p>
+  <p class="foot" id="foot">数据保存在本机浏览器里，换设备或清理缓存会丢失，重要日程记得用「导出备份」。</p>
 </div>
 
 <div class="ptr" id="ptr" aria-hidden="true"><span class="ptr-c">↓</span></div>
@@ -1244,6 +1247,19 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   </div>
 </div>
 
+<!-- 通用的正中确认 / 提示框：替换原来的原生 confirm / alert（2026-10-08，样式和删除确认同一套）。
+     放在 DOM 最后：它可能叠在编辑、分组、云同步这些弹窗上面 -->
+<div class="mask alert-mask" id="askMask" hidden>
+  <div class="sheet alert" id="askSheet" role="alertdialog" aria-labelledby="askTitle">
+    <h2 id="askTitle"></h2>
+    <p class="hint" id="askMsg" style="margin-top:0"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="askCancel">取消</button>
+      <button type="button" class="btn" id="askOk">好</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
 "use strict";
@@ -1332,14 +1348,16 @@ function save(){
    ① id 固定（不是随机的）——否则两台设备各自生成一套，合并时会被当成不同的条目，变成每条两份
    ② 打 demo 标记——一旦开了同步，这些示例不上传、本地也退场，绝不参与合并 */
 function seed(){
+  /* 日期按「第一次打开这天」往后推，不写死：原来写死 11-06、12-19，年底才第一次打开的人
+     一进来就是「N 个日程已过期」，示例反而像坏了（2026-10-08 改） */
   var t = new Date();
-  var y = t.getFullYear();
+  var later = function(n){ return ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n)); };
   return [
-    {id:"demo-1", demo:true, title:"回家过年啦", date:"2027-01-10", mode:"down", color:"#2f86f6", group:"生活"},
-    {id:"demo-2", demo:true, title:"我的生日",   date:(y)+"-11-06",  mode:"down", color:"#f5a13c", group:"生活"},
-    {id:"demo-3", demo:true, title:"四级考试",   date:(y)+"-12-19",  mode:"down", color:"#ef4d4d", group:"考试"},
-    {id:"demo-4", demo:true, title:"计组考试",   date:(y+1)+"-01-04",mode:"down", color:"#8a6ef2", group:"考试"},
-    {id:"demo-5", demo:true, title:"开学第一天", date:ymd(new Date(y, t.getMonth(), 1)), mode:"up", color:"#22b07d", group:""}
+    {id:"demo-1", demo:true, title:"回家过年啦", date:later(94), mode:"down", color:"#2f86f6", group:"生活"},
+    {id:"demo-2", demo:true, title:"我的生日",   date:later(29), mode:"down", color:"#f5a13c", group:"生活"},
+    {id:"demo-3", demo:true, title:"四级考试",   date:later(72), mode:"down", color:"#ef4d4d", group:"考试"},
+    {id:"demo-4", demo:true, title:"计组考试",   date:later(88), mode:"down", color:"#8a6ef2", group:"考试"},
+    {id:"demo-5", demo:true, title:"开学第一天", date:ymd(new Date(t.getFullYear(), t.getMonth(), 1)), mode:"up", color:"#22b07d", group:""}
   ];
 }
 /* 已经在用同步的设备，重装/换浏览器后不要再撒一次示例数据，直接等云端的 */
@@ -1499,7 +1517,7 @@ function isPinned(ev){ return !!ev.pinned; }
 
 /* 把排好序的列表按分组聚拢：分组出现的位置＝该组第一条的位置，未分组的各自独立占位 */
 function groupize(list){
-  var out = [], idx = {};
+  var out = [], idx = Object.create(null);   /* 无原型：分组名叫 __proto__ 时普通 {} 会白屏（2026-10-08 实测） */
   list.forEach(function(ev){
     var g = (ev.group || "").trim();
     if(!g){ out.push({name:"", items:[ev]}); return; }
@@ -1521,7 +1539,7 @@ function groupColor(items){
 }
 
 function allGroups(){
-  var seen = {}, out = [];
+  var seen = Object.create(null), out = [];
   liveEvents().forEach(function(e){
     var g = (e.group || "").trim();
     if(g && !Object.prototype.hasOwnProperty.call(seen, g)){ seen[g] = 1; out.push(g); }
@@ -1923,6 +1941,18 @@ function activate(ev){
   openForm(ev.id);
 }
 
+/* 一行说明文字拆成几段，每段内部不断行、段与段之间才能换行：
+   窄屏上原来会断成「星期 / 四」「农 / 历腊月初五」（2026-10-08 在 320 宽实测截图） */
+function nwLine(el, parts){
+  parts.forEach(function(p, i){
+    if(i) el.appendChild(document.createTextNode(" "));
+    var s = document.createElement("span");
+    s.className = "nw";
+    s.textContent = p;
+    el.appendChild(s);
+  });
+}
+
 function tagEl(text, extra){
   var s = document.createElement("span");
   s.className = "tag" + (extra ? " " + extra : "");
@@ -1957,8 +1987,7 @@ function cardEl(ev, t){
   if(info.bad){
     sub.textContent = "日期无效";
   }else{
-    sub.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()]
-                      + (ev.time ? " " + ev.time : "");
+    nwLine(sub, [info.dateLabel + ymd(info.target), WEEK[info.target.getDay()]].concat(ev.time ? [ev.time] : []));
     if(info.state === "overdue")    sub.appendChild(tagEl("已过期", "tag-over"));
     if(info.state === "elapsed")    sub.appendChild(tagEl("已累计"));
     if(info.state === "notStarted") sub.appendChild(tagEl("未开始"));
@@ -2024,13 +2053,12 @@ function rowEl(ev, t){
   if(state.showDateInList && !info.bad){
     var s = document.createElement("div");
     s.className = "row-sub";
-    var extra = "";
-    if(info.state === "overdue")    extra += " · 已过期";
-    if(info.state === "elapsed")    extra += " · 已累计";
-    if(info.state === "notStarted") extra += " · 未开始";
-    var lun2 = lunarLabel(info.target);
-    s.textContent = info.dateLabel + ymd(info.target) + " " + WEEK[info.target.getDay()]
-                    + (ev.time ? " " + ev.time : "") + (lun2 ? " · " + lun2 : "") + extra;
+    var parts = [info.dateLabel + ymd(info.target), WEEK[info.target.getDay()]];
+    if(ev.time) parts.push(ev.time);
+    var more = [lunarLabel(info.target),
+                {overdue:"已过期", elapsed:"已累计", notStarted:"未开始"}[info.state] || ""];
+    more.forEach(function(m){ if(m){ parts[parts.length - 1] += " ·"; parts.push(m); } });   /* 「·」跟在上一段末尾，换行时不会出现在行首 */
+    nwLine(s, parts);
     main.appendChild(s);
   }
 
@@ -2081,10 +2109,50 @@ function applyTheme(){
   var root = document.documentElement;
   if(state.theme === "auto") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", state.theme);
+  /* 浏览器顶栏颜色：两条 meta 原本只按系统深浅色挑。手动指定主题时两条都改成那个主题的色，
+     否则「系统浅色 + 页面手动深色」时 Safari 顶上是一条浅色 */
+  var THEME_BAR = {light:"#eef2f6", dark:"#15181d"};
+  var metas = document.querySelectorAll('meta[name="theme-color"]');
+  for(var j = 0; j < metas.length; j++){
+    var own = /dark/.test(metas[j].getAttribute("media") || "") ? THEME_BAR.dark : THEME_BAR.light;
+    metas[j].setAttribute("content", THEME_BAR[state.theme] || own);
+  }
   var i = 0;
   for(var k=0;k<THEMES.length;k++){ if(THEMES[k].v === state.theme) i = k; }
   document.getElementById("mThemeState").textContent = THEMES[i].t;
 }
+
+/* ================= 正中确认 / 提示框 =================
+   替换原生 confirm / alert（2026-10-08）：原生框在 iPhone 上顶部会冒出网址、样式也和页面不搭，
+   和左滑删除那个正中确认框不是一套。
+     ask({title, msg, ok:"删除", danger:true, onOk})  两个按钮，onOk 只在点了确认时调用
+     notify(title, msg)                               只有一个「好」 */
+var askMask = document.getElementById("askMask");
+var askCb = null, askPrevOverflow = "";
+function ask(o){
+  document.getElementById("askTitle").textContent = o.title || "";
+  var m = document.getElementById("askMsg");
+  m.textContent = o.msg || ""; m.hidden = !o.msg;
+  var okB = document.getElementById("askOk");
+  okB.textContent = o.ok || "好";
+  okB.className = "btn " + (o.danger ? "btn-danger" : "primary");
+  document.getElementById("askCancel").hidden = !!o.single;
+  askCb = o.onOk || null;
+  askPrevOverflow = document.body.style.overflow;   /* 可能叠在别的弹窗上：关掉时恢复成原来的锁定状态 */
+  document.body.style.overflow = "hidden";
+  askMask.hidden = false;
+}
+function notify(title, msg){ ask({title:title, msg:msg, single:true}); }
+function askClose(run){
+  if(askMask.hidden) return;
+  askMask.hidden = true;
+  document.body.style.overflow = askPrevOverflow;
+  var cb = askCb; askCb = null;
+  if(run && cb) cb();
+}
+document.getElementById("askOk").addEventListener("click", function(){ askClose(true); });
+document.getElementById("askCancel").addEventListener("click", function(){ askClose(false); });
+askMask.addEventListener("click", function(e){ if(e.target === askMask) askClose(false); });
 
 /* ================= 菜单 ================= */
 var menu = document.getElementById("menu");
@@ -2147,6 +2215,9 @@ fileInput.addEventListener("change", function(){
       var arr = Array.isArray(d) ? d : (d && d.events);
       if(!Array.isArray(arr)) throw new Error("格式不对");
       var clean = [];
+      /* 导入的每一条都记成「现在改的」：沿用备份里的旧修改时间的话，开着同步时云端那份更新，
+         合并按修改时间取新的，导入几秒后就被冲回去；备份后删过的也会被墓碑再删一次（2026-10-08 实测） */
+      var tImp = Date.now();
       arr.forEach(function(x){
         if(!x || !parseYMD(x.date)) return;
         clean.push({
@@ -2160,13 +2231,13 @@ fileInput.addEventListener("change", function(){
           excl: x.excl === true,
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
           createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
-          updatedAt: (typeof x.updatedAt === "number" && x.updatedAt > 0) ? x.updatedAt : undefined
+          updatedAt: tImp
         });
       });
       if(!clean.length) throw new Error("没有可用的日程");
       /* 导入＝"用这份备份替换现在的数据"。本地原有、备份里没有的那些要打删除标记，
          否则开着同步时它们会从另一台设备又回来 */
-      var keepIds = {}, tnow = Date.now();
+      var keepIds = Object.create(null), tnow = Date.now();
       clean.forEach(function(x){ keepIds[x.id] = 1; });
       state.events.forEach(function(x){
         if(!keepIds[x.id] && !x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; clean.push(x); }
@@ -2176,18 +2247,20 @@ fileInput.addEventListener("change", function(){
       pruneExpanded();
       save(); queueSync(); render();
     }catch(e){
-      alert("导入失败：" + e.message);
+      notify("导入失败", e.message);
     }
   };
   fr.readAsText(f);
 });
 document.getElementById("mClear").addEventListener("click", function(){
   closeMenu();
-  if(confirm("确定清空全部日程吗？该操作无法撤销。")){
+  var n = liveEvents().length;
+  if(!n){ notify("现在没有日程", "没有需要清空的。"); return; }
+  ask({title: "清空全部 " + n + " 条日程？", msg: delHint(), ok: "全部清空", danger: true, onOk: function(){
     var tnow = Date.now();
     state.events.forEach(function(x){ if(!x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; } });
     state.expanded = []; save(); queueSync(); render();
-  }
+  }});
 });
 
 /* ================= 可选时刻 =================
@@ -2447,14 +2520,15 @@ gpBtnOk.addEventListener("click", function(){
 });
 
 gpBtnDel.addEventListener("click", function(){
-  var n = groupMemberCount(gpTarget);
-  if(!confirm("确定把分组「" + gpTarget + "」和里面的 " + n + " 条日程一起删掉吗？此操作无法撤销。")) return;
-  var now = Date.now();
-  state.events.forEach(function(e){        /* 打墓碑而不是真删，删除才能同步到另一台设备 */
-    if((e.group || "").trim() === gpTarget && !e.deletedAt){ e.deletedAt = now; e.updatedAt = now; }
-  });
-  pruneExpanded();
-  save(); queueSync(); closeGroupSheet(); render();
+  var n = groupMemberCount(gpTarget), name = gpTarget;
+  ask({title: "删除「" + name + "」和里面的 " + n + " 条日程？", msg: delHint(), ok: "删除", danger: true, onOk: function(){
+    var now = Date.now();
+    state.events.forEach(function(e){        /* 打墓碑而不是真删，删除才能同步到另一台设备 */
+      if((e.group || "").trim() === name && !e.deletedAt){ e.deletedAt = now; e.updatedAt = now; }
+    });
+    pruneExpanded();
+    save(); queueSync(); closeGroupSheet(); render();
+  }});
 });
 
 /* ================= 日期选择器 =================
@@ -2613,21 +2687,26 @@ document.getElementById("sGen").addEventListener("click", function(){
 });
 document.getElementById("sCopy").addEventListener("click", function(){
   var v = sCode.value.trim();
-  if(!v){ alert("同步码是空的"); return; }
+  if(!v){ notify("同步码是空的", "先填一个，或者点「随机生成一个」。"); return; }
+  var btn = this;
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(v).then(function(){ alert("同步码已复制"); },
-                                          function(){ alert("复制失败，请手动长按选中"); });
+    /* 复制成功不弹框，按钮上亮一下就够（像系统的「已拷贝」），不打断操作 */
+    navigator.clipboard.writeText(v).then(function(){
+      btn.textContent = "已复制 ✓";
+      clearTimeout(btn.__t); btn.__t = setTimeout(function(){ btn.textContent = "复制"; }, 1600);
+    }, function(){ sCode.select(); notify("复制失败", "已帮你选中同步码，长按它手动复制。"); });
   }else{
-    sCode.select(); alert("请长按选中后复制");
+    sCode.select(); notify("这个浏览器不支持一键复制", "已帮你选中同步码，长按它手动复制。");
   }
 });
 document.getElementById("sOn").addEventListener("click", function(){
   var v = sCode.value.trim();
   if(!/^[A-Za-z0-9\-_]{8,64}$/.test(v)){
-    alert("同步码要 8~64 位，只能用字母、数字、- 和 _");
+    notify("同步码格式不对", "要 8~64 位，只能用字母、数字、- 和 _。");
     return;
   }
   sync.on = true; sync.code = v; sync.version = 0;
+  delete sync.scVersion;               /* 换了同步码，短期那份的版本号也作废，等第一次同步重新拿 */
   saveSync();
   document.getElementById("mSyncState").textContent = "已开启";
   syncNow();
@@ -2639,9 +2718,10 @@ document.getElementById("sOff").addEventListener("click", function(){
   document.getElementById("mSyncState").textContent = "未开启";
   document.getElementById("syncLine").hidden = true;
   document.getElementById("syncState").textContent = "未开启（数据仍保留在本机）";
+  paintFoot();
 });
 document.getElementById("sNow").addEventListener("click", function(){
-  if(!sync.on){ alert("先点「开启并同步」"); return; }
+  if(!sync.on){ notify("还没开启同步", "先点「开启并同步」。"); return; }
   syncNow();
 });
 
@@ -2877,8 +2957,11 @@ document.getElementById("fCancel").addEventListener("click", closeForm);
 mask.addEventListener("click", function(e){ if(e.target === mask) closeForm(); });
 document.addEventListener("keydown", function(e){
   if(e.key === "Escape"){
+    if(!askMask.hidden){ askClose(false); return; }         /* 通用确认框永远在最上面 */
     if(!dcMask.hidden){ dcMask.hidden = true; return; }     /* Esc = 继续编辑，不是放弃 */
     if(!cfMask.hidden){ cfClose(); return; }
+    if(scCfMask && !scCfMask.hidden){ scCfClose(); return; }   /* 短期倒计时的两层也认 Esc */
+    if(scMask && !scMask.hidden){ scCloseAdd(); return; }
     if(!gmMenu.hidden){ closeGroupMenu(); return; }
     if(!gpMask.hidden){ closeGroupSheet(); return; }
     if(!dpMask.hidden){ dpClose(); return; }
@@ -2892,7 +2975,7 @@ form.addEventListener("submit", function(e){
   e.preventDefault();
   var title = fTitle.value.trim() || "未命名";
   var date = fDate.value;
-  if(!parseYMD(date)){ alert("请选择一个有效日期"); return; }
+  if(!parseYMD(date)){ notify("请选择一个有效日期"); return; }
   var mode = pickedMode();
   var group = currentGroup();
   var pinnedNow = pinState;
@@ -2925,14 +3008,7 @@ form.addEventListener("submit", function(e){
 
 fDelete.addEventListener("click", function(){
   if(!editingId) return;
-  if(!confirm("删除这条日程？")) return;
-  /* 不真删，打一个删除标记：否则另一台设备同步时会把它当"我这边没有的新条目"又加回来 */
-  var tnow = Date.now();
-  state.events.forEach(function(x){
-    if(x.id === editingId){ x.deletedAt = tnow; x.updatedAt = tnow; }
-  });
-  pruneExpanded();
-  save(); queueSync(); closeForm(); render();
+  cfOpen(editingId);      /* 和左滑删除同一个确认框；确认后 cfOk 里会顺带关掉编辑弹窗 */
 });
 
 /* ================= 云同步 =================
@@ -2956,6 +3032,7 @@ function loadSync(){
         sync.code = typeof d.code === "string" ? d.code : "";
         sync.lastAt = d.lastAt || 0;
         sync.version = d.version || 0;
+        if(typeof d.scVersion === "number") sync.scVersion = d.scVersion;
       }
     }
   }catch(e){}
@@ -2965,7 +3042,7 @@ function saveSync(){
 }
 
 function mergeEvents(a, b){
-  var map = {}, out = [];
+  var map = Object.create(null), out = [];   /* 无原型，同 groupize */
   function stamp(e){ return e.updatedAt || e.createdAt || 0; }
   function take(list){
     (list || []).forEach(function(e){
@@ -2996,7 +3073,15 @@ function timeAgo(ts){
   if(s < 86400) return Math.floor(s/3600) + " 小时前";
   return Math.floor(s/86400) + " 天前";
 }
+/* 底部提示跟着同步状态走：开了同步还说「换设备或清理缓存会丢失」是吓人的错话 */
+var FOOT_LOCAL = "数据保存在本机浏览器里，换设备或清理缓存会丢失，重要日程记得用「导出备份」。";
+var FOOT_SYNC  = "已开启云同步：日程在本机和云端各存一份，换设备时填同一个同步码就能找回。同步码记得自己留一份。";
+function paintFoot(){
+  var f = document.getElementById("foot");
+  if(f) f.textContent = (sync.on && sync.code) ? FOOT_SYNC : FOOT_LOCAL;
+}
 function paintSync(){
+  paintFoot();
   var el = document.getElementById("syncLine");
   if(!el) return;
   if(!sync.on || !sync.code){ el.hidden = true; return; }
@@ -3018,10 +3103,25 @@ function queueSync(){
 }
 /* 页面被切走/关掉时，把还没发出去的改动立刻冲出去——
    否则"手机上改完马上锁屏"这一下，改动就要等到下次打开手机才传得上去 */
+/* 这里不能走 syncNow()：它要先读云端、读完才上传，页面一关读到一半整条链就断了，上传根本发不出去
+   （2026-10-08 实测：改完立刻关页面，云端还是旧的）。所以直接拿上次同步到的版本号上传（keepalive，页面关了也能发完）：
+   这段时间没别的设备写过就直接成功；写过的话服务端回 409，什么都不改，下次打开页面正常同步时再合并 */
+var flushing = false;
 function flushSync(){
-  if(!sync.on || !sync.code || !pendingChange) return;
+  if(!sync.on || !sync.code || !pendingChange || flushing) return;
   clearTimeout(syncTimer);
-  syncNow();
+  flushing = true;
+  pushDoc(state.events.filter(function(e){ return !e.demo; }), sync.version).then(function(r){
+    if(r.conflict){ syncNow(); return; }        /* 页面其实还活着（只是切到别的标签）：正常走一遍合并 */
+    sync.version = r.version; sync.lastAt = Date.now(); pendingChange = false;
+    saveSync(); setSync("ok");
+  }).catch(function(){}).then(function(){ flushing = false; });
+  /* 短期倒计时那份同理；还没成功同步过一次（不知道版本号）就不冒险 */
+  if(typeof sync.scVersion === "number"){
+    pushDoc(sc.items, sync.scVersion, "short").then(function(r){
+      if(!r.conflict){ sync.scVersion = r.version; saveSync(); }
+    }).catch(function(){});
+  }
 }
 
 async function syncNow(){
@@ -3056,7 +3156,9 @@ async function syncNow(){
     if(fingerprint(merged) !== fingerprint(remote)){   /* 我这儿有远端没有的：上传 */
       var pushed = await pushDoc(merged, data.version);
       if(pushed.conflict){                     /* 另一台设备刚写过：拿它的再合一次，重试一次 */
-        var again = mergeEvents(merged, (pushed.doc && pushed.doc.events) || []);
+        /* 跟此刻的 state.events 合，不跟上面的 merged 合：上传在路上的这段时间里新建的条目只在 state.events 里，
+           拿 merged 合会把它们从本地冲掉、也传不上去 */
+        var again = mergeEvents(state.events.filter(function(e){ return !e.demo; }), (pushed.doc && pushed.doc.events) || []);
         state.events = again; save(); render();
         pushed = await pushDoc(again, pushed.version);
         if(pushed.conflict) throw new Error("另一台设备正在写入，稍后会自动重试");
@@ -3228,7 +3330,7 @@ function commitOrder(items){
     }
   });
   if(!ids.length) return;
-  var byId = {};
+  var byId = Object.create(null);
   state.events.forEach(function(e){ byId[e.id] = e; });
   /* 这批条目原本占着哪些 order 值，就还用这些值，按新顺序发下去 */
   var slots = ids.map(function(id){ return byId[id] ? (byId[id].order || 0) : 0; })
@@ -3244,7 +3346,7 @@ function commitOrder(items){
 document.addEventListener("pointerdown", function(e){
   if(!dragEnabled() || dragOn) return;
   if(e.pointerType === "mouse" && e.button !== 0) return;
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden || !askMask.hidden) return;
   if(lswOpen) return;       /* 有卡片正滑开着：这一下是去收回它/点按钮的，不起拖拽 */
   var scope = dragScope(e.target);
   if(!scope) return;
@@ -3384,20 +3486,22 @@ function lswTogglePin(id){
 
 /* ---- 删除的二次确认 ---- */
 var cfTarget = null;
+/* 删除类确认框的说明：开了同步要提醒另一台设备也会删 */
+function delHint(){
+  return (sync.on && sync.code) ? "删除后不能撤销；已开启云同步，另一台设备上也会一起删掉。" : "删除后不能撤销。";
+}
 function cfOpen(id){
   var ev = lswEvent(id);
   if(!ev) return;
   cfTarget = id;
   document.getElementById("cfTitle").textContent = "删除「" + (ev.title || "未命名") + "」？";
-  document.getElementById("cfHint").textContent = (sync.on && sync.code)
-    ? "删除后不能撤销；已开启云同步，另一台设备上也会一起删掉。"
-    : "删除后不能撤销。";
+  document.getElementById("cfHint").textContent = delHint();
   cfMask.hidden = false;
   document.body.style.overflow = "hidden";
 }
 function cfClose(){
   cfMask.hidden = true;
-  document.body.style.overflow = "";
+  if(mask.hidden) document.body.style.overflow = "";   /* 从编辑弹窗里点的删除：取消后编辑弹窗还开着，背景继续锁住 */
   cfTarget = null;
   lswClose(true);                     /* 取消了就把卡片收回去 */
 }
@@ -3415,6 +3519,7 @@ document.getElementById("cfOk").addEventListener("click", function(){
     if(x.id === id){ x.deletedAt = tnow; x.updatedAt = tnow; }
   });
   lswClose(false);
+  if(!mask.hidden) closeForm();       /* 从编辑弹窗里点的删除：一起关掉 */
   pruneExpanded();
   save(); queueSync(); render();
 });
@@ -3423,7 +3528,7 @@ document.getElementById("cfOk").addEventListener("click", function(){
 document.addEventListener("touchstart", function(e){
   lsw = null;
   if(e.touches.length !== 1 || dragOn) return;
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden) return;
   var t = e.target;
   if(lswOpen && t.closest(".lsw-acts")) return;              /* 点的是露出来的按钮，交给它的 click */
   var el = t.closest("#board .card[data-id], #board .row[data-id]");
@@ -3646,7 +3751,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden;
+  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -4119,6 +4224,7 @@ function scOpenAdd(){
   scPaintForm();
   scOrig = scFormSnap();
   scMask.hidden = false;
+  document.body.style.overflow = "hidden";   /* 和日程那边的弹窗一样，打开时背景不跟着滚 */
   scTitle.focus();       /* 必须在 click 里同步调用，iOS 才会弹键盘（移动端配方 §2） */
 }
 function scOpenEdit(id){
@@ -4154,9 +4260,11 @@ function scOpenEdit(id){
   scPaintForm();
   scOrig = scFormSnap();
   scMask.hidden = false;
+  document.body.style.overflow = "hidden";
 }
 function scCloseAdd(){
   scMask.hidden = true; scEditId = null;
+  document.body.style.overflow = "";
   if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
 function scTouchTime(){ scTimeTouched = true; scPaintForm(); }
@@ -4170,8 +4278,13 @@ function scCfOpen(id){
   scCfId = id;
   document.getElementById("scCfTitle").textContent = "删除「" + (x.title || "倒计时") + "」？";
   scCfMask.hidden = false;
+  document.body.style.overflow = "hidden";
 }
-function scCfClose(){ scCfMask.hidden = true; scCfId = null; if(scSwipe) scSwipe.close(true); }
+function scCfClose(){
+  scCfMask.hidden = true; scCfId = null;
+  if(scMask.hidden) document.body.style.overflow = "";   /* 从编辑弹窗里点的删除：底下那层还开着，别解锁 */
+  if(scSwipe) scSwipe.close(true);
+}
 
 scSafe(function(){
 COLORS.forEach(function(c, i){
@@ -4220,6 +4333,7 @@ scCfMask.addEventListener("click", function(e){ if(e.target === scCfMask) scCfCl
 document.getElementById("scCfOk").addEventListener("click", function(){
   var x = scCfId && scFind(scCfId);
   scCfMask.hidden = true; scCfId = null;
+  document.body.style.overflow = "";
   if(scSwipe) scSwipe.close(false);
   if(!scMask.hidden) scCloseAdd();       /* 从编辑弹窗里点的删除：一起关掉 */
   if(x){ x.deletedAt = Date.now(); scTouch(x); scRender(); }
@@ -4365,7 +4479,7 @@ var scSwipe = null;
 scSafe(function(){
   scSwipe = SwipeActions({
     root: document.getElementById("scList"), item: "[data-sc]",
-    blocked: function(){ return !scView || !scMask.hidden || !scCfMask.hidden; },
+    blocked: function(){ return !scView || !scMask.hidden || !scCfMask.hidden || !askMask.hidden; },
     actions: function(el){
       var x = scFind(el.getAttribute("data-sc"));
       if(!x) return null;
@@ -4389,6 +4503,9 @@ SHEETS.splice(SHEETS.length - 1, 0,        /* 插在「放弃修改」确认框�
 );
 });
 
+/* 通用确认框在 DOM 最后，所以登记在数组最后（必须在上面短期那两张插进去之后）；正中的框不能拉掉 */
+SHEETS.push({mask: askMask, sheet: document.getElementById("askSheet"), close: function(){ askClose(false); }, noDrag: true});
+
 /* ---- 同步：同一个同步码，服务端 space=short 那一份。合并规则和日程完全一样（按 id + updatedAt） ---- */
 async function syncShort(){
   var r = await fetch("/api/sync?space=short&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
@@ -4404,12 +4521,16 @@ async function syncShort(){
   if(fingerprint(merged) !== fingerprint(remote)){
     var pushed = await pushDoc(merged, data.version, "short");
     if(pushed.conflict){
-      var again = mergeEvents(merged, (pushed.doc && pushed.doc.events) || []);
+      var again = mergeEvents(sc.items, (pushed.doc && pushed.doc.events) || []);   /* 同日程：跟此刻的本地合 */
       sc.items = again; scSave(); scRender();
       pushed = await pushDoc(again, pushed.version, "short");
       if(pushed.conflict) throw new Error("另一台设备正在写入，稍后会自动重试");
     }
+    sync.scVersion = pushed.version;
+  }else{
+    sync.scVersion = data.version;
   }
+  saveSync();      /* 记下版本号：离开页面时 flushSync 要拿它直接上传 */
 }
 
 /* ================= 启动 ================= */
