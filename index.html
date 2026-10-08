@@ -565,7 +565,7 @@ body.dragging{user-select:none;-webkit-user-select:none;touch-action:none}
   filter:drop-shadow(0 14px 26px rgba(17,26,38,.28));
 }
 .drag-lift .card, .drag-lift .row{opacity:.96}
-/* 松手落位那几百毫秒：被拖的那张仍盖在别的卡上面（投影在 JS 关键帧里慢慢收掉） */
+/* 松手落位那几百毫秒：被拖的那张仍盖在别的卡上面 */
 .drag-landing{z-index:50;position:relative}
 body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{pointer-events:none}
 
@@ -1624,7 +1624,21 @@ function renderOverdue(t, make, isCard){
   board.appendChild(box);
 }
 
+/* 整块重画时保住页面滚动位置（2026-10-08 用户 iPhone 截图：长按拖动松手后整页往上翻一大段）。
+   原因：renderNow() 先清空列表再重建，分组的高度要等 layoutStacks() 量完才写回去，中间有一瞬页面变短；
+   Safari 这时把滚动位置截短，高度回来了也不还回去（Chrome 有滚动锚定所以看不出来，Playwright WebKit 实测翻 67px）。
+   两层保险：① 重画期间把 #board 的高度撑住，页面根本不变短；② 重画完滚动位置还是变了就在同一帧改回去。
+   要换位置的地方（进出「已过期」、短期倒计时）都是在 render() 之后才 scrollTo，不受影响 */
 function render(){
+  var keepY = window.scrollY;
+  board.style.minHeight = board.offsetHeight + "px";
+  try{ renderNow(); }
+  finally{
+    board.style.minHeight = "";
+    if(window.scrollY !== keepY) window.scrollTo(0, keepY);
+  }
+}
+function renderNow(){
   var t = today();
   todayKey = ymd(t);
   var lun = lunarLabel(t);
@@ -3383,11 +3397,10 @@ function dragLand(before, liftKey, v){
     var lift = (k === liftKey);
     var sp = springPts(d, lift ? v : 0);
     var base = el.style.transform || "";        /* 堆叠里的项本身带 transform，在它上面叠偏移 */
+    /* 关键帧只动 transform：原先还带了投影渐隐（filter: drop-shadow），WebKit 实测每帧多花 30%~50% 绘制，
+       滤镜动画也不一定能交给合成器——松手时投影直接收掉，换来落位这一段全程走合成器（2026-10-08） */
     var frames = sp.pts.map(function(p, i){
-      var f = {offset: i / (sp.pts.length - 1), transform: (base ? base + " " : "") + "translate3d(0," + (d * (1 - p)).toFixed(2) + "px,0)"};
-      /* 被拖那张：投影跟着落下去慢慢收掉，而不是一松手就没了 */
-      if(lift) f.filter = "drop-shadow(0 " + (14 * (1 - Math.min(p, 1))).toFixed(1) + "px " + (26 * (1 - Math.min(p, 1))).toFixed(1) + "px rgba(17,26,38," + (0.28 * (1 - Math.min(p, 1))).toFixed(3) + "))";
-      return f;
+      return {offset: i / (sp.pts.length - 1), transform: (base ? base + " " : "") + "translate3d(0," + (d * (1 - p)).toFixed(2) + "px,0)"};
     });
     if(lift) el.classList.add("drag-landing");
     var a = el.animate(frames, {duration: sp.ms, easing: "linear"});
