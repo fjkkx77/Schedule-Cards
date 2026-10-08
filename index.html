@@ -565,6 +565,8 @@ body.dragging{user-select:none;-webkit-user-select:none;touch-action:none}
   filter:drop-shadow(0 14px 26px rgba(17,26,38,.28));
 }
 .drag-lift .card, .drag-lift .row{opacity:.96}
+/* 松手落位那几百毫秒：被拖的那张仍盖在别的卡上面（投影在 JS 关键帧里慢慢收掉） */
+.drag-landing{z-index:50;position:relative}
 body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{pointer-events:none}
 
 /* ============ 左滑：置顶 / 删除 ============
@@ -3219,6 +3221,7 @@ var DRAG_SLOP = 10;       /* 按住期间手指动超过这么多，就当是滚
 
 var dragTimer = null, dragOn = false, dragEl = null, dragItems = null, dragTouch = false;
 var dragFrom = 0, dragTo = 0, dragStartY = 0, dragOffset = 0, dragH = 0;
+var dragV = 0, dragLastY = 0, dragLastT = 0;   /* 手指速度（px/ms，指数平滑），松手落位时交给弹簧 */
 
 /* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
 function dragEnabled(){ return state.sort === "manual" && !odView; }
@@ -3255,6 +3258,7 @@ function dragBegin(scope, clientY, byTouch){
   dragTo = dragFrom;
   dragStartY = clientY;
   dragOffset = 0;
+  dragV = 0; dragLastY = clientY; dragLastT = performance.now();
   dragH = dragEl.getBoundingClientRect().height +
           (scope.box.classList.contains("stack") ? stackGap() : (parseFloat(getComputedStyle(scope.box).rowGap) || 10));
   /* ↑ 同级项之间的间距读 CSS 实际值：原先写死「卡片 14 / 列表 10」，列表视图改成每组一个框后间距变了（2026-09-26） */
@@ -3283,6 +3287,9 @@ function dragPaint(){
 }
 
 function dragMove(clientY){
+  /* 速度：0.4 新 + 0.6 旧的指数平滑；同一帧里连来两个事件（间隔 <4ms）不算，否则速度虚高 */
+  var tnow = performance.now(), dt = tnow - dragLastT;
+  if(dt >= 4){ dragV = 0.4 * (clientY - dragLastY) / dt + 0.6 * dragV; dragLastY = clientY; dragLastT = tnow; }
   dragOffset = clientY - dragStartY;
   var steps = Math.round(dragOffset / dragH);
   var to = Math.max(0, Math.min(dragItems.length - 1, dragFrom + steps));
@@ -3292,6 +3299,11 @@ function dragMove(clientY){
 
 function dragEnd(commit){
   if(!dragOn) return;
+  /* 松手前先记下每一项此刻在屏幕上的位置（含拖动的偏移），换好顺序后让它们从这儿弹到新位置。
+     原来是直接瞬移：被拖那张从手指下一帧跳到格位，实测卡片视图跳 57px——用户说的「收尾时弹一下」（2026-10-08） */
+  var v = (performance.now() - dragLastT > 100) ? 0 : dragV;   /* 停住超过 100ms 再松手：不带速度 */
+  var liftKey = dragKey(dragEl), before = {};
+  dragItems.forEach(function(n){ var k = dragKey(n); if(k) before[k] = n.getBoundingClientRect().top; });
   dragItems.forEach(function(n){
     n.classList.remove("drag-sliding");
     n.style.transform = n.__base || "";
@@ -3301,9 +3313,8 @@ function dragEnd(commit){
   document.body.classList.remove("dragging");
   var from = dragFrom, to = dragTo, items = dragItems;
   dragOn = false; dragEl = null; dragItems = null;
-  /* 松手后浏览器还会补一个 click，要把它吃掉，否则拖完立刻弹出编辑窗 */
+  /* 松手后浏览器还会补一个 click，要把它吃掉，否则拖完立刻弹出编辑窗；落位动画没走完之前也不让点 */
   document.body.classList.add("just-dragged");
-  setTimeout(function(){ document.body.classList.remove("just-dragged"); }, 350);
   if(commit && to !== from){
     var moved = items.splice(from, 1)[0];
     items.splice(to, 0, moved);
@@ -3311,6 +3322,79 @@ function dragEnd(commit){
   }else{
     layoutStacks(false);          /* 没换位就把堆叠的位置复原 */
   }
+  var ms = dragLand(before, liftKey, v);
+  setTimeout(function(){ document.body.classList.remove("just-dragged"); }, Math.max(350, ms));
+}
+
+/* ---- 松手落位：FLIP + 带初速度的弹簧 ----
+   不自己算「被拖那张该落在哪」：卡片高矮不一、分组挪到第一位时上边距会变，算的和重画后的真实位置差几像素就又是一跳。
+   做法是先换好顺序（重画），再量每一项的新位置，从旧位置弹过去。
+   弹簧：SwiftUI .snappy（response 0.4 / damping 0.86），过冲按像素封顶 14px，采样成关键帧交给 WAAPI 播（Safari 上走合成器）。
+   出处：feedback-ios-gesture-recipe「翻页物理」表的「落位继承松手速度」「弹簧交给合成器」两条；实现照刷题站 quiz.js 的 springPts */
+var SPRING_RESPONSE = 0.4, SPRING_DAMPING = 0.86, SPRING_HZ = 240, SPRING_MAX_MS = 620, MAX_OVERSHOOT = 14;
+/* 返回 0→1 的进度序列。distance = 起点 − 终点（px），velocity = 松手时的速度（px/ms，屏幕坐标方向） */
+function springPts(distance, velocity){
+  var w0 = 2 * Math.PI / SPRING_RESPONSE, z = SPRING_DAMPING, wd = w0 * Math.sqrt(1 - z * z), step = 1 / SPRING_HZ;
+  function sample(v0){
+    var B = (v0 + z * w0) / wd, out = [];
+    for(var i = 0; ; i++){
+      var t = i * step; if(t >= SPRING_MAX_MS / 1000) break;
+      var u = Math.exp(-z * w0 * t) * (Math.cos(wd * t) + B * Math.sin(wd * t));
+      out.push(1 - u); if(t > 0.1 && Math.abs(u) < 0.002) break;
+    }
+    return out;
+  }
+  function over(a){ return (Math.max.apply(null, a) - 1) * Math.abs(distance); }
+  var v0 = distance ? (velocity * 1000) / distance : 0;
+  var pts = sample(v0);
+  if(over(pts) > MAX_OVERSHOOT){              /* 0 速度一定不过冲：二分找一个刚好不超的初速度 */
+    var lo = 0, hi = v0;
+    for(var i = 0; i < 8; i++){ var mid = (lo + hi) / 2, c = sample(mid); if(over(c) > MAX_OVERSHOOT) hi = mid; else { lo = mid; pts = c; } }
+  }
+  pts[pts.length - 1] = 1;                     /* 最后一点钉死，保证精确落位 */
+  return {ms: Math.round(Math.max(120, (pts.length - 1) * step * 1000)), pts: pts};
+}
+/* 一项的稳定身份：重画后元素是新的，靠它找回来。卡片看 data-id，整组看组名 */
+function dragKey(n){
+  if(n.classList.contains("group")){ var st = n.querySelector(".stack"); return st ? "g:" + st.getAttribute("data-group") : null; }
+  var c = n.matches("[data-id]") ? n : n.querySelector("[data-id]");
+  return c ? "e:" + c.getAttribute("data-id") : null;
+}
+function dragFind(key){
+  var esc = window.CSS && CSS.escape ? CSS.escape(key.slice(2)) : key.slice(2).replace(/["\\]/g, "\\$&");
+  if(key.charAt(0) === "g"){
+    var st = board.querySelector('.stack[data-group="' + esc + '"]');
+    return st && st.closest(".group");
+  }
+  var c = board.querySelector('[data-id="' + esc + '"]');
+  if(!c) return null;
+  return c.parentElement && c.parentElement.classList.contains("stack-item") ? c.parentElement : c;
+}
+/* 让每一项从 before 里记的屏幕位置弹到现在的位置；返回最长那段动画的毫秒数 */
+function dragLand(before, liftKey, v){
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(reduce || !document.body.animate) return 0;
+  var longest = 0;
+  Object.keys(before).forEach(function(k){
+    var el = dragFind(k);
+    if(!el) return;
+    var d = before[k] - el.getBoundingClientRect().top;
+    if(Math.abs(d) < 0.5) return;               /* 本来就在位的（让过位的那些）不动 */
+    var lift = (k === liftKey);
+    var sp = springPts(d, lift ? v : 0);
+    var base = el.style.transform || "";        /* 堆叠里的项本身带 transform，在它上面叠偏移 */
+    var frames = sp.pts.map(function(p, i){
+      var f = {offset: i / (sp.pts.length - 1), transform: (base ? base + " " : "") + "translate3d(0," + (d * (1 - p)).toFixed(2) + "px,0)"};
+      /* 被拖那张：投影跟着落下去慢慢收掉，而不是一松手就没了 */
+      if(lift) f.filter = "drop-shadow(0 " + (14 * (1 - Math.min(p, 1))).toFixed(1) + "px " + (26 * (1 - Math.min(p, 1))).toFixed(1) + "px rgba(17,26,38," + (0.28 * (1 - Math.min(p, 1))).toFixed(3) + "))";
+      return f;
+    });
+    if(lift) el.classList.add("drag-landing");
+    var a = el.animate(frames, {duration: sp.ms, easing: "linear"});
+    if(lift) a.onfinish = a.oncancel = function(){ el.classList.remove("drag-landing"); };
+    if(sp.ms > longest) longest = sp.ms;
+  });
+  return longest;
 }
 
 /* 把容器里的新顺序写回数据：先按新顺序算出这批条目的 id 序列，
