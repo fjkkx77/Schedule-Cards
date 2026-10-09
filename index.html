@@ -218,6 +218,8 @@ select.sort{
   background:color-mix(in srgb, var(--c) 14%, transparent);
 }
 @supports not (color: color-mix(in srgb, red, blue)){ .tag{background:var(--surface-2)} }
+/* 标签跟在农历后面时，按默认行高会把这一行顶高 1~2px（带标签的卡片就比别的高一点）；text-bottom 让它和农历文字居中对齐（实测偏差 <1px） */
+.card-sub2 .tag{line-height:1.2;vertical-align:text-bottom}
 .card-num{
   flex:0 0 auto;display:flex;align-items:flex-end;gap:4px;
   padding-left:6px;
@@ -2001,29 +2003,35 @@ function cardEl(ev, t){
   h.textContent = ev.title || "未命名";
   var sub = document.createElement("p");
   sub.className = "card-sub";
+  var tags = [];
   if(info.bad){
     sub.textContent = "日期无效";
   }else{
     nwLine(sub, [info.dateLabel + ymd(info.target), WEEK[info.target.getDay()]].concat(ev.time ? [ev.time] : []));
-    if(info.state === "overdue")    sub.appendChild(tagEl("已过期", "tag-over"));
-    if(info.state === "elapsed")    sub.appendChild(tagEl("已累计"));
-    if(info.state === "notStarted") sub.appendChild(tagEl("未开始"));
+    if(info.state === "overdue")    tags.push(tagEl("已过期", "tag-over"));
+    if(info.state === "elapsed")    tags.push(tagEl("已累计"));
+    if(info.state === "notStarted") tags.push(tagEl("未开始"));
     /* 置顶的卡片离开了原分组，把它原来属于哪组标出来，免得找不着 */
-    if(isPinned(ev) && (ev.group || "").trim()) sub.appendChild(tagEl("原属 " + ev.group.trim()));
+    if(isPinned(ev) && (ev.group || "").trim()) tags.push(tagEl("原属 " + ev.group.trim()));
     /* 「只看已过期」是打散分组平铺的，标出它原来在哪组 */
-    else if(odView && (ev.group || "").trim()) sub.appendChild(tagEl(ev.group.trim()));
+    else if(odView && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
   /* 目标日下面单独一行显示农历 */
+  var tagLine = sub;
   if(!info.bad){
     var lun = lunarLabel(info.target);
     if(lun){
       var sub2 = document.createElement("p");
       sub2.className = "card-sub2";
-      sub2.textContent = lun;
+      nwLine(sub2, [lun]);
       left.appendChild(sub2);
+      /* 标签跟在农历后面，不跟在日期后面（2026-10-10 用户三选一选的）：手机上日期那行被大数字挤得只剩约 200px，
+         标签放不下就单独掉一行、卡片凭空高一截；农历那行字少，各种宽度、连「原属 xx」都放得下 */
+      tagLine = sub2;
     }
   }
+  tags.forEach(function(t){ tagLine.appendChild(t); });
 
   var num = document.createElement("div");
   num.className = "card-num";
