@@ -526,8 +526,23 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
   background:transparent;color:var(--text-2);
   font:inherit;font-size:15px;font-weight:600;letter-spacing:.3px;
 }
-.g-empty-plus{font-size:17px;line-height:1}
-.g-empty:active{background:var(--surface-2)}
+.g-empty-plus{font-size:17px;line-height:1;transition:transform .22s var(--spring)}
+/* 按下的反馈（2026-10-10 用户：「点击没有交互动效，没有交互感」）。原来只是把底色换成 --surface-2，
+   它和页面底色几乎一样，等于没反馈。现在三样一起变，和站内别的按钮是同一套语言：
+   · 整行往里压一点（.od-bar / .btn 同款 scale(.98) + 同一条回弹曲线）
+   · 虚线变成这个分组的颜色、里面铺一层很淡的同色——"你要往这个分组里加东西"
+   · ＋ 号放大一点
+   电脑上鼠标移上去先给一个轻的提示（边线变深、字变深），按下才是上面那套 */
+.g-empty{transition:transform .18s var(--spring), background-color .15s ease, border-color .15s ease, color .15s ease}
+@media (hover:hover){ .g-empty:hover{border-color:var(--text-2);color:var(--text);background:color-mix(in srgb, var(--gc, #2f86f6) 5%, transparent)} }
+.g-empty:active{
+  transform:scale(.98);
+  border-color:var(--gc, #2f86f6);color:var(--text);
+  background:color-mix(in srgb, var(--gc, #2f86f6) 12%, transparent);
+}
+.g-empty:active .g-empty-plus{transform:scale(1.25)}
+.g-empty:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){ .g-empty, .g-empty-plus{transition:none} }
 .list .g-empty{min-height:48px;border-radius:var(--radius-row);font-size:14px}
 
 
