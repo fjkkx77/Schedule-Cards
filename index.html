@@ -515,6 +515,20 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
 }
 .group-head[aria-expanded="true"] .g-chev{transform:rotate(180deg)}
 .group-head .g-main:active .g-name{opacity:.6}
+/* 空分组（2026-10-10）：组里的日程删完了分组还留着。标题照旧，下面换成一行虚线的「＋ 添加日程」——
+   虚线＝"这里是空位"，和实心的卡片/行区分开，不会被看成一条日程。高度不低于 44（触摸标准） */
+.group-empty .g-main:active .g-name{opacity:1}      /* 空分组的标题点了没反应，就别给按下的反馈 */
+.g-chev-none{visibility:hidden}                     /* 占着箭头的位置，「⋯」才和别的分组对在同一列 */
+.g-empty{
+  display:flex;align-items:center;justify-content:center;gap:6px;width:100%;
+  min-height:56px;padding:0 14px;
+  border:1.5px dashed var(--text-3);border-radius:var(--radius-card);
+  background:transparent;color:var(--text-2);
+  font:inherit;font-size:15px;font-weight:600;letter-spacing:.3px;
+}
+.g-empty-plus{font-size:17px;line-height:1}
+.g-empty:active{background:var(--surface-2)}
+.list .g-empty{min-height:48px;border-radius:var(--radius-row);font-size:14px}
 
 
 /* 堆叠容器：真 3D 透视，子项绝对定位后只靠 transform 移动（交给合成器） */
@@ -1339,6 +1353,8 @@ function liveEvents(){
 function orderMax(){
   var m = 0;
   state.events.forEach(function(e){ if(typeof e.order === "number" && e.order > m) m = e.order; });
+  /* 空分组占着的位置也算进去：否则新建的日程可能拿到和某个空分组一样的 order，排到它前面去 */
+  gsSafe(function(){ gs.items.forEach(function(r){ if(!r.deletedAt && typeof r.order === "number" && r.order > m) m = r.order; }); });
   return m;
 }
 function orderMin(){
@@ -1348,6 +1364,7 @@ function orderMin(){
 }
 function save(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+  gsSafe(gsReconcile);      /* 日程变了，分组名册跟着对一遍（只写名册自己那份存储） */
 }
 /* 示例数据。两个关键点：
    ① id 固定（不是随机的）——否则两台设备各自生成一套，合并时会被当成不同的条目，变成每条两份
@@ -1373,6 +1390,158 @@ function syncAlreadyOn(){
   }catch(e){ return false; }
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+/* ================= 分组名册：删空了的分组还留着 =================
+   2026-10-10 用户：「订阅」分组下面的日程全删掉后，分组也跟着没了，希望保留。
+   原因：分组原本不是一个独立的东西，只是每条日程上的 group 文字；没有日程带着这个名字，它就不存在了。
+
+   做法：另存一份「名册」，记下有过哪些分组。**日程数据一个字段都没动**——名册有自己的本地存储、
+   自己的同步分区（服务端 space=groups），和短期倒计时一样跟日程隔开。
+   主页上的分组 = 有日程的那些（和以前完全一样）＋ 名册里有、但眼下没有日程的（空分组）。
+   分组只会从「⋯ → 删除分组」消失，不会因为里面的日程删完了就消失。
+
+   一条的样子：{id:"g:"+名字, name, order, color, createdAt, updatedAt, deletedAt?(墓碑)}
+   · id 由名字算出来，不是随机的：两台设备各自登记同一个名字，合并时就是同一条，不会变成两个同名分组
+   · order / color：分组里还有日程时一直跟着「排最前那张」走；空了就停在最后的值上，
+     所以删掉最后一张后，分组标题留在原地、色条颜色不变
+   · 自动补登记的那些时间戳记成 1（最小）：任何一次真正的操作（新建、改名、删除分组）都比它新，
+     另一台设备上"已经删掉的分组"不会被这台设备的补登记救活 */
+var GS_KEY = "schedule-cards-groups-v1";
+var gs = { items: [] };
+var gsReady = false;      /* 名册读进来之后才允许自动补登记，否则会拿空名册把存着的那份盖掉 */
+var gsDirty = false;      /* 有还没传上去的名册改动 */
+var gsSyncMsg = "";       /* 名册那份同步失败的原因，只在云同步面板里提示 */
+/* 故障隔离（同短期倒计时的 scSafe）：名册出任何错都只停掉它自己——退回"删空就不显示"的老样子，日程照常 */
+var gsBroken = false;
+function gsSafe(fn, fallback){
+  if(gsBroken) return fallback;
+  try{ return fn(); }
+  catch(e){
+    gsBroken = true;
+    try{ console.error("[分组名册] 出错，已停用这一块（删空的分组不再保留），日程不受影响：", e); }catch(_){}
+    return fallback;
+  }
+}
+/* 只收形状对的：本地存储和云端都可能有坏数据 */
+function gsClean(list){
+  return (Array.isArray(list) ? list : []).filter(function(x){
+    return x && typeof x === "object" && typeof x.name === "string" && x.name &&
+           x.name === x.name.trim() && x.name.length <= 12 && x.id === "g:" + x.name;
+  });
+}
+function gsLoad(){
+  var d = null;
+  try{ d = JSON.parse(localStorage.getItem(GS_KEY) || "null"); }catch(e){ d = null; }
+  var now = Date.now();
+  gs.items = gsClean(d && d.items).filter(function(x){      /* 墓碑和日程一样留 120 天 */
+    return !x.deletedAt || (now - x.deletedAt) < 120 * 24 * 3600 * 1000;
+  });
+  gsReady = true;
+}
+function gsSave(){ try{ localStorage.setItem(GS_KEY, JSON.stringify(gs)); }catch(e){} }
+function gsFind(name){
+  for(var i = 0; i < gs.items.length; i++){ if(gs.items[i].id === "g:" + name) return gs.items[i]; }
+  return null;
+}
+/* 用户明确要这个分组（往里存了日程、改名改成它、导入）：没有就建，删过就恢复 */
+function gsEnsure(name, now, seed){
+  name = String(name || "").trim();
+  if(!name) return;
+  var rec = gsFind(name), fresh = !rec;
+  if(fresh){
+    rec = {id:"g:" + name, name:name, createdAt:now};
+    gs.items.push(rec);
+  }
+  if(fresh || rec.deletedAt){
+    delete rec.deletedAt;
+    rec.order = (seed && typeof seed.order === "number") ? seed.order : orderMax() + 1;
+    rec.color = (seed && seed.color) || COLORS[0];
+  }
+  /* 本来就在的也要把时间记成现在：这是一次明确的"我要这个分组"。
+     不记的话，另一台设备早些时候删过这个分组，那次删除同步过来会赢，这边刚放进去的日程一删完分组又没了 */
+  rec.updatedAt = now;
+  gsDirty = true; gsSave();
+}
+/* 删除分组：打墓碑，另一台设备才收得到这次删除 */
+function gsDrop(name, now){
+  var rec = gsFind(name);
+  if(rec && rec.deletedAt) return;
+  if(!rec){ rec = {id:"g:" + name, name:name, createdAt:now}; gs.items.push(rec); }
+  rec.deletedAt = now; rec.updatedAt = now;
+  gsDirty = true; gsSave();
+}
+/* 让名册跟上日程（每次 save() 之后跑一遍）：
+   ① 日程里出现了名册没有的分组名 → 补登记（时间戳记 1，见上）。只有示例数据的分组不登记——示例退场时它也该走
+   ② 分组里有日程 → 把 order / color 更新成「排最前那张」的。已经删掉的分组不动它 */
+function gsReconcile(){
+  if(!gsReady) return;
+  var now = Date.now(), changed = false, mem = Object.create(null);   /* 无原型：分组名是用户数据 */
+  function before(a, b){
+    return ((a.order || 0) - (b.order || 0) || (a.createdAt || 0) - (b.createdAt || 0) ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) < 0;
+  }
+  liveEvents().forEach(function(e){
+    var g = (e.group || "").trim();
+    if(!g) return;
+    var m = mem[g] || (mem[g] = {real:false, first:null, any:null});
+    if(!e.demo) m.real = true;
+    if(!m.any || before(e, m.any)) m.any = e;
+    if(!isPinned(e) && (!m.first || before(e, m.first))) m.first = e;   /* 置顶的暂时离开了分组，不算 */
+  });
+  for(var g in mem){
+    var m = mem[g], rec = gsFind(g), lead = m.first || m.any;
+    if(!rec){
+      if(!m.real) continue;
+      gs.items.push({id:"g:" + g, name:g, order:lead.order || 0, color:lead.color || COLORS[0], createdAt:1, updatedAt:1});
+      changed = true;
+      continue;
+    }
+    if(rec.deletedAt || !m.first) continue;
+    var o = m.first.order || 0, c = m.first.color || COLORS[0];
+    if(rec.order !== o || rec.color !== c){
+      rec.order = o; rec.color = c; rec.updatedAt = now;
+      changed = true; gsDirty = true;
+    }
+  }
+  if(changed) gsSave();
+}
+/* 眼下没有日程可显示的分组（组里的日程全删了，或者全被置顶了），按它们留下的位置排好 */
+function gsEmptyList(){
+  return gsSafe(function(){
+    var has = Object.create(null);
+    liveEvents().forEach(function(e){
+      var g = (e.group || "").trim();
+      if(g && !isPinned(e)) has[g] = 1;
+    });
+    return gs.items.filter(function(r){ return !r.deletedAt && !has[r.name]; })
+      .sort(function(a, b){ return (a.order || 0) - (b.order || 0) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
+  }, []);
+}
+/* 这个名字眼下是不是一个空分组；是的话返回它留着的位置（order），不是返回 null */
+function gsEmptySlot(name){
+  if(!name) return null;
+  var rec = gsFind(name);
+  if(!rec || rec.deletedAt || typeof rec.order !== "number") return null;
+  var has = liveEvents().some(function(e){ return (e.group || "").trim() === name && !isPinned(e); });
+  return has ? null : rec.order;
+}
+/* 把空分组插回主页的顺序里。自定义顺序：按它留下的 order 找位置（并列时排在后面）；
+   其它排序是按日程的天数/日期排的，空分组没有这些，统一放最后 */
+function gsWeave(groups, empties){
+  if(!empties.length) return groups;
+  var out = groups.slice();
+  empties.forEach(function(r){
+    var at = out.length, o = r.order || 0;
+    if(state.sort === "manual"){
+      for(var i = 0; i < out.length; i++){
+        var key = out[i].empty ? out[i].order : (out[i].items[0].order || 0);
+        if(key > o){ at = i; break; }
+      }
+    }
+    out.splice(at, 0, {name:r.name, items:[], empty:true, order:o, color:r.color});
+  });
+  return out;
+}
 
 
 /* ================= 农历（公历 → 农历） =================
@@ -1549,6 +1718,12 @@ function allGroups(){
     var g = (e.group || "").trim();
     if(g && !Object.prototype.hasOwnProperty.call(seen, g)){ seen[g] = 1; out.push(g); }
   });
+  /* 名册里还留着的空分组也算：新建日程时下拉里要能选到它，展开状态也替它留着 */
+  gsSafe(function(){
+    gs.items.forEach(function(r){
+      if(!r.deletedAt && !Object.prototype.hasOwnProperty.call(seen, r.name)){ seen[r.name] = 1; out.push(r.name); }
+    });
+  });
   return out;
 }
 function isExpanded(name){ return state.expanded.indexOf(name) > -1; }
@@ -1676,7 +1851,8 @@ function renderNow(){
     return;
   }
 
-  if(list.length === 0){
+  var empties = gsEmptyList();     /* 没有日程可显示、但还留着的分组 */
+  if(list.length === 0 && !empties.length){
     var e = document.createElement("div");
     e.className = "empty";
     e.innerHTML = '<div class="big">🗓</div><p>还没有日程</p><p style="color:var(--text-3);font-size:13px">点右下角的「＋」添加第一个</p>';
@@ -1709,7 +1885,8 @@ function renderNow(){
   var box = document.createElement("div");
   box.className = isCard ? "cards" : "list";
 
-  groupize(list.filter(function(e){ return !isPinned(e); })).forEach(function(g){
+  gsWeave(groupize(list.filter(function(e){ return !isPinned(e); })), empties).forEach(function(g){
+    if(g.empty){ box.appendChild(emptyGroupEl(g)); return; }
     if(!g.name){                                  /* 没分组的直接平铺 */
       box.appendChild(make(g.items[0]));
       return;
@@ -1781,6 +1958,49 @@ function renderNow(){
 
   board.appendChild(box);
   layoutStacks(false);
+}
+
+/* 空分组：标题照旧（色条、名字、数量 0、⋯），下面不是一摞卡片，而是一行「＋ 添加日程」，点了直接带着这个分组进新增。
+   标题这一行和有日程的分组同一个结构、同样的类名，所以长按标题整组拖动、⋯ 菜单都不用另写；
+   箭头位置留一个看不见的占位，「⋯」才和别的分组的「⋯」对在同一列 */
+function emptyGroupEl(g){
+  var sec = document.createElement("section");
+  sec.className = "group group-empty";
+  sec.style.setProperty("--gc", g.color || COLORS[0]);
+
+  var head = document.createElement("div");
+  head.className = "group-head";
+  var gmain = document.createElement("div");      /* 没有可展开的东西，所以不是按钮 */
+  gmain.className = "g-main";
+  gmain.innerHTML = '<span class="g-name"></span><span class="g-count">0</span>';
+  gmain.querySelector(".g-name").textContent = g.name;
+
+  var gmore = document.createElement("button");
+  gmore.type = "button";
+  gmore.className = "g-more";
+  gmore.setAttribute("aria-label", "管理分组「" + g.name + "」");
+  gmore.textContent = "⋯";
+  gmore.addEventListener("click", function(e){ e.stopPropagation(); openGroupMenu(g.name, gmore); });
+
+  var gap = document.createElement("span");
+  gap.className = "g-chev g-chev-none";
+  gap.setAttribute("aria-hidden", "true");
+
+  head.appendChild(gmain);
+  head.appendChild(gmore);
+  head.appendChild(gap);
+
+  var add = document.createElement("button");
+  add.type = "button";
+  add.className = "g-empty";
+  add.setAttribute("data-group", g.name);
+  add.setAttribute("aria-label", "在分组「" + g.name + "」里添加日程");
+  add.innerHTML = '<span class="g-empty-plus" aria-hidden="true">＋</span><span>添加日程</span>';
+  add.addEventListener("click", function(){ openForm(null, g.name); });
+
+  sec.appendChild(head);
+  sec.appendChild(add);
+  return sec;
 }
 
 /* ---- 堆叠布局 ----
@@ -2218,7 +2438,12 @@ document.getElementById("mTheme").addEventListener("click", function(){
 });
 document.getElementById("mExport").addEventListener("click", function(){
   closeMenu();
-  var data = JSON.stringify({app:"schedule-cards", version:1, events:liveEvents()}, null, 2);
+  /* groups：分组名册（含空分组）。老版本导入时不认识这个字段，直接忽略，备份文件两边通用 */
+  var groups = gsSafe(function(){
+    return gs.items.filter(function(r){ return !r.deletedAt; })
+                   .map(function(r){ return {name:r.name, order:r.order, color:r.color}; });
+  }, []);
+  var data = JSON.stringify({app:"schedule-cards", version:1, events:liveEvents(), groups:groups}, null, 2);
   var blob = new Blob([data], {type:"application/json"});
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -2268,6 +2493,19 @@ fileInput.addEventListener("change", function(){
         if(!keepIds[x.id] && !x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; clean.push(x); }
       });
       state.events = clean;
+      /* 分组名册同样是"用备份替换"：备份里有的（它记的空分组 + 日程用到的名字）留下或恢复，其余的删掉。
+         老备份没有 groups 字段，那就只留日程用到的那些 */
+      gsSafe(function(){
+        var want = Object.create(null);
+        (Array.isArray(d && d.groups) ? d.groups : []).forEach(function(g){
+          var nm = g && typeof g.name === "string" ? g.name.trim().slice(0, 12) : "";
+          if(nm) want[nm] = {order: typeof g.order === "number" ? g.order : undefined,
+                             color: /^#[0-9a-fA-F]{6}$/.test(g.color || "") ? g.color : ""};
+        });
+        clean.forEach(function(x){ if(!x.deletedAt && x.group && !want[x.group]) want[x.group] = {}; });
+        gs.items.forEach(function(r){ if(!r.deletedAt && !want[r.name]) gsDrop(r.name, tnow); });
+        for(var nm in want) gsEnsure(nm, tnow, want[nm]);
+      });
       migrate();                    /* 备份文件里没有创建时间/顺序的，按顺序补上 */
       pruneExpanded();
       save(); queueSync(); render();
@@ -2280,10 +2518,14 @@ fileInput.addEventListener("change", function(){
 document.getElementById("mClear").addEventListener("click", function(){
   closeMenu();
   var n = liveEvents().length;
-  if(!n){ notify("现在没有日程", "没有需要清空的。"); return; }
-  ask({title: "清空全部 " + n + " 条日程？", msg: delHint(), ok: "全部清空", danger: true, onOk: function(){
+  /* 清空是"从头再来"，分组也一起清：否则日程没了、还剩一排空分组要一个个去删 */
+  var ng = gsSafe(function(){ return gs.items.filter(function(r){ return !r.deletedAt; }).length; }, 0);
+  if(!n && !ng){ notify("现在没有日程", "没有需要清空的。"); return; }
+  ask({title: n ? "清空全部 " + n + " 条日程？" : "清空全部 " + ng + " 个空分组？",
+       msg: (n && ng ? "分组也会一起清掉。" : "") + delHint(), ok: "全部清空", danger: true, onOk: function(){
     var tnow = Date.now();
     state.events.forEach(function(x){ if(!x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; } });
+    gsSafe(function(){ gs.items.forEach(function(r){ if(!r.deletedAt) gsDrop(r.name, tnow); }); });
     state.expanded = []; save(); queueSync(); render();
   }});
 });
@@ -2502,6 +2744,11 @@ function openGroupSheet(mode){
     gpBtnOk.textContent = "保存";
     row1.appendChild(gpBtnCancel); row1.appendChild(gpBtnOk);
     row2.hidden = true;
+  }else if(n === 0){
+    /* 空分组没有日程可"解散"或"连同删除"，就是删掉这个名字：一个按钮就够 */
+    gpBtnOk.textContent = "删除分组";
+    row1.appendChild(gpBtnCancel); row1.appendChild(gpBtnOk);
+    row2.hidden = true;
   }else{
     gpBtnOk.textContent = "解散分组";
     row1.appendChild(gpBtnOk); row1.appendChild(gpBtnDel);   /* 解散在左、连同删除在右 */
@@ -2509,9 +2756,11 @@ function openGroupSheet(mode){
     row2.hidden = false;
   }
   document.getElementById("gpHint").textContent = (mode === "rename")
-    ? "改名后这 " + n + " 条日程会跟着走；如果新名字和已有分组重名，两个分组会合并。"
-    : "「解散分组」只是把这 " + n + " 条日程移出分组，日程本身还在（变成不分组）；"
-      + "右边那个红色的会把这 " + n + " 条日程一起删掉。";
+    ? (n === 0 ? "这个分组里现在没有日程；如果新名字和已有分组重名，两个分组会合并。"
+               : "改名后这 " + n + " 条日程会跟着走；如果新名字和已有分组重名，两个分组会合并。")
+    : (n === 0 ? "这个分组里没有日程，删掉的只是这个分组名。"
+               : "「解散分组」只是把这 " + n + " 条日程移出分组，日程本身还在（变成不分组）；"
+                 + "右边那个红色的会把这 " + n + " 条日程一起删掉。");
   gpMask.hidden = false;
   document.body.style.overflow = "hidden";
   /* 同步 focus，别套 setTimeout——iOS 脱离点击手势后不弹键盘（同 openForm） */
@@ -2535,10 +2784,17 @@ gpBtnOk.addEventListener("click", function(){
     });
     /* 展开状态跟着改名走，否则改完名字这个组会莫名收起来 */
     state.expanded = state.expanded.map(function(g){ return g === gpTarget ? name : g; });
+    /* 名册：旧名字删掉，新名字接过它的位置和颜色（新名字本来就有的话保持它自己的，等于并进去） */
+    gsSafe(function(){
+      var old = gsFind(gpTarget);
+      gsEnsure(name, now, old && !old.deletedAt ? old : null);
+      gsDrop(gpTarget, now);
+    });
   }else{
     state.events.forEach(function(e){         /* 解散：日程保留，只是不再属于任何分组 */
       if((e.group || "").trim() === gpTarget){ e.group = ""; e.updatedAt = now; }
     });
+    gsSafe(function(){ gsDrop(gpTarget, now); });   /* 空分组走的也是这里：没有日程可动，只把名字删掉 */
   }
   pruneExpanded();
   save(); queueSync(); closeGroupSheet(); render();
@@ -2551,6 +2807,7 @@ gpBtnDel.addEventListener("click", function(){
     state.events.forEach(function(e){        /* 打墓碑而不是真删，删除才能同步到另一台设备 */
       if((e.group || "").trim() === name && !e.deletedAt){ e.deletedAt = now; e.updatedAt = now; }
     });
+    gsSafe(function(){ gsDrop(name, now); });   /* 这是删分组，不是删日程：名字也不留 */
     pruneExpanded();
     save(); queueSync(); closeGroupSheet(); render();
   }});
@@ -2732,6 +2989,7 @@ document.getElementById("sOn").addEventListener("click", function(){
   }
   sync.on = true; sync.code = v; sync.version = 0;
   delete sync.scVersion;               /* 换了同步码，短期那份的版本号也作废，等第一次同步重新拿 */
+  delete sync.gsVersion;               /* 分组名册那份同理 */
   saveSync();
   document.getElementById("mSyncState").textContent = "已开启";
   syncNow();
@@ -2935,7 +3193,7 @@ function setColor(c){
   if(!hit && list.length) list[0].checked = true;
 }
 
-function openForm(id){
+function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ 添加日程」进来时，新日程默认放进那个分组 */
   editingId = id || null;
   var ev = null;
   if(id){
@@ -2953,7 +3211,7 @@ function openForm(id){
   if(mr) mr.checked = true;
   syncModeUI();
   /* 分组：已有的就选中它，没有就落在"不分组"，一律从选择模式进 */
-  groupPick = ev ? (ev.group || "") : "";
+  groupPick = ev ? (ev.group || "") : (typeof presetGroup === "string" ? presetGroup : "");
   groupMode = "pick";
   fGroup.value = "";
   syncGroupUI();
@@ -3005,9 +3263,13 @@ form.addEventListener("submit", function(e){
   var group = currentGroup();
   var pinnedNow = pinState;
   var now = Date.now();
+  /* 放进一个空分组：日程接过这个分组留下的位置，分组标题就不会因为"里面第一张是新建的"跳到最底下。
+     只在这一种情况下才动 order（置顶的不算——它不在分组里显示）；其余情况 slot 是 null，和以前一样 */
+  var slot = pinnedNow ? null : gsSafe(function(){ return gsEmptySlot(group); }, null);
   if(editingId){
     for(var i=0;i<state.events.length;i++){
       if(state.events[i].id === editingId){
+        if(slot !== null && (state.events[i].group || "").trim() !== group) state.events[i].order = slot;
         state.events[i].title = title;
         state.events[i].date = date;
         state.events[i].mode = mode;
@@ -3022,9 +3284,11 @@ form.addEventListener("submit", function(e){
     }
   }else{
     state.events.push({id:uid(), title:title, date:date, mode:mode,
-                       group:group, time:formTime, excl:exclState, color:pickedColor(), pinned:pinnedNow, order:orderMax() + 1,
+                       group:group, time:formTime, excl:exclState, color:pickedColor(), pinned:pinnedNow, order:(slot !== null ? slot : orderMax() + 1),
                        createdAt:now, updatedAt:now});
   }
+  /* 往这个分组里存了东西 = 明确要这个分组：名册里没有就登记，删过就恢复 */
+  if(group) gsSafe(function(){ gsEnsure(group, now); });
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
   if(group && !isExpanded(group)) state.expanded.push(group);
   pruneExpanded();
@@ -3058,6 +3322,7 @@ function loadSync(){
         sync.lastAt = d.lastAt || 0;
         sync.version = d.version || 0;
         if(typeof d.scVersion === "number") sync.scVersion = d.scVersion;
+        if(typeof d.gsVersion === "number") sync.gsVersion = d.gsVersion;
       }
     }
   }catch(e){}
@@ -3116,7 +3381,8 @@ function paintSync(){
   el.textContent = "☁ " + txt;
   el.className = "sync-line" + (syncStatus === "error" || syncStatus === "unsupported" ? " bad" : "");
   var box = document.getElementById("syncState");
-  if(box) box.textContent = txt;
+  /* 分组名册那份同步失败只在这个面板里说一声：标题下那行「已同步」讲的是日程，不受它影响 */
+  if(box) box.textContent = txt + (gsSyncMsg && syncStatus === "ok" ? "（分组名单没同步上：" + gsSyncMsg + "，稍后自动重试）" : "");
 }
 
 var pendingChange = false;
@@ -3147,6 +3413,12 @@ function flushSync(){
       if(!r.conflict){ sync.scVersion = r.version; saveSync(); }
     }).catch(function(){});
   }
+  /* 分组名册那份：有没传上去的改动才发 */
+  if(gsDirty && !gsBroken && typeof sync.gsVersion === "number"){
+    pushDoc(gs.items, sync.gsVersion, "groups").then(function(r){
+      if(!r.conflict){ sync.gsVersion = r.version; gsDirty = false; saveSync(); }
+    }).catch(function(){});
+  }
 }
 
 async function syncNow(){
@@ -3155,12 +3427,24 @@ async function syncNow(){
   syncBusy = true;
   setSync("syncing");
   try{
+    /* 分组名册那份和日程**同时**去读（不排队，不给日程同步加等待时间）。它怎么失败都不抛错，只是这一轮拿不到 */
+    var gsWait = gsBroken ? Promise.resolve(null)
+      : gsFetch().then(function(d){ return {doc: d}; }, function(e){ return {err: e}; });
+
     var r = await fetch("/api/sync?code=" + encodeURIComponent(sync.code), {cache:"no-store"});
     if(r.status === 404){ setSync("unsupported"); return; }
     var data = await r.json();
     if(!data.ok) throw new Error(data.error || ("读取失败 " + r.status));
 
     var remote = (data.doc && data.doc.events) || [];
+
+    /* 名册要赶在日程之前落地，和日程在同一次重画里生效：另一台设备「删除分组 / 改名」时，日程先到、名册后到的话，
+       旧分组会先变成一个空分组闪出来、半秒后才消失。两个请求是一起发的，一般已经回来了；最多等它 400ms，
+       没等到就算了，下面日程同步完再单独补一次。
+       ⚠️ 这个等待必须放在下面算 before / merged **之前**：算完 merged 到写回 state.events 之间不能有 await，
+       否则这段时间里新建的日程会被 merged 冲掉 */
+    var gsPre = await Promise.race([gsWait, new Promise(function(res){ setTimeout(function(){ res(null); }, 400); })]);
+    var gsCame = !!(gsPre && gsPre.doc) && gsSafe(function(){ return gsAdopt(gsPre.doc.items); }, false);
 
     /* 示例数据一律不参与同步：它在每台设备上"看着一样、id 不同"，
        合并只会把 5 条变成 10 条。开了同步就让示例退场，本地也清掉，不上传 */
@@ -3174,6 +3458,10 @@ async function syncNow(){
 
     if(fingerprint(merged) !== before){        /* 远端有我这儿没有的：先落地再说 */
       state.events = merged;
+      pruneExpanded();
+      save();
+      render();
+    }else if(gsCame){                          /* 日程没变，但名册变了（另一台设备删了/加了空分组） */
       pruneExpanded();
       save();
       render();
@@ -3200,6 +3488,10 @@ async function syncNow(){
        它失败只在短期界面里提示，日程的「已同步」状态和待上传标记都不受影响 */
     try{ await syncShort(); scSyncErr(""); }
     catch(e2){ scSyncErr((e2 && e2.message) || "网络异常"); }
+    /* 分组名册那一份（space=groups）同样排在日程之后、自己兜错：上面已经读回来的直接用，没读到就在这里重读一次 */
+    try{ await syncGroups(gsPre); gsSyncMsg = ""; }
+    catch(e3){ gsSyncMsg = (e3 && e3.message) || "网络异常"; }
+    paintSync();
   }catch(e){
     setSync("error", (e && e.message) || "网络异常");
   }finally{
@@ -3221,6 +3513,47 @@ async function pushDoc(events, baseVersion, space){
   if(r.status === 409) return { conflict: true, version: d.version, doc: d.doc };
   if(!d.ok) throw new Error(d.error || ("上传失败 " + r.status));
   return { conflict: false, version: d.version };
+}
+
+/* ---- 分组名册的同步：同一个同步码，服务端 space=groups 那一份。合并规则和日程一样（按 id + updatedAt） ---- */
+/* 读回云端那份。null = 这个地址 / 这版服务端没有这个分区（安静跳过）；真出错才抛 */
+async function gsFetch(){
+  var r = await fetch("/api/sync?space=groups&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
+  if(r.status === 404 || r.status === 400) return null;   /* 400：旧版服务端不认识 groups 这个分区（部署有先后） */
+  var data = await r.json();
+  if(!data.ok) throw new Error(data.error || ("分组名单读取失败 " + r.status));
+  if(data.space !== "groups") return null;                /* 更老的服务端会忽略 space、把日程还回来，不能当名册用 */
+  return {version: data.version || 0, items: gsClean(data.doc && data.doc.events)};
+}
+/* 把云端的并进本地名册；有变化返回 true（调用方负责重画） */
+function gsAdopt(remote){
+  var before = fingerprint(gs.items);
+  var merged = mergeEvents(gs.items, remote);
+  if(fingerprint(merged) === before) return false;
+  gs.items = merged; gsSave();
+  return true;
+}
+async function syncGroups(pre){
+  if(gsBroken) return;
+  /* pre = {doc: 读到的那份 或 null(不支持)}：syncNow 开头已经读过就直接用；没读成（超时/出错）才在这里重读 */
+  var data = (pre && "doc" in pre) ? pre.doc : await gsFetch();
+  if(!data) return;
+  if(gsSafe(function(){ return gsAdopt(data.items); }, false)){ pruneExpanded(); save(); render(); }
+  var sent = fingerprint(gs.items);
+  if(sent !== fingerprint(data.items)){
+    var pushed = await pushDoc(gs.items, data.version, "groups");
+    if(pushed.conflict){                       /* 同日程：跟此刻的本地合，再试一次 */
+      if(gsSafe(function(){ return gsAdopt(gsClean(pushed.doc && pushed.doc.events)); }, false)){ pruneExpanded(); save(); render(); }
+      sent = fingerprint(gs.items);
+      pushed = await pushDoc(gs.items, pushed.version, "groups");
+      if(pushed.conflict) throw new Error("另一台设备正在写入，稍后会自动重试");
+    }
+    sync.gsVersion = pushed.version;
+  }else{
+    sync.gsVersion = data.version;
+  }
+  if(fingerprint(gs.items) === sent) gsDirty = false;   /* 上传途中又改过的话，标记留着，下一轮再传 */
+  saveSync();
 }
 
 /* 打开页面、切回页面、每 30 秒（只在页面可见时）各同步一次 */
@@ -3379,14 +3712,14 @@ function springPts(distance, velocity){
 }
 /* 一项的稳定身份：重画后元素是新的，靠它找回来。卡片看 data-id，整组看组名 */
 function dragKey(n){
-  if(n.classList.contains("group")){ var st = n.querySelector(".stack"); return st ? "g:" + st.getAttribute("data-group") : null; }
+  if(n.classList.contains("group")){ var st = n.querySelector(".stack, .g-empty"); return st ? "g:" + st.getAttribute("data-group") : null; }   /* .g-empty：空分组没有 .stack，组名记在那行「添加日程」上 */
   var c = n.matches("[data-id]") ? n : n.querySelector("[data-id]");
   return c ? "e:" + c.getAttribute("data-id") : null;
 }
 function dragFind(key){
   var esc = window.CSS && CSS.escape ? CSS.escape(key.slice(2)) : key.slice(2).replace(/["\\]/g, "\\$&");
   if(key.charAt(0) === "g"){
-    var st = board.querySelector('.stack[data-group="' + esc + '"]');
+    var st = board.querySelector('.stack[data-group="' + esc + '"], .g-empty[data-group="' + esc + '"]');
     return st && st.closest(".group");
   }
   var c = board.querySelector('[data-id="' + esc + '"]');
@@ -3422,10 +3755,17 @@ function dragLand(before, liftKey, v){
 /* 把容器里的新顺序写回数据：先按新顺序算出这批条目的 id 序列，
    再把它们占用的那些 order 值按新顺序重新分配（不动容器之外的条目） */
 function commitOrder(items){
+  /* 这一批里有空分组：它没有日程可以带着 order 走，位置记在名册上，单独一条路处理。
+     没有空分组时走下面原来的逻辑 */
+  var hasEmpty = false;
+  items.forEach(function(n){ if(n.classList.contains("group-empty")) hasEmpty = true; });
+  if(hasEmpty && gsSafe(function(){ return commitOrderWithEmpty(items); }, false)) return;
+
   var ids = [];
   items.forEach(function(n){
     if(n.classList.contains("group")){
       var st = n.querySelector(".stack");
+      if(!st) return;                 /* 空分组（名册出错停用后才会走到这儿）：没有日程，跳过 */
       [].slice.call(st.children).forEach(function(w){
         var c = w.querySelector("[data-id]");
         if(c) ids.push(c.getAttribute("data-id"));
@@ -3447,6 +3787,41 @@ function commitOrder(items){
     if(e && e.order !== slots[i]){ e.order = slots[i]; e.updatedAt = now; }
   });
   save(); queueSync(); render();
+}
+/* 同上，但这一批里有空分组。做法一样——「这批东西原本占着哪些 order 值，就按新顺序重新发下去」，
+   只是空分组的那个值写在名册上而不是日程上。
+   多一步：发之前把重复的值错开。空分组的 order 是它最后一张日程留下的，那张日程如果只是挪去了别处（改了分组），
+   两者的值就一样；不错开的话，拖完谁在前谁在后说不准 */
+function commitOrderWithEmpty(items){
+  var byId = Object.create(null);
+  state.events.forEach(function(e){ byId[e.id] = e; });
+  var units = [];
+  function addEv(c){ var e = c && byId[c.getAttribute("data-id")]; if(e) units.push({ev: e}); }
+  items.forEach(function(n){
+    if(n.classList.contains("group-empty")){
+      var b = n.querySelector(".g-empty"), rec = b && gsFind(b.getAttribute("data-group"));
+      if(rec) units.push({rec: rec});
+    }else if(n.classList.contains("group")){
+      var st = n.querySelector(".stack");
+      if(st) [].slice.call(st.children).forEach(function(w){ addEv(w.querySelector("[data-id]")); });
+    }else{
+      addEv(n.matches("[data-id]") ? n : n.querySelector("[data-id]"));
+    }
+  });
+  if(!units.length) return false;
+  var slots = units.map(function(u){ return (u.ev ? u.ev.order : u.rec.order) || 0; })
+                   .sort(function(a, b){ return a - b; });
+  for(var i = 1; i < slots.length; i++){ if(slots[i] <= slots[i - 1]) slots[i] = slots[i - 1] + 1; }
+  var now = Date.now();
+  units.forEach(function(u, k){
+    var x = u.ev || u.rec;
+    if(x.order === slots[k]) return;
+    x.order = slots[k]; x.updatedAt = now;
+    if(u.rec) gsDirty = true;
+  });
+  gsSave();
+  save(); queueSync(); render();
+  return true;
 }
 
 document.addEventListener("pointerdown", function(e){
@@ -3883,7 +4258,7 @@ function ptrDoRefresh(){
     try{ sessionStorage.setItem("ptr-fired", String(Date.now())); }catch(e){}
     if(navigator.onLine === false){
       /* 断网时整页 reload 会变成浏览器的错误页，这时候只做"重读本地数据 + 重绘" */
-      load(); loadSync(); render(); ptrBusy = false; ptrReset(true);
+      gsSafe(gsLoad); load(); loadSync(); render(); ptrBusy = false; ptrReset(true);
       setSync(sync.on ? "error" : "off", "当前没有网络");
       return;
     }
@@ -4640,7 +5015,9 @@ async function syncShort(){
 }
 
 /* ================= 启动 ================= */
+gsSafe(gsLoad);                 /* 分组名册要先读进来：load() 里可能就会 save()，那时名册还是空的话会把存着的那份盖掉 */
 load();
+gsSafe(gsReconcile);            /* 第一次用上名册的老数据：把现有的分组名补登记进去 */
 loadSync();
 applyTheme();
 viewCard.setAttribute("aria-pressed", state.view === "card" ? "true" : "false");

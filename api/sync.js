@@ -15,6 +15,7 @@
  * 可选参数 space（GET 放在查询串、POST 放在请求体）：同一个同步码下再分出一份**互不相干**的数据。
  *   不传 / 空串 → 日程卡片本身，存储键和以前完全一样（老页面照常工作）
  *   "short"     → 「短期倒计时」（2026-09-26 加）
+ *   "groups"    → 分组名册：让删空了的分组还留着（2026-10-10 加）
  * 只认白名单里的值；响应里回传 space，客户端据此确认服务端是新版——
  * 旧版服务端会忽略 space、把日程数据还回去，客户端要是不核对就会把两份数据合到一起。
  */
@@ -64,7 +65,7 @@ const CAS_SCRIPT = [
   "return {1, v + 1}"
 ].join("\n");
 
-const SPACES = ["", "short"];
+const SPACES = ["", "short", "groups"];
 function cleanSpace(v){
   const s = String(v == null ? "" : v).trim();
   return SPACES.indexOf(s) > -1 ? s : null;
