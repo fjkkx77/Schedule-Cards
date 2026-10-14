@@ -660,7 +660,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 /* ============ 菜单 ============ */
 .menu-mask{position:fixed;inset:0;z-index:40}
 .menu{
-  position:fixed;z-index:41;
+  position:absolute;z-index:41;   /* 跟着页面滚，见 placePopup() */
   /* 这里的 top/right 只是 JS 没跑起来时的兜底。真实位置在 openMenu() 里
      按 ⋯ 按钮的 rect 算——写死 right 在宽屏上会让菜单飞到屏幕最右缘，
      而按钮在居中的内容列里，两者完全脱开（PC 上看着很割裂） */
@@ -772,6 +772,25 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   color:var(--text-2);
 }
 .countdown .cd-base{font-size:12px;font-weight:600;color:var(--text-3)}
+/* 备注：和上面的输入框同一套外观；字号 16px 不能小——iOS 上小于 16px 的输入框一聚焦整页会放大 */
+#fNote{
+  display:block;width:100%;min-height:84px;max-height:40vh;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface-2);
+  padding:11px 12px;font-size:16px;line-height:1.5;
+  resize:none;overflow-y:auto;overscroll-behavior:contain;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+#fNote:focus{outline:2px solid #2f86f6;outline-offset:1px;border-color:transparent}
+#fNote::placeholder{color:var(--text-3)}
+/* 创建时间：只读信息，外观同上面的倒计时框（灰底细边），字色压一档，看得出不能点 */
+.meta-box{
+  padding:10px 12px;border-radius:12px;
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  display:flex;flex-direction:column;gap:2px;
+}
+.meta-box .meta-main{font-size:16px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
+.meta-box .meta-sub{font-size:12px;font-weight:600;color:var(--text-3)}
+.meta-box .meta-sub:empty{display:none}
 /* 越紧迫越显眼——这比数字本身更能让人有压力 */
 .countdown.soon  .cd-num{color:#ef7d20}                    /* 7 天内 */
 .countdown.urgent .cd-num{color:#e0483d}                   /* 24 小时内 */
@@ -1190,6 +1209,21 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
         如果它属于某个分组，会暂时离开那个分组，取消置顶后自动回去。</p>
     </div>
 
+    <!-- 备注（2026-10-14 用户要的）：可不填；只在这个弹窗里看和改，卡片上不显示 -->
+    <div class="field">
+      <label for="fNote">备注</label>
+      <textarea id="fNote" rows="3" maxlength="500" placeholder="注意事项、想对自己说的话……（可不填）"></textarea>
+    </div>
+
+    <!-- 创建时间（同上）：只读。新增时显示「现在」并跟着走秒，点保存的那一刻记下来 -->
+    <div class="field">
+      <label>创建时间</label>
+      <div class="meta-box" id="fCreated">
+        <span class="meta-main" id="fCreatedTxt"></span>
+        <span class="meta-sub" id="fCreatedSub"></span>
+      </div>
+    </div>
+
     <div class="actions">
       <button type="button" class="btn" id="fCancel">取消</button>
       <button type="submit" class="btn primary">保存</button>
@@ -1556,6 +1590,49 @@ function gsWeave(groups, empties){
     out.splice(at, 0, {name:r.name, items:[], empty:true, order:o, color:r.color});
   });
   return out;
+}
+
+/* 一条日程（重新）进入分组 group 时该用的 order：让分组留在它眼下显示的位置，不被这条日程拽走。
+   用在两处：取消置顶（回到原分组）、编辑时换了分组。
+   2026-10-14 用户：「回家过年啦」置顶期间，空的「节假日」被挤到了「考试」下面；取消置顶后节假日却跳回了「个人」下面。
+   原因：分组的位置＝组里排最前那条的 order。置顶期间分组空着，位置记在名册上，拖动时改的也是名册；
+   那条日程自己的 order 还是置顶前的老值，一回来就按老值排，整个分组跟着跳回去。
+   规则：
+   · 组里还有别的（没置顶的）日程：它的 order 比那几条都大就不用动（分组位置不变，组内回到原来的先后）；
+     比它们小的话，挪到「排在这个分组前面的东西」和「组里第一条」之间——还是组里第一条，但分组不往上跳
+   · 组里没有别的日程、名册里有这个空分组：接过空分组留下的位置
+   · 不分组 / 分组已经没了：不动，回到它自己原来的位置
+   中间值可能是小数：order 只拿来比大小，小数没关系；只改这一条，不去挪别的日程（少一次牵连、同步只传这一条） */
+function joinOrder(ev, group){
+  var own = typeof ev.order === "number" ? ev.order : 0;
+  group = String(group || "").trim();
+  if(!group) return own;
+  try{
+    var others = liveEvents().filter(function(e){ return e.id !== ev.id && !isPinned(e); });
+    var keys = others.map(function(e){ return e.order || 0; });
+    gs.items.forEach(function(r){            /* 别的空分组也占着位置 */
+      if(r.deletedAt || r.name === group || typeof r.order !== "number") return;
+      if(!others.some(function(e){ return (e.group || "").trim() === r.name; })) keys.push(r.order);
+    });
+    var members = others.filter(function(e){ return (e.group || "").trim() === group; });
+    if(members.length){
+      var first = Math.min.apply(null, members.map(function(e){ return e.order || 0; }));
+      if(own >= first) return own;
+      var lower = null;                       /* 排在这个分组前面的东西里最靠后的那个值 */
+      keys.forEach(function(o){ if(o < first && (lower === null || o > lower)) lower = o; });
+      return lower === null ? first - 1 : (lower + first) / 2;
+    }
+    var rec = gsBroken ? null : gsFind(group);
+    if(!rec || rec.deletedAt || typeof rec.order !== "number") return own;
+    /* 空分组排在「order ≤ 它」的东西后面（见 gsWeave）。没有谁和它同值就直接用这个值；有的话取它和下一个之间 */
+    var slot = rec.order;
+    if(!keys.some(function(o){ return o === slot; })) return slot;
+    var upper = null;
+    keys.forEach(function(o){ if(o > slot && (upper === null || o < upper)) upper = o; });
+    return upper === null ? slot + 1 : (slot + upper) / 2;
+  }catch(e){
+    return own;
+  }
 }
 
 
@@ -2182,16 +2259,18 @@ function numInfo(ev, t){
   };
 }
 
+/* 这一摞里有几张：置顶的不在摞里，不算。原来连置顶的也算，
+   结果点置顶区的卡（原分组收着、算上它有两张）去展开了原分组，编辑页打不开（2026-10-14） */
 function groupCount(g){
   var c = 0;
-  liveEvents().forEach(function(e){ if((e.group || "").trim() === g) c++; });
+  liveEvents().forEach(function(e){ if((e.group || "").trim() === g && !isPinned(e)) c++; });
   return c;
 }
 /* 收起状态下点这一叠＝展开；展开状态（或没分组、组里只有一条）下点＝编辑 */
 function activate(ev){
   var g = (ev.group || "").trim();
   /* 「只看已过期」里是平铺的，不存在"先展开那一摞"，点了就是编辑 */
-  if(!odView && g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
+  if(!odView && !isPinned(ev) && g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
   openForm(ev.id);
 }
 
@@ -2426,13 +2505,23 @@ function openMenu(){
   menu.hidden = false; menuMask.hidden = false;
   positionMenu();
 }
+/* 弹出菜单挂在按钮旁边，按「页面坐标」定位（position:absolute，菜单都是 body 的直接子元素、body 没有定位）：
+   页面滚动时菜单跟着按钮一起走。原来是 fixed——钉在屏幕上，手指一滑卡片走了菜单还停在原处（2026-10-14 用户截图）。
+   left 已由调用方算好（视口坐标）；下方放不下、上方放得下时翻到按钮上面 */
+function placePopup(el, r, left, gap){
+  var vh = window.innerHeight || document.documentElement.clientHeight;
+  var h = el.offsetHeight;
+  var top = r.bottom + gap;
+  if(top + h > vh - 12 && r.top - gap - h >= 12) top = r.top - gap - h;
+  el.style.left = Math.round(left + (window.pageXOffset || 0)) + "px";
+  el.style.top = Math.round(top + (window.pageYOffset || 0)) + "px";
+}
 /* 菜单右边缘对齐 ⋯ 按钮右边缘，向下 8px；两侧各留 12px 不许出屏 */
 function positionMenu(){
   var b = document.getElementById("menuBtn").getBoundingClientRect();
   var dw = document.documentElement.clientWidth;
   var w = menu.offsetWidth || 196;
-  menu.style.left = Math.round(Math.max(12, Math.min(b.right - w, dw - w - 12))) + "px";
-  menu.style.top = Math.round(b.bottom + 8) + "px";
+  placePopup(menu, b, Math.max(12, Math.min(b.right - w, dw - w - 12)), 8);
 }
 /* 转屏/改窗口大小时按钮会挪位置，菜单要跟上 */
 window.addEventListener("resize", function(){ if(!menu.hidden) positionMenu(); });
@@ -2496,6 +2585,7 @@ fileInput.addEventListener("change", function(){
           excl: x.excl === true,
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
           createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
+          note: cleanNote(x.note) || undefined,      /* undefined 的字段 JSON 里不出现，和没写备注一样 */
           updatedAt: tImp
         });
       });
@@ -2677,10 +2767,33 @@ function paintCountdown(){
   box.className = "countdown" + (cls ? " " + cls : "");
   box.hidden = false;
 }
+/* 创建时间一栏：编辑时是这条日程的 createdAt；新增时是「现在」、每秒跟着走，保存的那一刻就是记下的值 */
+function fullTime(ms){
+  var d = new Date(ms);
+  return ymd(d) + " " + WEEK[d.getDay()] + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+}
+function paintCreated(){
+  var ev = editingId ? lswEvent(editingId) : null;
+  var txt = document.getElementById("fCreatedTxt"), sub = document.getElementById("fCreatedSub");
+  if(ev && typeof ev.createdAt === "number"){
+    txt.textContent = fullTime(ev.createdAt);
+    sub.textContent = "";
+  }else{
+    txt.textContent = fullTime(Date.now());
+    sub.textContent = "点「保存」的那一刻记为创建时间";
+  }
+}
+/* 备注框跟着内容长高（到 40vh 为止，再多就框里滚） */
+function fitNote(){
+  var t = document.getElementById("fNote");
+  t.style.height = "auto";
+  t.style.height = (t.scrollHeight + 2) + "px";   /* +2：上下两条 1px 边框，scrollHeight 不含 */
+}
+document.getElementById("fNote").addEventListener("input", fitNote);
 function startCountdown(){
   stopCountdown();
-  paintCountdown();
-  cdTimer = setInterval(paintCountdown, 1000);
+  paintCountdown(); paintCreated();
+  cdTimer = setInterval(function(){ paintCountdown(); if(!editingId) paintCreated(); }, 1000);
 }
 function stopCountdown(){
   if(cdTimer){ clearInterval(cdTimer); cdTimer = null; }
@@ -2718,18 +2831,23 @@ function openGroupMenu(name, anchor){
     ? "长按分组名可以直接拖动排序"
     : "想自己排顺序：先把上面的排序切到「自定义顺序」，再长按分组名拖动";
   gmMenu.appendChild(tip);
-  /* 菜单是 fixed 定位的，按锚点算位置；贴着右边缘，别超出屏幕 */
+  /* 按锚点算位置，贴着右边缘，别超出屏幕。按页面坐标定位、跟着页面滚，见 placePopup */
+  gmAnchor = anchor;
   var r = anchor.getBoundingClientRect();
   gmMenu.hidden = false;
   gmMask.hidden = false;
-  /* 必须先切成 fixed 再量宽：absolute 时的包含块更窄，提示行换行方式不同，
-     量出来的宽度会偏小，按它算的 left 会把菜单顶到屏幕右边缘 */
-  gmMenu.style.position = "fixed";
+  gmMenu.style.position = "absolute";   /* .dp-menu 本来就是 absolute，这里写明：它的包含块是整个页面（宽度在 CSS 里写死了，不受包含块影响） */
   var w = gmMenu.offsetWidth || 140;
   var left = Math.min(r.left, document.documentElement.clientWidth - w - 12);
-  gmMenu.style.left = Math.max(12, left) + "px";
-  gmMenu.style.top = (r.bottom + 6) + "px";
+  placePopup(gmMenu, r, Math.max(12, left), 6);
 }
+var gmAnchor = null;
+/* 转屏/改窗口大小时内容列会挪（宽屏居中），菜单跟上；按钮已经被重画掉了就直接关 */
+window.addEventListener("resize", function(){
+  if(gmMenu.hidden) return;
+  if(!gmAnchor || !gmAnchor.isConnected){ closeGroupMenu(); return; }
+  openGroupMenu(gpTarget, gmAnchor);
+});
 gmMask.addEventListener("click", closeGroupMenu);
 
 function groupMemberCount(name){
@@ -3184,6 +3302,11 @@ function setPinState(on){
 }
 document.getElementById("fPinBtn").addEventListener("click", function(){ setPinState(!pinState); });
 var fDelete = document.getElementById("fDelete");
+var fNote = document.getElementById("fNote");
+/* 备注入库前：换行统一成 \n、去掉首尾空白、最多 500 字（输入框 maxlength 同值；导入的备份也走这里） */
+function cleanNote(s){
+  return typeof s === "string" ? s.replace(/\r\n?/g, "\n").trim().slice(0, 500) : "";
+}
 
 COLORS.forEach(function(c, i){
   var id = "clr" + i;
@@ -3234,8 +3357,10 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
   fDelete.hidden = !ev;
   setPinState(!!(ev && ev.pinned));
   fDays.value = ""; setExcl(exclState); syncDaysInput();
+  fNote.value = ev && typeof ev.note === "string" ? ev.note : "";
   mask.hidden = false;
   document.body.style.overflow = "hidden";
+  fitNote();                  /* 弹窗显示出来之后才量得到高度 */
   startCountdown();
   /* 新增时直接把光标放进事件名称并弹出键盘。
      ⚠️ focus() 必须在这次点击的同一拍里同步调用：放进 setTimeout 就脱离了用户手势，
@@ -3277,6 +3402,7 @@ form.addEventListener("submit", function(e){
   var mode = pickedMode();
   var group = currentGroup();
   var pinnedNow = pinState;
+  var note = cleanNote(fNote.value);   /* 空的就不存这个字段，老数据和没写备注的长得一样 */
   var now = Date.now();
   /* 放进一个空分组：日程接过这个分组留下的位置，分组标题就不会因为"里面第一张是新建的"跳到最底下。
      只在这一种情况下才动 order（置顶的不算——它不在分组里显示）；其余情况 slot 是 null，和以前一样 */
@@ -3284,7 +3410,9 @@ form.addEventListener("submit", function(e){
   if(editingId){
     for(var i=0;i<state.events.length;i++){
       if(state.events[i].id === editingId){
-        if(slot !== null && (state.events[i].group || "").trim() !== group) state.events[i].order = slot;
+        /* 回到 / 换进一个分组（取消置顶、改了分组）：分组留在原位，不被这条拽走，见 joinOrder */
+        if(!pinnedNow && (isPinned(state.events[i]) || (state.events[i].group || "").trim() !== group))
+          state.events[i].order = joinOrder(state.events[i], group);
         state.events[i].title = title;
         state.events[i].date = date;
         state.events[i].mode = mode;
@@ -3293,14 +3421,17 @@ form.addEventListener("submit", function(e){
         state.events[i].excl = exclState;
         state.events[i].color = pickedColor();
         state.events[i].pinned = pinnedNow;
+        if(note) state.events[i].note = note; else delete state.events[i].note;
         state.events[i].updatedAt = now;
         delete state.events[i].demo;    /* 你动过的示例就是你的数据了，照常参与同步 */
       }
     }
   }else{
-    state.events.push({id:uid(), title:title, date:date, mode:mode,
-                       group:group, time:formTime, excl:exclState, color:pickedColor(), pinned:pinnedNow, order:(slot !== null ? slot : orderMax() + 1),
-                       createdAt:now, updatedAt:now});
+    var nev = {id:uid(), title:title, date:date, mode:mode,
+               group:group, time:formTime, excl:exclState, color:pickedColor(), pinned:pinnedNow, order:(slot !== null ? slot : orderMax() + 1),
+               createdAt:now, updatedAt:now};
+    if(note) nev.note = note;
+    state.events.push(nev);
   }
   /* 往这个分组里存了东西 = 明确要这个分组：名册里没有就登记，删过就恢复 */
   if(group) gsSafe(function(){ gsEnsure(group, now); });
@@ -3963,6 +4094,7 @@ function lswTogglePin(id){
   if(!ev) return;
   lswClose(false);
   var now = Date.now();
+  if(isPinned(ev)) ev.order = joinOrder(ev, ev.group);   /* 取消置顶：回到原分组眼下的位置，见 joinOrder */
   ev.pinned = !isPinned(ev);
   ev.updatedAt = now;
   delete ev.demo;                     /* 动过的示例就是你自己的数据了，照常同步（同表单保存） */
@@ -4112,7 +4244,7 @@ var SD_DEAD = 10;         /* 起手死区 */
 var dcMask = document.getElementById("dcMask");
 var formOrig = "";
 function formSnap(){
-  return JSON.stringify([fTitle.value, fDate.value, formTime, pickedMode(), groupMode, currentGroup(), pickedColor(), pinState, exclState]);
+  return JSON.stringify([fTitle.value, fDate.value, formTime, pickedMode(), groupMode, currentGroup(), pickedColor(), pinState, exclState, fNote.value]);
 }
 /* 按 DOM 顺序排：后面的盖在前面的上面，手势只归最上面那个打开着的 */
 var SHEETS = [
