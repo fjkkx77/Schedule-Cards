@@ -791,11 +791,43 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .meta-box .meta-main{font-size:16px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
 .meta-box .meta-sub{font-size:12px;font-weight:600;color:var(--text-3)}
 .meta-box .meta-sub:empty{display:none}
-/* 越紧迫越显眼——这比数字本身更能让人有压力 */
-.countdown.soon  .cd-num{color:#ef7d20}                    /* 7 天内 */
-.countdown.urgent .cd-num{color:#e0483d}                   /* 24 小时内 */
-.countdown.urgent{background:rgba(224,72,61,.08);box-shadow:inset 0 0 0 1px rgba(224,72,61,.35)}
-.countdown.past  .cd-num{color:var(--text-3)}              /* 已过期/已累计 */
+/* ---- 编辑页的三个日期框：各配一个图标方块 + 自己的色调（2026-10-14 用户从三套对比图里选的「A 颜色区分」）----
+   原来三个框是同一套灰底灰边，分不出谁是谁。现在：
+   · 创建时间：中性灰蓝（只读信息，不跟日程颜色）
+   · 目标日期、倒计时：跟这条日程的颜色走（--pc 在 #form 上，选颜色时即时更新，见 setColor / fColors 的 change）
+   · 倒计时快到了：提醒色优先——7 天内橙、24 小时内红；倒数已过期：灰
+   图标方块 = ::before 画底色方块 + ::after 用 mask 画白色图标，不用另加 DOM */
+#form{--pc:#2f86f6}
+.dbox{position:relative;padding-left:54px !important;--ic:var(--pc)}
+.dbox::before{
+  content:"";position:absolute;left:12px;top:50%;width:30px;height:30px;margin-top:-15px;
+  border-radius:8px;background:var(--ic);
+}
+.dbox::after{
+  content:"";position:absolute;left:18px;top:50%;width:18px;height:18px;margin-top:-9px;background:#fff;
+  -webkit-mask:var(--ico) center/contain no-repeat;mask:var(--ico) center/contain no-repeat;
+}
+.dbox-created{--ic:#7a8597;--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 7.5V12l3 2'/%3E%3C/svg%3E")}
+.dbox-date{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='3'/%3E%3Cpath d='M3.5 10h17M8 3v4M16 3v4'/%3E%3C/svg%3E")}
+.dbox-cd{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13.5' r='7.5'/%3E%3Cpath d='M12 9.5v4l2.5 2M9.5 2.5h5M12 2.5V6'/%3E%3C/svg%3E")}
+/* 底色、细边都由图标方块的颜色调出来，换颜色时三样一起变 */
+.meta-box.dbox, .countdown.dbox{
+  background:color-mix(in srgb, var(--ic) 9%, var(--surface));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ic) 30%, transparent);
+}
+.date-trigger.dbox{
+  background:color-mix(in srgb, var(--ic) 7%, var(--surface));
+  border-color:color-mix(in srgb, var(--ic) 28%, transparent);
+}
+.date-trigger.dbox.empty{--ic:#7a8597}
+.meta-box.dbox .meta-main{color:var(--text)}
+/* 倒计时的数字也跟着颜色走；和正文混一点，保证浅底上读得清（对比度 ≥ 4.5，六个颜色深浅主题都量过） */
+.countdown .cd-num{color:color-mix(in srgb, var(--ic) 55%, var(--text))}
+/* 越紧迫越显眼——这比数字本身更能让人有压力。提醒色压过日程颜色 */
+.countdown.soon{--ic:#ef7d20}                                /* 7 天内 */
+.countdown.urgent{--ic:#e0483d}                              /* 24 小时内 */
+.countdown.past{--ic:#7a8597}                                /* 倒数已过期 */
+.countdown.past .cd-num{color:var(--text-2)}
 
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .chips button{
@@ -829,7 +861,6 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   padding:0 12px;font-size:16px;font-weight:600;text-align:left;
 }
 .date-trigger:active{transform:scale(.995)}
-.date-trigger .date-ico{flex:0 0 auto;font-size:17px;opacity:.7}
 .date-trigger .date-main{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
 .date-trigger .date-sub{font-size:12px;font-weight:600;color:var(--text-3);margin-top:2px}
 .date-trigger.empty{color:var(--text-3);font-weight:500}
@@ -1123,7 +1154,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
          备注可不填，只在这个弹窗里看和改，卡片上不显示 -->
     <div class="field">
       <label>创建时间</label>
-      <div class="meta-box" id="fCreated">
+      <div class="meta-box dbox dbox-created" id="fCreated">
         <span class="meta-main" id="fCreatedTxt"></span>
         <span class="meta-sub" id="fCreatedSub"></span>
       </div>
@@ -1152,9 +1183,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
     <div class="field">
       <label id="dateLabel">目标日期</label>
       <input type="hidden" id="fDate">
-      <button type="button" class="date-trigger" id="fDateBtn">
+      <button type="button" class="date-trigger dbox dbox-date" id="fDateBtn">
         <span class="date-main"><span id="fDateTxt">请选择日期</span><span class="date-sub" id="fDateSub" hidden></span></span>
-        <span class="date-ico">🗓</span>
       </button>
       <!-- 直接填天数反推日期（2026-09-17 用户：订阅还有 21 天到期，不想自己算是哪天）。
            和上面的日期双向联动：填天数→改日期；选日期→这里显示卡片上会出现的那个数 -->
@@ -1178,7 +1208,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
         </span>
         <button type="button" class="time-clear" id="fTimeClear" hidden>清除</button>
       </div>
-      <div class="countdown" id="fCountdown" hidden>
+      <div class="countdown dbox dbox-cd" id="fCountdown" hidden>
         <span class="cd-num" id="fCdNum"></span>
         <span class="cd-base" id="fCdBase"></span>
       </div>
@@ -2756,7 +2786,7 @@ function paintCountdown(){
     if(now.getTime() >= target){
       num = "已经 " + cdSplit(now.getTime() - target);
       base = "从 " + ymd(d) + " " + (formTime || "00:00") + " 算起";
-      cls = "past";
+      cls = "";       /* 正数正在累计＝正常状态，跟日程颜色（2026-10-14 前和「已过期」一样是灰的） */
     }else{
       num = "还有 " + cdSplit(target - now.getTime()) + " 开始";
       base = "距 " + ymd(d) + " " + (formTime || "00:00");
@@ -2765,7 +2795,7 @@ function paintCountdown(){
   }
   document.getElementById("fCdNum").textContent = num;
   document.getElementById("fCdBase").textContent = base;
-  box.className = "countdown" + (cls ? " " + cls : "");
+  box.className = "countdown dbox dbox-cd" + (cls ? " " + cls : "");
   box.hidden = false;
 }
 /* 创建时间一栏：编辑时是这条日程的 createdAt；新增时是「现在」、每秒跟着走，保存的那一刻就是记下的值 */
@@ -3330,7 +3360,11 @@ function setColor(c){
     if(list[i].value.toLowerCase() === String(c||"").toLowerCase()){ list[i].checked = true; hit = true; }
   }
   if(!hit && list.length) list[0].checked = true;
+  paintPc();
 }
+/* 日期框（目标日期、倒计时）的颜色跟着这条日程的颜色走，见 CSS「编辑页的三个日期框」 */
+function paintPc(){ form.style.setProperty("--pc", pickedColor()); }
+fColors.addEventListener("change", paintPc);
 
 function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ 添加日程」进来时，新日程默认放进那个分组 */
   editingId = id || null;
