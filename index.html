@@ -1118,6 +1118,22 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   <form class="sheet" id="form">
     <h2 id="sheetTitle">新增日程</h2>
 
+    <!-- 创建时间 + 备注（2026-10-14 用户要的，同日用户要求放到表单最上面、备注在创建时间下面）。
+         创建时间只读：新增时显示「现在」并跟着走秒，点保存的那一刻记下来；
+         备注可不填，只在这个弹窗里看和改，卡片上不显示 -->
+    <div class="field">
+      <label>创建时间</label>
+      <div class="meta-box" id="fCreated">
+        <span class="meta-main" id="fCreatedTxt"></span>
+        <span class="meta-sub" id="fCreatedSub"></span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="fNote">备注</label>
+      <textarea id="fNote" rows="3" maxlength="500" placeholder="注意事项、想对自己说的话……（可不填）"></textarea>
+    </div>
+
     <div class="field">
       <label for="fTitle">事件名称</label>
       <input type="text" id="fTitle" maxlength="30" placeholder="例如：回家过年啦" autocomplete="off">
@@ -1207,21 +1223,6 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       </button>
       <p class="hint">置顶的日程不管用哪种排序都排在最上面，单独放在「置顶区」；
         如果它属于某个分组，会暂时离开那个分组，取消置顶后自动回去。</p>
-    </div>
-
-    <!-- 备注（2026-10-14 用户要的）：可不填；只在这个弹窗里看和改，卡片上不显示 -->
-    <div class="field">
-      <label for="fNote">备注</label>
-      <textarea id="fNote" rows="3" maxlength="500" placeholder="注意事项、想对自己说的话……（可不填）"></textarea>
-    </div>
-
-    <!-- 创建时间（同上）：只读。新增时显示「现在」并跟着走秒，点保存的那一刻记下来 -->
-    <div class="field">
-      <label>创建时间</label>
-      <div class="meta-box" id="fCreated">
-        <span class="meta-main" id="fCreatedTxt"></span>
-        <span class="meta-sub" id="fCreatedSub"></span>
-      </div>
     </div>
 
     <div class="actions">
