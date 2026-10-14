@@ -3812,6 +3812,15 @@ var DRAG_SLOP = 10;       /* 按住期间手指动超过这么多，就当是滚
 var dragTimer = null, dragOn = false, dragEl = null, dragItems = null, dragTouch = false;
 var dragFrom = 0, dragTo = 0, dragStartY = 0, dragOffset = 0, dragH = 0;
 var dragV = 0, dragLastY = 0, dragLastT = 0;   /* 手指速度（px/ms，指数平滑），松手落位时交给弹簧 */
+/* 一只手拖、另一只手滑页面找位置（2026-10-15 用户要的；iPhone 主屏幕拖着图标时另一根手指能翻页，是同一个思路）：
+   · 位置一律按「页面坐标」算（手指的屏幕 y + 页面滚动量）：页面滚了，被拖的那张仍贴在手指下，让位也跟着重算
+   · 只认按下去的那根手指（dragTouchId）驱动拖动；拖动中再放上来的手指只用来滚页面，抬起它不算松手
+   · 第二根手指的滚动是自己做的（浏览器的滚动在拖动期间整个挡住了），松手带惯性，减速照 iOS 0.998/ms */
+var dragTouchId = null, dragLastClientY = 0, dragScrollY0 = 0;
+var dsFinger = null;      /* 第二根手指：{id, y, samples:[{y,t}]} */
+var dsRaf = 0;            /* 第二根手指松开后的惯性滚动 */
+var dragMaxScroll = 0;    /* 拿起那一刻页面最多能滚到哪：被拖的那项往下挪会把页面撑长，不封顶的话能一直滚进下面的空白（2026-10-15 测出来的） */
+function dragScrollTo(y){ window.scrollTo(0, Math.max(0, Math.min(dragMaxScroll, y))); }
 
 /* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
 function dragEnabled(){ return state.sort === "manual" && !odView; }
@@ -3847,6 +3856,11 @@ function dragBegin(scope, clientY, byTouch){
   dragFrom = dragItems.indexOf(dragEl);
   dragTo = dragFrom;
   dragStartY = clientY;
+  dragScrollY0 = window.pageYOffset || 0;
+  dragMaxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  dragLastClientY = clientY;
+  dragTouchId = byTouch ? dragPrimaryId : null;
+  dsFinger = null; dsStop();
   dragOffset = 0;
   dragV = 0; dragLastY = clientY; dragLastT = performance.now();
   dragH = dragEl.getBoundingClientRect().height +
@@ -3877,10 +3891,13 @@ function dragPaint(){
 }
 
 function dragMove(clientY){
+  dragLastClientY = clientY;
+  /* 页面坐标：拖动期间页面滚过多少也算进去（另一只手滑页面、电脑上滚滚轮） */
+  var pageY = clientY + (window.pageYOffset || 0) - dragScrollY0;
   /* 速度：0.4 新 + 0.6 旧的指数平滑；同一帧里连来两个事件（间隔 <4ms）不算，否则速度虚高 */
   var tnow = performance.now(), dt = tnow - dragLastT;
-  if(dt >= 4){ dragV = 0.4 * (clientY - dragLastY) / dt + 0.6 * dragV; dragLastY = clientY; dragLastT = tnow; }
-  dragOffset = clientY - dragStartY;
+  if(dt >= 4){ dragV = 0.4 * (pageY - dragLastY) / dt + 0.6 * dragV; dragLastY = pageY; dragLastT = tnow; }
+  dragOffset = pageY - dragStartY;
   var steps = Math.round(dragOffset / dragH);
   var to = Math.max(0, Math.min(dragItems.length - 1, dragFrom + steps));
   if(to !== dragTo) dragTo = to;
@@ -3903,6 +3920,8 @@ function dragEnd(commit){
   document.body.classList.remove("dragging");
   var from = dragFrom, to = dragTo, items = dragItems;
   dragOn = false; dragEl = null; dragItems = null;
+  dragTouchId = null; dsFinger = null;
+  dsStop();               /* 惯性滚动在落位时停下：落位动画是按此刻的屏幕位置算的，页面再滑会让卡片落偏 */
   /* 松手后浏览器还会补一个 click，要把它吃掉，否则拖完立刻弹出编辑窗；落位动画没走完之前也不让点 */
   document.body.classList.add("just-dragged");
   if(commit && to !== from){
@@ -4086,8 +4105,85 @@ document.addEventListener("pointerdown", function(e){
 document.addEventListener("pointermove", function(e){
   if(!dragOn) return;
   e.preventDefault();
+  /* 触屏拖动由 touchmove 按手指编号驱动；这里再跟一遍的话，第二根手指的移动会把卡片拽到它那儿去 */
+  if(dragTouch) return;
   dragMove(e.clientY);
 }, {passive:false});
+
+/* ---- 拖动时另一根手指滑页面（说明见 dragTouchId 上面） ---- */
+var dragPrimaryId = null;
+document.addEventListener("touchstart", function(e){
+  if(!dragOn){ if(e.touches.length === 1) dragPrimaryId = e.touches[0].identifier; return; }
+  /* 拖动中又放上来一根手指：它负责滚页面。已经有一根在滚的就不换 */
+  if(dsFinger) return;
+  for(var i = 0; i < e.changedTouches.length; i++){
+    var t = e.changedTouches[i];
+    if(t.identifier === dragTouchId) continue;
+    dsStop();             /* 手指按下去＝接住正在滑的页面（同 iOS） */
+    dsFinger = {id: t.identifier, y: t.clientY, samples: [{y: t.clientY, t: performance.now()}]};
+    break;
+  }
+}, {passive:true, capture:true});
+function dragFindTouch(list, id){
+  for(var i = 0; i < list.length; i++){ if(list[i].identifier === id) return list[i]; }
+  return null;
+}
+/* 拖动中的 touchmove：拖的那根手指 → 挪卡片；另一根 → 滚页面。浏览器自己的滚动和缩放一律挡掉 */
+function dragTouchMove(e){
+  var a = dragTouchId === null ? (e.touches[0] || null) : dragFindTouch(e.touches, dragTouchId);
+  var b = dsFinger ? dragFindTouch(e.touches, dsFinger.id) : null;
+  if(b){
+    var dy = b.clientY - dsFinger.y;
+    dsFinger.y = b.clientY;
+    var tnow = performance.now();
+    dsFinger.samples.push({y: b.clientY, t: tnow});
+    while(dsFinger.samples.length > 2 && tnow - dsFinger.samples[0].t > 100) dsFinger.samples.shift();
+    if(dy) dragScrollTo((window.pageYOffset || 0) - dy);   /* 手指往上推＝内容往上走＝页面往下滚，和平常滑动一样 */
+  }
+  /* 拖的那根没动、只是页面滚了，也要重算：被拖的卡要留在手指下，别的卡要按新位置让位 */
+  dragMove(a ? a.clientY : dragLastClientY);
+}
+/* 第二根手指抬起：按最近 100ms 的速度带惯性滑一段；拖的那根抬起才是松手 */
+function dragTouchEnd(e, cancel){
+  for(var i = 0; i < e.changedTouches.length; i++){
+    var t = e.changedTouches[i];
+    if(dsFinger && t.identifier === dsFinger.id){
+      var s = dsFinger.samples, v = 0;
+      if(s.length >= 2 && performance.now() - s[s.length - 1].t < 80){
+        var first = s[0], last = s[s.length - 1];
+        if(last.t > first.t) v = -(last.y - first.y) / (last.t - first.t);   /* px/ms，正数＝页面往下滚 */
+      }
+      dsFinger = null;
+      if(!cancel) dsMomentum(v);
+    }else if(dragTouchId === null || t.identifier === dragTouchId){
+      dragEnd(!cancel);
+      return;
+    }
+  }
+}
+function dsStop(){ if(dsRaf){ cancelAnimationFrame(dsRaf); dsRaf = 0; } }
+function dsMomentum(v){
+  dsStop();
+  if(Math.abs(v) < 0.05) return;
+  var last = performance.now();
+  var step = function(now){
+    var dt = Math.min(32, now - last); last = now;
+    v *= Math.pow(0.998, dt);                    /* iOS 正常减速率（UIScrollView.DecelerationRate.normal） */
+    var before = window.pageYOffset;
+    dragScrollTo(before + v * dt);
+    if(dragOn) dragMove(dragLastClientY);
+    /* 慢到看不出、或者滚到头了（scrollBy 没挪动）就停 */
+    if(Math.abs(v) < 0.02 || window.pageYOffset === before){ dsRaf = 0; return; }
+    dsRaf = requestAnimationFrame(step);
+  };
+  dsRaf = requestAnimationFrame(step);
+}
+/* 电脑上：鼠标拖着、另一只手滚滚轮——一样跟着重算 */
+window.addEventListener("scroll", function(){
+  if(!dragOn || dragTouch) return;
+  if(window.pageYOffset > dragMaxScroll + 1){ dragScrollTo(dragMaxScroll); return; }   /* 滚轮也封顶（改位置会再触发一次 scroll，那次再重算） */
+  dragMove(dragLastClientY);
+}, {passive:true});
 document.addEventListener("pointerup", function(){ if(dragOn && !dragTouch) dragEnd(true); });
 /* 触屏拖动时浏览器一旦判定"这是滚动"就会发 pointercancel 把指针流掐掉，
    所以触屏路径改由下面的 touchmove/touchend 驱动，这里不能跟着把拖拽取消掉 */
@@ -4510,9 +4606,9 @@ document.addEventListener("touchstart", function(e){
 }, {passive:true});
 
 document.addEventListener("touchmove", function(e){
-  if(dragOn){                       /* 正在拖卡片：自己接管，并挡住浏览器的滚动 */
+  if(dragOn){                       /* 正在拖卡片：自己接管，并挡住浏览器的滚动（另一根手指的滚动由 dragTouchMove 自己做） */
     e.preventDefault();
-    if(e.touches[0]) dragMove(e.touches[0].clientY);
+    dragTouchMove(e);
     return;
   }
   if(!ptrPulling || ptrBlocked()) return;
@@ -4535,16 +4631,17 @@ document.addEventListener("touchmove", function(e){
   e.preventDefault();
 }, {passive:false});
 
-function ptrEnd(){
-  if(dragOn){ dragEnd(true); return; }          /* 拖拽落位，不要走下拉刷新那套 */
+function ptrEnd(e){
+  /* 拖动中：只有拖的那根手指抬起才是松手落位；另一根抬起只是停止滚页面（见 dragTouchEnd） */
+  if(dragOn){ dragTouchEnd(e, false); return; }
   if(!ptrPulling || !ptrLocked){ ptrPulling = false; ptrLocked = false; return; }
   ptrPulling = false; ptrLocked = false;
   if(ptrDist >= ptrThreshold()) ptrDoRefresh();
   else ptrReset(true);
 }
 document.addEventListener("touchend", ptrEnd, {passive:true});
-document.addEventListener("touchcancel", function(){
-  if(dragOn){ dragEnd(false); return; }
+document.addEventListener("touchcancel", function(e){
+  if(dragOn){ dragTouchEnd(e, true); return; }
   ptrPulling = false; ptrLocked = false; ptrReset(true);
 }, {passive:true});
 
