@@ -677,6 +677,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .menu button:active,.menu label:active{background:var(--surface-2)}
 @media (hover:hover){ .menu button:hover,.menu label:hover{background:var(--surface-2)} }
 .menu .danger{color:#e0483d}
+.menu .m-accent{color:var(--lsw-pin-fg)}   /* 「新建分组」是动作不是设置，蓝字区分；借左滑「置顶」的蓝字变量，深浅主题对比度都已达标 */
 .menu hr{border:0;border-top:1px solid var(--line);margin:5px 8px}
 .switch{margin-left:auto;font-size:13px;color:var(--text-2);font-weight:700}
 
@@ -1055,6 +1056,9 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 <!-- 菜单 -->
 <div class="menu-mask" id="menuMask" hidden></div>
 <div class="menu" id="menu" hidden>
+  <!-- 主页新建分组（2026-10-15 用户从三种放法里选的「A 放在 ⋯ 菜单第一项」；B 列表最底部、C 点＋先选 没选） -->
+  <button id="mNewGroup" class="m-accent">＋ 新建分组</button>
+  <hr>
   <button id="mSync">云同步<span class="switch" id="mSyncState">未开启</span></button>
   <hr>
   <button id="mToggleDate">列表显示日期<span class="switch" id="mDateState">关</span></button>
@@ -2902,9 +2906,15 @@ function openGroupSheet(mode){
   row1.innerHTML = ""; row2.innerHTML = "";
   document.getElementById("gpTitle").textContent =
     (mode === "rename") ? "重命名分组" : "删除分组「" + gpTarget + "」";
-  document.getElementById("gpRenameField").hidden = (mode !== "rename");
+  document.getElementById("gpRenameField").hidden = (mode !== "rename" && mode !== "create");
   document.getElementById("gpInput").value = gpTarget;
-  if(mode === "rename"){
+  if(mode === "create"){
+    document.getElementById("gpTitle").textContent = "新建分组";
+    document.getElementById("gpInput").value = "";
+    gpBtnOk.textContent = "创建";
+    row1.appendChild(gpBtnCancel); row1.appendChild(gpBtnOk);
+    row2.hidden = true;
+  }else if(mode === "rename"){
     gpBtnOk.textContent = "保存";
     row1.appendChild(gpBtnCancel); row1.appendChild(gpBtnOk);
     row2.hidden = true;
@@ -2919,7 +2929,9 @@ function openGroupSheet(mode){
     row2.appendChild(gpBtnCancel);                           /* 取消单独一行在下面 */
     row2.hidden = false;
   }
-  document.getElementById("gpHint").textContent = (mode === "rename")
+  document.getElementById("gpHint").textContent = (mode === "create")
+    ? "新分组会排在最后，先空着，之后点它下面的「＋ 添加日程」往里放。"
+    : (mode === "rename")
     ? (n === 0 ? "这个分组里现在没有日程；如果新名字和已有分组重名，两个分组会合并。"
                : "改名后这 " + n + " 条日程会跟着走；如果新名字和已有分组重名，两个分组会合并。")
     : (n === 0 ? "这个分组里没有日程，删掉的只是这个分组名。"
@@ -2928,17 +2940,58 @@ function openGroupSheet(mode){
   gpMask.hidden = false;
   document.body.style.overflow = "hidden";
   /* 同步 focus，别套 setTimeout——iOS 脱离点击手势后不弹键盘（同 openForm） */
-  if(mode === "rename"){ try{ document.getElementById("gpInput").focus(); }catch(e){} }
+  if(mode === "rename" || mode === "create"){ try{ document.getElementById("gpInput").focus(); }catch(e){} }
 }
 function closeGroupSheet(){
   gpMask.hidden = true;
   document.body.style.overflow = "";
 }
+/* 主页新建分组（右上角 ⋯ →「＋ 新建分组」）：只在名册里登记一个空分组，日程数据不动。
+   和「删空的分组留着」是同一套：排在最后、下面一行「＋ 添加日程」，跟着名册同步（space=groups） */
+function groupExists(name){
+  if(liveEvents().some(function(e){ return (e.group || "").trim() === name; })) return true;
+  var rec = gsBroken ? null : gsFind(name);
+  return !!(rec && !rec.deletedAt);
+}
+function createGroup(now){
+  var hint = document.getElementById("gpHint");
+  var name = document.getElementById("gpInput").value.trim().slice(0, 12);
+  if(!name){ hint.textContent = "分组名不能是空的。"; return; }
+  if(groupExists(name)){ hint.textContent = "已经有「" + name + "」这个分组了，换个名字吧。"; return; }
+  /* 名册出错停用时建不了（空分组没地方存），说清楚，别假装建好了 */
+  if(gsBroken || !gsSafe(function(){ gsEnsure(name, now); return true; }, false)){
+    hint.textContent = "现在建不了空分组。可以先新建一条日程，在「分组」里选「＋ 新建分组」。";
+    return;
+  }
+  queueSync(); closeGroupSheet(); render();
+  /* 滚到新分组那里亮一下，让人知道它出现在哪（只看已过期 / 短期倒计时界面里主页是藏着的，不滚） */
+  if(odView || scView) return;
+  var esc = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/["\\]/g, "\\$&");
+  var add = board.querySelector('.g-empty[data-group="' + esc + '"]');
+  var sec = add && add.closest(".group");
+  if(!sec) return;
+  try{ sec.scrollIntoView({block:"center", behavior:"smooth"}); }catch(e){ sec.scrollIntoView(); }
+  add.classList.remove("lsw-flash"); void add.offsetWidth; add.classList.add("lsw-flash");
+  setTimeout(function(){ add.classList.remove("lsw-flash"); }, 1000);
+}
+/* 键盘上按回车＝点「创建 / 保存」。中文输入法选词时的回车不算（isComposing / 229） */
+document.getElementById("gpInput").addEventListener("keydown", function(e){
+  if(e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+  if(gpMode !== "create" && gpMode !== "rename") return;
+  e.preventDefault();
+  gpBtnOk.click();
+});
+document.getElementById("mNewGroup").addEventListener("click", function(){
+  closeMenu();
+  gpTarget = "";
+  openGroupSheet("create");
+});
 gpBtnCancel.addEventListener("click", closeGroupSheet);
 gpMask.addEventListener("click", function(e){ if(e.target === gpMask) closeGroupSheet(); });
 
 gpBtnOk.addEventListener("click", function(){
   var now = Date.now();
+  if(gpMode === "create"){ createGroup(now); return; }
   if(gpMode === "rename"){
     var name = document.getElementById("gpInput").value.trim().slice(0, 12);
     if(!name){ document.getElementById("gpHint").textContent = "分组名不能是空的。"; return; }
@@ -4284,7 +4337,8 @@ function formSnap(){
 /* 按 DOM 顺序排：后面的盖在前面的上面，手势只归最上面那个打开着的 */
 var SHEETS = [
   {mask: gpMask,   sheet: document.getElementById("gpSheet"),   close: closeGroupSheet,
-   dirty: function(){ return gpMode === "rename" && document.getElementById("gpInput").value.trim() !== gpTarget; }},
+   dirty: function(){ var v = document.getElementById("gpInput").value.trim();
+     return gpMode === "rename" ? v !== gpTarget : gpMode === "create" ? v !== "" : false; }},
   {mask: syncMask, sheet: document.getElementById("syncSheet"), close: closeSyncSheet},
   {mask: mask,     sheet: form,                                 close: closeForm,
    dirty: function(){ return formSnap() !== formOrig; }},
