@@ -925,7 +925,22 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 /* 按下的光晕（按下反馈 v2）：从手指落点（--pg-x/--pg-y，JS 填）亮起，半径 --pg-r、强度 --pg-a 由 WAAPI 动画推动（两者在 JS 里用 CSS.registerProperty 注册过才能插值）。
    颜色 --pg-rgb / 最大强度 --pg-max 由 JS 按控件底色定：深色或饱和的底用白光，浅底用一点蓝光（白光在浅灰底上看不见） */
 .press-glow{background-image:radial-gradient(circle at var(--pg-x, 50%) var(--pg-y, 50%), rgba(var(--pg-rgb, 255,255,255), calc(var(--pg-a) * var(--pg-max, .4))) 0%, rgba(var(--pg-rgb, 255,255,255), 0) var(--pg-r)) !important}
-.press-dim{filter:brightness(var(--press-dim))}   /* 不支持注册 CSS 变量的老浏览器：退回压暗 */
+.press-dim{filter:brightness(var(--press-dim))}
+/* 调手感面板（?tune=1 才有）：贴底、可收起，盖在所有弹窗上面，方便边调边点 */
+#pressTune{position:fixed;left:8px;right:8px;bottom:calc(8px + var(--safe-b));z-index:300;max-width:520px;margin:0 auto;
+  background:var(--surface);color:var(--text);border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.28);padding:10px 12px;font-size:13px}
+#pressTune .pt-head{display:flex;align-items:center;justify-content:space-between}
+#pressTune .pt-head b{font-size:15px}
+#pressTune button{min-height:36px;padding:0 12px;border:0;border-radius:10px;background:var(--surface-2);font-weight:700;color:var(--text)}
+#pressTune .pt-body{max-height:44vh;overflow-y:auto;margin-top:6px}
+#pressTune.is-fold .pt-body{display:none}
+#pressTune .pt-last{margin:0 0 6px;font-weight:700;color:#2f86f6}
+#pressTune .pt-row{display:grid;grid-template-columns:1fr 46%;grid-template-rows:auto auto;column-gap:8px;align-items:center;margin:6px 0}
+#pressTune .pt-name{grid-column:1;color:var(--text-2);font-weight:600}
+#pressTune output{grid-column:1;grid-row:2;font-weight:800;font-variant-numeric:tabular-nums}
+#pressTune input[type=range]{grid-column:2;grid-row:1 / 3;width:100%;min-height:36px}
+#pressTune .pt-acts{display:flex;gap:8px;margin-top:8px}
+#pressTune .pt-note{margin:8px 0 2px;color:var(--text-3);font-size:12px;line-height:1.5}   /* 不支持注册 CSS 变量的老浏览器：退回压暗 */
 .dp-menu button:active, .dp-menu button.is-press{background:var(--press-bg);transition:none}
 .dp-today{
   margin-left:auto;min-height:44px;padding:0 14px;border:0;border-radius:10px;
@@ -4288,16 +4303,41 @@ document.addEventListener("pointercancel", function(){ if(dragOn && !dragTouch) 
    · 动的是独立的 scale 属性（和左滑 / 拖动 / 堆叠的 transform 相乘，不互相覆盖）
    · 减弱动态效果：不缩放、不弹，只留光晕和压暗（Apple：关掉弹性）
    类别（按先后匹配）：flat 菜单选项只加底色；mark 分组标题只变淡；card 内容卡片缩小；ctrl 其余控件放大＋光晕 */
+/* v3（2026-10-15 用户真机：v2「还是不明显没有交互反馈，感觉太含蓄」）：默认值整体加强，并且全部收进 PRESS_CFG——
+   用户说手感「必须得自己测试才能得出适合自己的手感参数」，所以加了只给用户用的调参面板（网址带 ?tune=1 才出现，见 pressTunePanel），
+   用户在手机上调好的值存在本机（localStorage 'schedule-cards-press-v1'），满意后把参数发给我写成默认值。
+   下面这些默认值都是我定的起点，不是 Apple 的数（Apple 没公布幅度）；最终以用户真机调定的为准 */
+var PRESS_DEFAULT = {
+  grow: 10,      /* 控件按下边缘外扩多少 px（s = 1 + 2×grow/宽），再夹在 min~max 之间 */
+  min: 1.08,     /* 控件放大下限（整行宽的按钮也至少放这么多） */
+  max: 1.22,     /* 控件放大上限（小图标放这么多） */
+  card: .93,     /* 卡片 / 列表行按下缩到多少 */
+  inB: .35,      /* 按下弹簧的弹性（SwiftUI bounce，0=不弹） */
+  inR: .26,      /* 按下弹簧的时长（秒） */
+  outB: .5,      /* 松开弹簧的弹性——越大越 Q */
+  outR: .5,      /* 松开弹簧的时长（秒） */
+  glowL: .35,    /* 浅底控件上的光晕强度 */
+  glowD: .6,     /* 深底 / 彩色控件上的光晕强度 */
+  hold: 140      /* 按下状态至少停多少毫秒 */
+};
+var PRESS_KEY = "schedule-cards-press-v1";
+var PRESS_CFG = (function(){
+  var c = {}, k, saved = null;
+  for(k in PRESS_DEFAULT) c[k] = PRESS_DEFAULT[k];
+  try{ saved = JSON.parse(localStorage.getItem(PRESS_KEY) || "null"); }catch(e){}
+  if(saved && typeof saved === "object") for(k in PRESS_DEFAULT) if(typeof saved[k] === "number" && isFinite(saved[k])) c[k] = saved[k];
+  return c;
+})();
 var PRESS_TIERS = [
   {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button", flat: true},
   {sel: ".g-main", flat: true},
-  {sel: ".card, .row, .sc-card", card: true, s: .96},
-  {sel: ".g-empty, .od-bar", card: true, s: .97},
-  {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button, button, .modes label, select.sort", grow: 6, min: 1.04, max: 1.15, glow: true}
+  {sel: ".card, .row, .sc-card", card: true, k: 1},
+  {sel: ".g-empty, .od-bar", card: true, k: .75},     /* 整块但不是内容卡片：缩得比卡片少一点（按卡片缩的幅度乘 0.75） */
+  {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button, button, .modes label, select.sort", glow: true}
 ];
 var PRESS_ALL = PRESS_TIERS.map(function(t){ return t.sel; }).join(", ");
-var PRESS_MIN_MS = 140, PRESS_SLOP = 10;
-var PRESS_IN = {resp: .26, bounce: .25}, PRESS_OUT = {resp: .5, bounce: .4};
+var PRESS_SLOP = 10;
+var pressLast = null;     /* 上一次按下的实际数值，调参面板上显示（也用来确认在用户手机上确实生效了） */
 var pressNow = null;
 var pressCanScale = !!(window.CSS && CSS.supports && CSS.supports("scale", "1")) && !!document.body.animate;
 var pressCanGlow = !!(window.CSS && CSS.registerProperty);
@@ -4312,7 +4352,7 @@ function pressReduce(){ return window.matchMedia && matchMedia("(prefers-reduced
    和松手落位的 springPts 同一套欠阻尼解，只是这里直接给出数值序列 */
 function pressSpring(a, b, cfg){
   var z = 1 - cfg.bounce, w0 = 2 * Math.PI / cfg.resp, wd = w0 * Math.sqrt(1 - z * z), step = 1 / 120, out = [];
-  for(var i = 0; i < 240; i++){
+  for(var i = 0; i < 600; i++){          /* 最多 5 秒：调参面板能把弹性拉到很大，衰减慢，别提前截断（截断会在结尾跳一下） */
     var t = i * step, u = Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t));
     out.push(b + (a - b) * u);
     if(t > .08 && Math.abs(u) < .002) break;
@@ -4341,6 +4381,7 @@ function pressDarkBg(el){
 function pressTarget(t){
   var el = t && t.closest ? t.closest(PRESS_ALL) : null;
   if(!el || el.disabled || el.getAttribute("aria-disabled") === "true") return null;
+  if(el.closest("#pressTune")) return null;               /* 调参面板自己的按钮不参与 */
   if(el.closest(".stack:not(.is-open)")) return null;     /* 收起的一摞有自己的「整摞下压」（.stack.is-pressed） */
   for(var i = 0; i < PRESS_TIERS.length; i++){ if(el.matches(PRESS_TIERS[i].sel)) return {el: el, tier: PRESS_TIERS[i]}; }
   return null;
@@ -4363,28 +4404,29 @@ function pressStart(e){
     el.style.setProperty("--pg-y", ((e.clientY - r.top) / (r.height || 1) * 100).toFixed(1) + "%");
     var dark = pressDarkBg(el);
     el.style.setProperty("--pg-rgb", dark ? "255,255,255" : "47,134,246");
-    el.style.setProperty("--pg-max", dark ? ".42" : ".2");
+    el.style.setProperty("--pg-max", String(dark ? PRESS_CFG.glowD : PRESS_CFG.glowL));
     el.classList.add("press-glow");
     p.glow = true;
     p.anims.push(el.animate([{"--pg-r": "0%", "--pg-a": "0"}, {"--pg-r": "150%", "--pg-a": "1"}],
                             {duration: 260, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards"}));
   }
   if(!pressCanScale || reduce){ if(!pressCanScale || !p.glow) el.classList.add("press-dim"); return; }
-  p.s = tier.card ? tier.s : Math.max(tier.min, Math.min(tier.max, 1 + 2 * tier.grow / (r.width || 44)));
+  p.s = tier.card ? 1 - (1 - PRESS_CFG.card) * tier.k
+            : Math.max(PRESS_CFG.min, Math.min(PRESS_CFG.max, 1 + 2 * PRESS_CFG.grow / (r.width || 44)));
   /* 放大的控件临时抬高一层，盖住相邻的（不改布局：本来是 static 的才补 position:relative） */
   if(!tier.card){
     p.pos = {position: el.style.position, zIndex: el.style.zIndex};
     if(getComputedStyle(el).position === "static") el.style.position = "relative";
     el.style.zIndex = "5";
   }
-  p.anims.push(pressAnim(el, "scale", 1, p.s, PRESS_IN));
+  p.anims.push(pressAnim(el, "scale", 1, p.s, {resp: PRESS_CFG.inR, bounce: PRESS_CFG.inB}));
 }
 /* 松开：先保证按下状态停够 PRESS_MIN_MS，再从「此刻的大小」弹回 1。cancel＝手指挪走 / 开始拖：马上收，不弹 */
 function pressEnd(cancel){
   var p = pressNow;
   if(!p) return;
   pressNow = null;
-  var wait = cancel ? 0 : Math.max(0, PRESS_MIN_MS - (performance.now() - p.t0));
+  var wait = cancel ? 0 : Math.max(0, PRESS_CFG.hold - (performance.now() - p.t0));
   setTimeout(function(){
     var el = p.el;
     el.classList.remove("is-press", "press-dim");
@@ -4398,7 +4440,8 @@ function pressEnd(cancel){
     if(p.s){
       var s0 = parseFloat(cs.scale) || p.s;
       var back = cancel ? el.animate([{scale: String(s0)}, {scale: "1"}], {duration: 160, easing: "ease-out", fill: "forwards"})
-                        : pressAnim(el, "scale", s0, 1, PRESS_OUT);
+                        : pressAnim(el, "scale", s0, 1, {resp: PRESS_CFG.outR, bounce: PRESS_CFG.outB});
+      if(!cancel) pressNote(p.s, s0);
       done.push(new Promise(function(res){ back.onfinish = back.oncancel = function(){ back.cancel(); res(); }; }));
     }
     p.anims.forEach(function(a){ a.cancel(); });
@@ -4414,6 +4457,75 @@ document.addEventListener("pointermove", function(e){
   if(pressNow && (Math.abs(e.clientX - pressNow.x) > PRESS_SLOP || Math.abs(e.clientY - pressNow.y) > PRESS_SLOP)) pressEnd(true);
 }, true);
 window.addEventListener("scroll", function(){ if(pressNow) pressEnd(true); }, {passive: true, capture: true});
+
+/* 记下这一次按下的实际数值：放大/缩小到多少、松开回弹最远到多少 */
+function pressNote(target, from){
+  var sp = pressSpring(from, 1, {resp: PRESS_CFG.outR, bounce: PRESS_CFG.outB}).vals;
+  var over = target > 1 ? Math.min.apply(null, sp) : Math.max.apply(null, sp);
+  pressLast = {s: target, over: over};
+  var o = document.getElementById("ptLast");
+  if(o) o.textContent = "上次按下：" + (target > 1 ? "放大 ×" : "缩小 ×") + target.toFixed(3) + "，松开回弹到 ×" + over.toFixed(3);
+}
+
+/* ---- 调手感面板（只给用户自己调参数用；网址带 ?tune=1 才出现，平时完全没有）----
+   拖滑杆立刻生效、存在本机；「复制参数」把当前值复制出来发给我写成默认值；「恢复默认」清掉本机的调整 */
+var PRESS_TUNE = [
+  ["max",   "小按钮放大到（倍）",   1.02, 1.5,  .01],
+  ["min",   "宽按钮至少放大到（倍）", 1.0,  1.3,  .01],
+  ["grow",  "放大力度（边缘外扩 px）", 2,    24,   1],
+  ["card",  "卡片按下缩到（倍）",   .8,   1,    .005],
+  ["inB",   "按下的弹性",          0,    .8,   .05],
+  ["inR",   "按下的时长（秒）",     .1,   .8,   .02],
+  ["outB",  "松开的弹性（越大越 Q）", 0,    .85,  .05],
+  ["outR",  "松开的时长（秒）",     .2,   1.2,  .02],
+  ["glowL", "浅色按钮光晕亮度",     0,    1,    .05],
+  ["glowD", "彩色/深色按钮光晕亮度", 0,    1,    .05],
+  ["hold",  "按下至少停（毫秒）",   0,    400,  10]
+];
+function pressTunePanel(){
+  var box = document.createElement("div");
+  box.id = "pressTune";
+  box.innerHTML = '<div class="pt-head"><b>调手感</b><button type="button" id="ptFold">收起</button></div>' +
+    '<div class="pt-body"><p class="pt-last" id="ptLast">上次按下：还没按过——点点页面上的按钮和卡片试试</p><div id="ptRows"></div>' +
+    '<div class="pt-acts"><button type="button" id="ptCopy">复制参数</button><button type="button" id="ptReset">恢复默认</button></div>' +
+    '<p class="pt-note">调好的值只存在这台手机上。满意了点「复制参数」发给我，我写成正式默认值。</p></div>';
+  document.body.appendChild(box);
+  var rows = box.querySelector("#ptRows");
+  function save(){ try{ localStorage.setItem(PRESS_KEY, JSON.stringify(PRESS_CFG)); }catch(e){} }
+  PRESS_TUNE.forEach(function(t){
+    var row = document.createElement("label");
+    row.className = "pt-row";
+    row.innerHTML = '<span class="pt-name"></span><input type="range"><output></output>';
+    row.querySelector(".pt-name").textContent = t[1];
+    var inp = row.querySelector("input"), out = row.querySelector("output");
+    inp.min = t[2]; inp.max = t[3]; inp.step = t[4]; inp.value = PRESS_CFG[t[0]];
+    out.textContent = PRESS_CFG[t[0]];
+    inp.addEventListener("input", function(){
+      PRESS_CFG[t[0]] = parseFloat(inp.value);
+      out.textContent = inp.value;
+      save();
+    });
+    rows.appendChild(row);
+  });
+  box.querySelector("#ptFold").addEventListener("click", function(){
+    var f = box.classList.toggle("is-fold");
+    this.textContent = f ? "展开" : "收起";
+  });
+  box.querySelector("#ptCopy").addEventListener("click", function(){
+    var txt = JSON.stringify(PRESS_CFG), b = this;
+    var done = function(){ b.textContent = "已复制 ✓"; setTimeout(function(){ b.textContent = "复制参数"; }, 1500); };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function(){ prompt("复制下面这段：", txt); });
+    else prompt("复制下面这段：", txt);
+  });
+  box.querySelector("#ptReset").addEventListener("click", function(){
+    try{ localStorage.removeItem(PRESS_KEY); }catch(e){}
+    for(var k in PRESS_DEFAULT) PRESS_CFG[k] = PRESS_DEFAULT[k];
+    [].forEach.call(rows.querySelectorAll(".pt-row"), function(r, i){
+      var t = PRESS_TUNE[i]; r.querySelector("input").value = PRESS_CFG[t[0]]; r.querySelector("output").textContent = PRESS_CFG[t[0]];
+    });
+  });
+}
+if(/[?&]tune=1(&|$)/.test(location.search)) pressTunePanel();
 
 /* 拖起来之后不要再触发"点一下就编辑/展开" */
 document.addEventListener("click", function(e){
