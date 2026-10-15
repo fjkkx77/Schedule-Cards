@@ -810,6 +810,9 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .meta-box .meta-main{font-size:16px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
 .meta-box .meta-sub{font-size:12px;font-weight:600;color:var(--text-3)}
 .meta-box .meta-sub:empty{display:none}
+/* 农历 + 时辰（2026-10-15 用户要的），样式同「目标日期」下面那行农历（.date-sub） */
+.meta-box .meta-lunar{font-size:12px;font-weight:600;color:var(--text-3)}
+.meta-box .meta-lunar:empty{display:none}
 /* ---- 编辑页的三个日期框：各配一个图标方块 + 自己的色调（2026-10-14 用户从三套对比图里选的「A 颜色区分」）----
    原来三个框是同一套灰底灰边，分不出谁是谁。现在：
    · 创建时间：中性灰蓝（只读信息，不跟日程颜色）
@@ -1185,6 +1188,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <label>创建时间</label>
       <div class="meta-box dbox dbox-created" id="fCreated">
         <span class="meta-main" id="fCreatedTxt"></span>
+        <span class="meta-lunar" id="fCreatedLunar"></span>
         <span class="meta-sub" id="fCreatedSub"></span>
       </div>
     </div>
@@ -2846,16 +2850,22 @@ function fullTime(ms){
   var d = new Date(ms);
   return ymd(d) + " " + WEEK[d.getDay()] + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
+/* 时辰：子时 23:00~00:59、丑时 01:00~02:59……亥时 21:00~22:59（每两个钟头一个，子时跨午夜）。
+   农历日期仍按公历这一天算（和香港天文台对照表、站里别处的农历一致），23 点以后不提前算成第二天 */
+var SHICHEN = "子丑寅卯辰巳午未申酉戌亥";
+function shichen(h){ return SHICHEN.charAt(Math.floor(((h + 1) % 24) / 2)) + "时"; }
+function lunarTime(ms){
+  var d = new Date(ms), l = lunarLabel(d);
+  return l ? l + " " + shichen(d.getHours()) : "";   /* 超出农历表（1901 前 / 2100 后）就整行不显示 */
+}
 function paintCreated(){
   var ev = editingId ? lswEvent(editingId) : null;
   var txt = document.getElementById("fCreatedTxt"), sub = document.getElementById("fCreatedSub");
-  if(ev && typeof ev.createdAt === "number"){
-    txt.textContent = fullTime(ev.createdAt);
-    sub.textContent = "";
-  }else{
-    txt.textContent = fullTime(Date.now());
-    sub.textContent = "点「保存」的那一刻记为创建时间";
-  }
+  var lun = document.getElementById("fCreatedLunar");
+  var ms = (ev && typeof ev.createdAt === "number") ? ev.createdAt : Date.now();
+  txt.textContent = fullTime(ms);
+  lun.textContent = lunarTime(ms);
+  sub.textContent = (ev && typeof ev.createdAt === "number") ? "" : "点「保存」的那一刻记为创建时间";
 }
 /* 备注框跟着内容长高（到 40vh 为止，再多就框里滚） */
 function fitNote(){
