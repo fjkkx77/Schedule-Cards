@@ -922,6 +922,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .dp-menu button.on{background:#2f86f6;color:#fff}
 .dp-menu button{transition:background-color .25s ease}
+/* 按下的光晕（按下反馈 v2）：从手指落点（--pg-x/--pg-y，JS 填）亮起，半径 --pg-r、强度 --pg-a 由 WAAPI 动画推动（两者在 JS 里用 CSS.registerProperty 注册过才能插值）。
+   颜色 --pg-rgb / 最大强度 --pg-max 由 JS 按控件底色定：深色或饱和的底用白光，浅底用一点蓝光（白光在浅灰底上看不见） */
+.press-glow{background-image:radial-gradient(circle at var(--pg-x, 50%) var(--pg-y, 50%), rgba(var(--pg-rgb, 255,255,255), calc(var(--pg-a) * var(--pg-max, .4))) 0%, rgba(var(--pg-rgb, 255,255,255), 0) var(--pg-r)) !important}
+.press-dim{filter:brightness(var(--press-dim))}   /* 不支持注册 CSS 变量的老浏览器：退回压暗 */
 .dp-menu button:active, .dp-menu button.is-press{background:var(--press-bg);transition:none}
 .dp-today{
   margin-left:auto;min-height:44px;padding:0 14px;border:0;border-radius:10px;
@@ -4265,34 +4269,75 @@ document.addEventListener("pointerup", function(){ if(dragOn && !dragTouch) drag
 /* 触屏拖动时浏览器一旦判定"这是滚动"就会发 pointercancel 把指针流掐掉，
    所以触屏路径改由下面的 touchmove/touchend 驱动，这里不能跟着把拖拽取消掉 */
 document.addEventListener("pointercancel", function(){ if(dragOn && !dragTouch) dragEnd(false); });
-/* ================= 按下反馈（2026-10-15 用户：所有按钮都要有点击动效、有交互感，参考 Apple，不要太明显也不要不明显） =================
-   HIG Buttons 原文只有一条硬要求：「Always include a press state for a custom button」。下面的数是我照 iPhone 系统界面定的，不是官方数值：
-   · 缩放不用一个死数，按宽度算：每个控件按下时边缘都内缩约 4px（s = 1 − 8/宽），再按类别夹在一个区间里——
-     宽的少缩、窄的多缩，看上去「力度」一样（同一个 0.96，在整行宽的卡片上是 15px、在小按钮上才 3px）
-   · 按下快（90ms 到位）、松开慢（380ms，站里的 --spring 曲线，带一点点回弹）
-   · 按下状态至少停 100ms 才松：手机上快点一下大概 50ms 就抬手，纯 CSS :active 的话动画还没走完就弹回，等于没看见
-   · 手指一挪（在滚页面、在左滑）立刻取消；长按拿起拖动时也取消（拖动有自己的「拿起来」样子）
-   · 用 WAAPI 动 `scale` 这个独立属性，不动 transform：卡片左滑、拖动让位、堆叠都在用 transform，独立的 scale 会和它们相乘、互不覆盖
-   四类（按先后匹配）：
-     flat  菜单里的选项：不缩放，只加一层底色（同 iPhone 长按菜单的选项），由 CSS 的 .is-press 画
-     mark  分组标题：只把名字变淡（原有样式），同样走 .is-press
-     icon  小图标 / 色块 / 日期格：缩得多一点（0.9~0.93；第一版 0.88，44px 的图标一按缩 2.6px 太重）
-     card  卡片 / 列表行 / 整块可点的区域：0.96~0.985，不压暗
-     btn   其余所有按钮：0.94~0.98 + 压暗一点（深色主题提亮），见 --press-dim
-   输入框不在里面：点进去有光标和焦点框，这本身就是反馈（iPhone 的输入框也不缩） */
+/* ================= 按下反馈 v2（2026-10-15 用户真机试过 v1：「交互感与动效反馈太弱，基本看不出来」，要求照 iOS 26 重做，「点击很Q弹和丝滑」） =================
+   依据（Apple 一手）：
+   · WWDC25「Meet Liquid Glass」：「Liquid Glass responds to interaction by instantly flexing and energizing with light」
+     「an inherent gel-like flexibility … as it moves in tandem with your interaction」「Elements can even lift up into Liquid Glass temporarily」
+     「the material illuminates from within as a form of feedback. Starting right under your fingertips, the glow spreads throughout the element」
+     「Reduced Motion … disables any elastic properties for the material」
+   · SwiftUI Spring 文档：.bouncy＝duration 0.5、base bounce 0.3；.snappy＝duration 0.5、base bounce 0.15
+   · 第三方实测（MacStories 评测等）：按下时按钮「highlighted and elevated」、变大——v1 是缩小，方向反了
+   Apple 没公布幅度，下面的数是我按上面这些定的：
+   · 控件（按钮、图标、色块、日期格……）按下**放大**：边缘外扩约 6px（s = 1 + 12/宽），夹在 1.04~1.15——小的放得多、整行宽的少放
+     同时从手指落点亮起一圈光晕向外扩散（radial-gradient + 注册过的 CSS 变量 --pg-r / --pg-a 做动画）
+   · 卡片 / 列表行是内容不是控件：按下**缩小**到 0.96 / 0.97（App Store 卡片那种，我的观察，不是官方原文）
+   · 按下：弹簧 response 0.26s、bounce 0.25（比 .snappy 稍弹）；松开：response 0.5s、bounce 0.4（.bouncy + extraBounce 0.1）——会轻轻弹过头再停稳，即「Q 弹」
+   · 按下状态至少停 140ms 才松（快点一下也看得完整个「鼓起来—弹回去」）
+   · 放大时临时抬高层级（z-index），盖在相邻控件上面，和液态玻璃「浮起来」一致
+   · 手指一挪（滚页面、左滑）立刻收；长按拿起拖动时也收
+   · 动的是独立的 scale 属性（和左滑 / 拖动 / 堆叠的 transform 相乘，不互相覆盖）
+   · 减弱动态效果：不缩放、不弹，只留光晕和压暗（Apple：关掉弹性）
+   类别（按先后匹配）：flat 菜单选项只加底色；mark 分组标题只变淡；card 内容卡片缩小；ctrl 其余控件放大＋光晕 */
 var PRESS_TIERS = [
   {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button", flat: true},
   {sel: ".g-main", flat: true},
-  {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button", inset: 4, min: .9, max: .93},
-  {sel: ".card, .row, .sc-card, .g-empty, .od-bar", inset: 4, min: .96, max: .985},
-  {sel: "button, .modes label, select.sort", inset: 4, min: .94, max: .98, dim: true}
+  {sel: ".card, .row, .sc-card", card: true, s: .96},
+  {sel: ".g-empty, .od-bar", card: true, s: .97},
+  {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button, button, .modes label, select.sort", grow: 6, min: 1.04, max: 1.15, glow: true}
 ];
 var PRESS_ALL = PRESS_TIERS.map(function(t){ return t.sel; }).join(", ");
-var PRESS_IN_MS = 90, PRESS_OUT_MS = 380, PRESS_MIN_MS = 100, PRESS_SLOP = 10;
-var PRESS_IN_EASE = "cubic-bezier(.2,0,.2,1)", PRESS_OUT_EASE = "cubic-bezier(.16,1.24,.3,1)";   /* 后者＝站里的 --spring */
-var pressNow = null;      /* 正按着的那一个：{el, tier, t0, x, y, s, dim, anim} */
+var PRESS_MIN_MS = 140, PRESS_SLOP = 10;
+var PRESS_IN = {resp: .26, bounce: .25}, PRESS_OUT = {resp: .5, bounce: .4};
+var pressNow = null;
 var pressCanScale = !!(window.CSS && CSS.supports && CSS.supports("scale", "1")) && !!document.body.animate;
+var pressCanGlow = !!(window.CSS && CSS.registerProperty);
+if(pressCanGlow){
+  try{
+    CSS.registerProperty({name: "--pg-r", syntax: "<percentage>", inherits: false, initialValue: "0%"});
+    CSS.registerProperty({name: "--pg-a", syntax: "<number>", inherits: false, initialValue: "0"});
+  }catch(e){ pressCanGlow = false; }
+}
 function pressReduce(){ return window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches; }
+/* 弹簧关键帧：从 a 弹到 b。response＝感知时长（秒），bounce＝SwiftUI 的弹性（阻尼比 = 1 − bounce）。
+   和松手落位的 springPts 同一套欠阻尼解，只是这里直接给出数值序列 */
+function pressSpring(a, b, cfg){
+  var z = 1 - cfg.bounce, w0 = 2 * Math.PI / cfg.resp, wd = w0 * Math.sqrt(1 - z * z), step = 1 / 120, out = [];
+  for(var i = 0; i < 240; i++){
+    var t = i * step, u = Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t));
+    out.push(b + (a - b) * u);
+    if(t > .08 && Math.abs(u) < .002) break;
+  }
+  out[out.length - 1] = b;
+  return {vals: out, ms: Math.round((out.length - 1) * step * 1000)};
+}
+function pressAnim(el, prop, a, b, cfg){
+  var sp = pressSpring(a, b, cfg);
+  return el.animate(sp.vals.map(function(v, i){ var k = {offset: i / (sp.vals.length - 1)}; k[prop] = String(v); return k; }),
+                    {duration: sp.ms, easing: "linear", fill: "forwards"});
+}
+/* 控件看上去是深底还是浅底（决定光晕用白光还是蓝光）：透明的往外找第一层有颜色的底 */
+function pressDarkBg(el){
+  for(var n = el; n && n.nodeType === 1; n = n.parentElement){
+    var bg = getComputedStyle(n).backgroundColor;
+    var m = (bg.match(/[\d.]+/g) || []).map(Number);
+    if(/^color\(/.test(bg)) m = m.map(function(v, i){ return i < 3 ? v * 255 : v; });   /* color-mix() 算出来是 color(srgb 0~1 …) */
+    if(m.length >= 3 && (m.length < 4 || m[3] > .5)){
+      var L = (.2126 * m[0] + .7152 * m[1] + .0722 * m[2]) / 255;
+      return L < .62;               /* 站里的蓝 #2f86f6≈0.47、红≈0.44 算深；浅灰 #f4f6f9≈0.96 算浅 */
+    }
+  }
+  return document.documentElement.getAttribute("data-theme") === "dark";
+}
 function pressTarget(t){
   var el = t && t.closest ? t.closest(PRESS_ALL) : null;
   if(!el || el.disabled || el.getAttribute("aria-disabled") === "true") return null;
@@ -4306,35 +4351,60 @@ function pressStart(e){
   pressEnd(true);
   var hit = pressTarget(e.target);
   if(!hit) return;
-  var p = {el: hit.el, tier: hit.tier, t0: performance.now(), x: e.clientX, y: e.clientY, anim: null};
+  var el = hit.el, tier = hit.tier;
+  var p = {el: el, tier: tier, t0: performance.now(), x: e.clientX, y: e.clientY, anims: [], glow: false, pos: null};
   pressNow = p;
-  hit.el.classList.add("is-press");     /* 所有类别都挂：菜单项、分组标题、空分组「添加日程」的按下样式都靠它画（快速点一下也看得见） */
-  if(hit.tier.flat) return;
-  if(!pressCanScale) return;
-  var w = hit.el.getBoundingClientRect().width || 44;
-  p.s = Math.max(hit.tier.min, Math.min(hit.tier.max, 1 - 2 * hit.tier.inset / w));
-  p.dim = hit.tier.dim ? "brightness(" + (getComputedStyle(document.documentElement).getPropertyValue("--press-dim").trim() || ".94") + ")" : null;
-  if(pressReduce()) p.s = 1;                               /* 减弱动态效果：不缩，只压暗 */
-  var to = {scale: String(p.s)}, from = {scale: "1"};
-  if(p.dim && getComputedStyle(hit.el).filter === "none"){ from.filter = "brightness(1)"; to.filter = p.dim; } else p.dim = null;
-  p.anim = hit.el.animate([from, to], {duration: PRESS_IN_MS, easing: PRESS_IN_EASE, fill: "forwards"});
+  el.classList.add("is-press");     /* 菜单项、分组标题、空分组「添加日程」的按下样式靠它画 */
+  if(tier.flat) return;
+  var r = el.getBoundingClientRect(), reduce = pressReduce();
+  /* 光晕：只给本身没有背景图的控件（卡片有方格底纹，不叠） */
+  if(tier.glow && pressCanGlow && getComputedStyle(el).backgroundImage === "none"){
+    el.style.setProperty("--pg-x", ((e.clientX - r.left) / (r.width || 1) * 100).toFixed(1) + "%");
+    el.style.setProperty("--pg-y", ((e.clientY - r.top) / (r.height || 1) * 100).toFixed(1) + "%");
+    var dark = pressDarkBg(el);
+    el.style.setProperty("--pg-rgb", dark ? "255,255,255" : "47,134,246");
+    el.style.setProperty("--pg-max", dark ? ".42" : ".2");
+    el.classList.add("press-glow");
+    p.glow = true;
+    p.anims.push(el.animate([{"--pg-r": "0%", "--pg-a": "0"}, {"--pg-r": "150%", "--pg-a": "1"}],
+                            {duration: 260, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards"}));
+  }
+  if(!pressCanScale || reduce){ if(!pressCanScale || !p.glow) el.classList.add("press-dim"); return; }
+  p.s = tier.card ? tier.s : Math.max(tier.min, Math.min(tier.max, 1 + 2 * tier.grow / (r.width || 44)));
+  /* 放大的控件临时抬高一层，盖住相邻的（不改布局：本来是 static 的才补 position:relative） */
+  if(!tier.card){
+    p.pos = {position: el.style.position, zIndex: el.style.zIndex};
+    if(getComputedStyle(el).position === "static") el.style.position = "relative";
+    el.style.zIndex = "5";
+  }
+  p.anims.push(pressAnim(el, "scale", 1, p.s, PRESS_IN));
 }
-/* 松开：先保证按下状态停够 PRESS_MIN_MS，再弹回。cancel=true 是手指挪走了/开始拖了：马上收，不等 */
+/* 松开：先保证按下状态停够 PRESS_MIN_MS，再从「此刻的大小」弹回 1。cancel＝手指挪走 / 开始拖：马上收，不弹 */
 function pressEnd(cancel){
   var p = pressNow;
   if(!p) return;
   pressNow = null;
   var wait = cancel ? 0 : Math.max(0, PRESS_MIN_MS - (performance.now() - p.t0));
   setTimeout(function(){
-    p.el.classList.remove("is-press");
+    var el = p.el;
+    el.classList.remove("is-press", "press-dim");
     if(p.tier.flat) return;
-    if(!p.anim) return;
-    var cs = getComputedStyle(p.el);
-    var from = {scale: cs.scale && cs.scale !== "none" ? cs.scale : String(p.s)}, to = {scale: "1"};
-    if(p.dim){ from.filter = cs.filter && cs.filter !== "none" ? cs.filter : p.dim; to.filter = "brightness(1)"; }
-    var back = p.el.animate([from, to], {duration: cancel ? 160 : PRESS_OUT_MS, easing: cancel ? "ease-out" : PRESS_OUT_EASE});
-    p.anim.cancel();
-    back.onfinish = back.oncancel = function(){ back.cancel(); };
+    var cs = getComputedStyle(el), done = [];
+    if(p.glow){
+      var a0 = parseFloat(cs.getPropertyValue("--pg-a")) || 1, r0 = cs.getPropertyValue("--pg-r").trim() || "150%";
+      var g = el.animate([{"--pg-r": r0, "--pg-a": String(a0)}, {"--pg-r": "190%", "--pg-a": "0"}], {duration: cancel ? 160 : 420, easing: "ease-out", fill: "forwards"});
+      done.push(new Promise(function(res){ g.onfinish = g.oncancel = function(){ el.classList.remove("press-glow"); g.cancel(); res(); }; }));
+    }
+    if(p.s){
+      var s0 = parseFloat(cs.scale) || p.s;
+      var back = cancel ? el.animate([{scale: String(s0)}, {scale: "1"}], {duration: 160, easing: "ease-out", fill: "forwards"})
+                        : pressAnim(el, "scale", s0, 1, PRESS_OUT);
+      done.push(new Promise(function(res){ back.onfinish = back.oncancel = function(){ back.cancel(); res(); }; }));
+    }
+    p.anims.forEach(function(a){ a.cancel(); });
+    Promise.all(done).then(function(){
+      if(p.pos){ el.style.position = p.pos.position; el.style.zIndex = p.pos.zIndex; }
+    });
   }, wait);
 }
 document.addEventListener("pointerdown", pressStart, true);
