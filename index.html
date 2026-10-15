@@ -4852,7 +4852,7 @@ function ptrThreshold(){
 
 var ptrEl = document.getElementById("ptr");
 var ptrStartX = 0, ptrStartY = 0, ptrDist = 0;
-var ptrPulling = false, ptrLocked = false, ptrBusy = false;
+var ptrPulling = false, ptrLocked = false, ptrBusy = false, ptrUnlockTimer = null;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
@@ -4888,6 +4888,11 @@ function ptrDoRefresh(){
     }
     location.reload();
   }, 260);
+  /* 兜底：重新加载被取消或一直卡着时，10 秒后解锁，别让页面永远滑不动 */
+  clearTimeout(ptrUnlockTimer);
+  ptrUnlockTimer = setTimeout(function(){
+    if(ptrBusy){ ptrBusy = false; ptrReset(true); }
+  }, 10000);
 }
 
 document.addEventListener("touchstart", function(e){
@@ -4904,6 +4909,9 @@ document.addEventListener("touchmove", function(e){
     dragTouchMove(e);
     return;
   }
+  /* 刷新中锁住滚动：iOS Safari 发起重新加载后、新页面画出来之前会冻结绘制，
+     这时还能滑，滑出来的区域是一片空白（下拉刷新配方 v1.8） */
+  if(ptrBusy){ e.preventDefault(); return; }
   if(!ptrPulling || ptrBlocked()) return;
   var dx = e.touches[0].clientX - ptrStartX;
   var dy = e.touches[0].clientY - ptrStartY;
@@ -4935,6 +4943,7 @@ function ptrEnd(e){
 document.addEventListener("touchend", ptrEnd, {passive:true});
 document.addEventListener("touchcancel", function(e){
   if(dragOn){ dragTouchEnd(e, true); return; }
+  if(ptrBusy) return;                       /* 正在刷新：别把转圈提前收掉 */
   ptrPulling = false; ptrLocked = false; ptrReset(true);
 }, {passive:true});
 
