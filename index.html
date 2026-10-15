@@ -716,6 +716,20 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sheet h2{margin:2px 0 16px;font-size:19px;font-weight:800}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:13px;font-weight:700;color:var(--text-2);margin-bottom:6px}
+/* ---- 编辑页的层级（2026-10-15 用户从四套对比图里选的「C 卡片 + 彩色小节标题」）----
+   用户：文字排版「太素……一眼看上去全是扁平的效果没有层次感……抓不住页面信息的重点」。原来 8 个字段从上到下一样重。
+   现在四档：① 小节标题（16px 粗、左边一根日程颜色的竖条，同主页分组标题）② 事件名称放大（主角）
+   ③ 字段名降一档（12.5px，颜色仍用 --text-2：用对比图里的 --text-3 的话白底上只有 3.2:1，小字不够 4.5:1）④ 说明文字小一号
+   分组靠卡片：表单底色变灰，每个小节一张白卡。卡片不能 overflow:hidden——分组下拉、时刻下拉要伸出去 */
+#form{background:var(--surface-2)}
+.fsec{margin:0 0 20px}
+.fsec-h{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--text);margin:2px 4px 10px}
+.fsec-h::before{content:"";flex:0 0 auto;width:4px;height:16px;border-radius:2px;background:var(--pc)}
+.fsec-b{background:var(--surface);border-radius:16px;padding:14px 14px 2px;box-shadow:var(--shadow-sm)}
+.fsec-b .field{margin-bottom:16px}
+#form .fsec-b .field > label{font-size:12.5px;font-weight:600;letter-spacing:.2px}
+#form .hint{font-size:12px;line-height:1.5}
+#fTitle{font-size:20px;font-weight:800;min-height:52px}
 .field input[type="text"],.field input[type="date"],.field select{
   width:100%;min-height:48px;
   border:1px solid var(--line);border-radius:12px;
@@ -1158,6 +1172,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   <form class="sheet" id="form">
     <h2 id="sheetTitle">新增日程</h2>
 
+    <!-- 三个小节（2026-10-15 用户从四套对比图里选的「C 卡片 + 彩色小节标题」）：
+         记录（创建时间、备注）/ 日程（名称、计算方式、日期）/ 整理（分组、颜色、置顶）。字段顺序没动——
+         创建时间、备注在最上面是用户定的；「事件名称」挪到最上面的建议用户说先不挪 -->
+    <section class="fsec">
+    <div class="fsec-h">记录</div>
+    <div class="fsec-b">
     <!-- 创建时间 + 备注（2026-10-14 用户要的，同日用户要求放到表单最上面、备注在创建时间下面）。
          创建时间只读：新增时显示「现在」并跟着走秒，点保存的那一刻记下来；
          备注可不填，只在这个弹窗里看和改，卡片上不显示 -->
@@ -1174,6 +1194,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <textarea id="fNote" rows="3" maxlength="500" placeholder="注意事项、想对自己说的话……（可不填）"></textarea>
     </div>
 
+    </div>
+    </section>
+
+    <section class="fsec">
+    <div class="fsec-h">日程</div>
+    <div class="fsec-b">
     <div class="field">
       <label for="fTitle">事件名称</label>
       <input type="text" id="fTitle" maxlength="30" placeholder="例如：回家过年啦" autocomplete="off">
@@ -1230,6 +1256,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       </div>
     </div>
 
+    </div>
+    </section>
+
+    <section class="fsec">
+    <div class="fsec-h">整理</div>
+    <div class="fsec-b">
     <div class="field">
       <label>分组</label>
       <!-- 选已有 / 新建 二选一：选的时候不出现输入框，新建的时候不出现选项。
@@ -1263,6 +1295,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <p class="hint">置顶的日程不管用哪种排序都排在最上面，单独放在「置顶区」；
         如果它属于某个分组，会暂时离开那个分组，取消置顶后自动回去。</p>
     </div>
+    </div>
+    </section>
 
     <div class="actions">
       <button type="button" class="btn" id="fCancel">取消</button>
