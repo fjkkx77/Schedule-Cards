@@ -3821,6 +3821,32 @@ var dsFinger = null;      /* 第二根手指：{id, y, samples:[{y,t}]} */
 var dsRaf = 0;            /* 第二根手指松开后的惯性滚动 */
 var dragMaxScroll = 0;    /* 拿起那一刻页面最多能滚到哪：被拖的那项往下挪会把页面撑长，不封顶的话能一直滚进下面的空白（2026-10-15 测出来的） */
 function dragScrollTo(y){ window.scrollTo(0, Math.max(0, Math.min(dragMaxScroll, y))); }
+/* 拖到屏幕上下边缘，页面自己滚（2026-10-15 用户：和「另一只手滑页面」本来就该配套）。
+   HIG Drag and drop：「Scroll the contents of a destination when necessary」。
+   参数和存档组件 drag.js / 接着来 / 教程站一致：离边 64px 起，速度＝进入边缘的距离 ÷ 4（每 16.7ms）。
+   两处和存档不同：① 速度按时间算，不按帧——120Hz 屏上按帧算会快一倍；
+   ② 拿起后手指先挪过 DRAG_SLOP 才生效——长按的那张本来就在屏幕底边附近时，不至于一拿起来页面就自己跑 */
+var DRAG_EDGE = 64;
+var deRaf = 0, deArmed = false, deLast = 0;
+function deStart(){ deStop(); deArmed = false; deLast = performance.now(); deRaf = requestAnimationFrame(deTick); }
+function deStop(){ if(deRaf){ cancelAnimationFrame(deRaf); deRaf = 0; } }
+function deTick(now){
+  if(!dragOn){ deRaf = 0; return; }
+  var dt = Math.min(48, now - deLast); deLast = now;
+  if(!deArmed && Math.abs(dragLastClientY - dragStartY) > DRAG_SLOP) deArmed = true;
+  /* 另一只手正在滚、或者它的惯性还没停：交给它，别抢 */
+  if(deArmed && !dsFinger && !dsRaf){
+    var vh = window.innerHeight, y = dragLastClientY, d = 0;
+    if(y < DRAG_EDGE) d = -(DRAG_EDGE - y) / 4;
+    else if(y > vh - DRAG_EDGE) d = (y - (vh - DRAG_EDGE)) / 4;
+    if(d){
+      var before = window.pageYOffset || 0;
+      dragScrollTo(before + d * dt / 16.7);
+      if((window.pageYOffset || 0) !== before) dragMove(dragLastClientY);
+    }
+  }
+  deRaf = requestAnimationFrame(deTick);
+}
 
 /* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
 function dragEnabled(){ return state.sort === "manual" && !odView; }
@@ -3861,6 +3887,7 @@ function dragBegin(scope, clientY, byTouch){
   dragLastClientY = clientY;
   dragTouchId = byTouch ? dragPrimaryId : null;
   dsFinger = null; dsStop();
+  deStart();
   dragOffset = 0;
   dragV = 0; dragLastY = clientY; dragLastT = performance.now();
   dragH = dragEl.getBoundingClientRect().height +
@@ -3921,7 +3948,7 @@ function dragEnd(commit){
   var from = dragFrom, to = dragTo, items = dragItems;
   dragOn = false; dragEl = null; dragItems = null;
   dragTouchId = null; dsFinger = null;
-  dsStop();               /* 惯性滚动在落位时停下：落位动画是按此刻的屏幕位置算的，页面再滑会让卡片落偏 */
+  dsStop(); deStop();    /* 惯性滚动、边缘自动滚在落位时停下：落位动画是按此刻的屏幕位置算的，页面再滑会让卡片落偏 */
   /* 松手后浏览器还会补一个 click，要把它吃掉，否则拖完立刻弹出编辑窗；落位动画没走完之前也不让点 */
   document.body.classList.add("just-dragged");
   if(commit && to !== from){
