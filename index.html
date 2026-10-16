@@ -40,6 +40,7 @@
      蓝 5.04 / 红 4.92，过 WCAG AA 小字 4.5。原先 #2266c4 / #c9352b 只有 4.18 / 3.85，别改回去 */
   --lsw-pin-bg:rgba(47,134,246,.13); --lsw-pin-fg:#1d5aad;
   --lsw-del-bg:rgba(224,72,61,.12);  --lsw-del-fg:#b0271e;
+  --lsw-arc-bg:rgba(138,110,242,.15); --lsw-arc-fg:#5b3fc4;   /* 归档（2026-10-16）：颜色板里的紫，同样按垫在 #e9eef4 上量对比度 */
   /* 已过期：浅灰 + 斜纹，深色字（2026-09-17 第二轮，用户从三套里选的「乙」）。
      第一版是实心中灰 #8a939e + 白字，用户实机截图指出和颜色板第 6 个深灰 #4b5563 太像——深色模式下两者对比只有 1.06。
      颜色板里没有带条纹的颜色，所以斜纹才是真正不会撞的区分手段；别再换回实心灰。
@@ -64,6 +65,7 @@
     --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
     --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
     --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
+    --lsw-arc-bg:rgba(138,110,242,.22); --lsw-arc-fg:#b9a8ff;
     --over:#2b3038; --over-2:#353b44; --over-fg:#a8b1bd;
   }
 }
@@ -84,6 +86,7 @@
   --stack-shadow-sm:0 12px 24px rgba(0,0,0,.5);
   --lsw-pin-bg:rgba(47,134,246,.2); --lsw-pin-fg:#7db3ff;
   --lsw-del-bg:rgba(224,72,61,.2);  --lsw-del-fg:#ff8a80;
+  --lsw-arc-bg:rgba(138,110,242,.22); --lsw-arc-fg:#b9a8ff;
   --over:#2b3038; --over-2:#353b44; --over-fg:#a8b1bd;
 }
 
@@ -360,6 +363,14 @@ body:not(.od-mode) #board > .list:not(.pinned) > .group > .group-head{margin-bot
 }
 /* 按下反馈统一由「按下反馈」那段 JS（pressStart）做，见 CSS「按下反馈」 */
 body.od-mode .toolbar, body.od-mode .fab{display:none}
+/* ---- 归档区（2026-10-16） ---- */
+.ar-btn[aria-pressed="true"]{background:#2f86f6;color:#fff}      /* 进入后高亮，同 ⏱ */
+body.ar-mode .toolbar, body.ar-mode .fab, body.ar-mode #odBar{display:none}
+.group-head.od-head.ar-head{--gc:var(--lsw-arc-fg)}
+.ar-cap{margin:-6px 4px 12px;font-size:13px;color:var(--text-2);font-weight:600}
+.ar-sec + .ar-sec{margin-top:14px}
+.ar-sec > .group-head{margin-bottom:10px}
+.ask-pre{white-space:pre-line;text-align:left}
 
 /* ============ 短期倒计时 ============ */
 /* 右上角入口：和 ⋯ 同款按钮，右上角叠一个数量；有超时的变红。进入后按钮高亮 */
@@ -633,6 +644,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
    颜色走变量，深浅色各一套，定义在文件顶部三个主题块里 */
 .lsw-pin{background:var(--lsw-pin-bg);color:var(--lsw-pin-fg)}
 .lsw-del{background:var(--lsw-del-bg);color:var(--lsw-del-fg)}
+.lsw-arc{background:var(--lsw-arc-bg);color:var(--lsw-arc-fg)}
 /* 按下反馈统一由「按下反馈」那段 JS（pressStart）做，见 CSS「按下反馈」 */
 /* 置顶/取消置顶后卡片挪了位置，亮一下告诉用户它去哪了 */
 @keyframes lsw-flash{0%{box-shadow:0 0 0 0 rgba(47,134,246,.55)}100%{box-shadow:0 0 0 14px rgba(47,134,246,0)}}
@@ -685,6 +697,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 @media (hover:hover){ .menu button:hover,.menu label:hover{background:var(--surface-2)} }
 .menu .danger{color:#e0483d}
 .menu .m-accent{color:var(--lsw-pin-fg)}   /* 「新建分组」是动作不是设置，蓝字区分；借左滑「置顶」的蓝字变量，深浅主题对比度都已达标 */
+#gmMenu .m-accent{color:var(--lsw-pin-fg)}  /* 分组 ⋯ 里的「新建日程」同理 */
 .menu hr{border:0;border-top:1px solid var(--line);margin:5px 8px}
 .switch{margin-left:auto;font-size:13px;color:var(--text-2);font-weight:700}
 
@@ -1029,6 +1042,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <p class="today" id="todayLine">今天</p>
       <p class="sync-line" id="syncLine" hidden></p>
     </div>
+    <!-- 归档区入口（2026-10-16 用户定的位置：短期倒计时按钮旁边）。放在 ⏱ 左边：⏱ 和 ⋯ 的位置不变，手指记得住 -->
+    <button class="icon-btn ar-btn" id="arBtn" aria-label="归档区" aria-pressed="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="5" rx="1"/><path d="M4.5 8.5V19a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.5"/><path d="M10 12.5h4"/></svg>
+    </button>
     <!-- 短期倒计时入口（2026-09-26 用户从四套里选的「C 右上角按钮 + 数量」）：数字＝还在跑的 + 已超时的条数，有超时时变红 -->
     <button class="icon-btn sc-btn" id="scBtn" aria-label="短期倒计时" aria-pressed="false">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2"/><path d="M9.5 2.5h5"/><path d="M12 2.5V6"/></svg>
@@ -1062,6 +1079,12 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   <div class="group-head pinned-head od-head" id="odHead" hidden>
     <span class="g-name">已过期</span><span class="g-count" id="odCount">0</span>
     <button type="button" class="od-done" id="odDone">完成</button>
+  </div>
+
+  <!-- 归档区的标题行：同「只看已过期」那一行的写法，色条换成归档紫 -->
+  <div class="group-head pinned-head od-head ar-head" id="arHead" hidden>
+    <span class="g-name">归档区</span><span class="g-count" id="arCount">0</span>
+    <button type="button" class="od-done" id="arDone">完成</button>
   </div>
 
   <main id="board"></main>
@@ -1484,10 +1507,16 @@ function migrate(){
   if(changed) save();
 }
 
-/* 没被删掉的那些——所有显示、分组、排序都只看这个 */
+/* 没被删掉的那些（含归档的）。主页显示用下面的 boardEvents */
 function liveEvents(){
   return state.events.filter(function(e){ return !e.deletedAt; });
 }
+/* 主页上显示的那些＝没删、也没归档的（2026-10-16 加归档）。主页的显示、分组、排序、过期统计、分组名册对账都只看这个；
+   归档的照样在 state.events 里，跟着同步、导出、清空走——所以那几处仍然用 liveEvents */
+function boardEvents(){
+  return state.events.filter(function(e){ return !e.deletedAt && !e.archivedAt; });
+}
+function isArchived(ev){ return !!(ev && ev.archivedAt); }
 function orderMax(){
   var m = 0;
   state.events.forEach(function(e){ if(typeof e.order === "number" && e.order > m) m = e.order; });
@@ -1618,7 +1647,7 @@ function gsReconcile(){
     return ((a.order || 0) - (b.order || 0) || (a.createdAt || 0) - (b.createdAt || 0) ||
             (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) < 0;
   }
-  liveEvents().forEach(function(e){
+  boardEvents().forEach(function(e){
     var g = (e.group || "").trim();
     if(!g) return;
     var m = mem[g] || (mem[g] = {real:false, first:null, any:null});
@@ -1647,7 +1676,7 @@ function gsReconcile(){
 function gsEmptyList(){
   return gsSafe(function(){
     var has = Object.create(null);
-    liveEvents().forEach(function(e){
+    boardEvents().forEach(function(e){
       var g = (e.group || "").trim();
       if(g && !isPinned(e)) has[g] = 1;
     });
@@ -1660,7 +1689,7 @@ function gsEmptySlot(name){
   if(!name) return null;
   var rec = gsFind(name);
   if(!rec || rec.deletedAt || typeof rec.order !== "number") return null;
-  var has = liveEvents().some(function(e){ return (e.group || "").trim() === name && !isPinned(e); });
+  var has = boardEvents().some(function(e){ return (e.group || "").trim() === name && !isPinned(e); });
   return has ? null : rec.order;
 }
 /* 把空分组插回主页的顺序里。自定义顺序：按它留下的 order 找位置（并列时排在后面）；
@@ -1697,7 +1726,7 @@ function joinOrder(ev, group){
   group = String(group || "").trim();
   if(!group) return own;
   try{
-    var others = liveEvents().filter(function(e){ return e.id !== ev.id && !isPinned(e); });
+    var others = boardEvents().filter(function(e){ return e.id !== ev.id && !isPinned(e); });
     var keys = others.map(function(e){ return e.order || 0; });
     gs.items.forEach(function(r){            /* 别的空分组也占着位置 */
       if(r.deletedAt || r.name === group || typeof r.order !== "number") return;
@@ -1842,7 +1871,7 @@ var board = document.getElementById("board");
 
 function sortedEvents(){
   var t = today();
-  var arr = liveEvents();
+  var arr = boardEvents();
   if(state.sort === "manual"){                /* 自定义顺序按 order 字段，跨设备合并后也稳定 */
     /* order 并列时必须有确定的兜底：两台设备离线各新建一条，会各自算出同一个 order 值；
        不兜底的话先后就落在数组次序上，而两边合并时都把自己的放前面——两块屏幕顺序正好相反 */
@@ -1895,7 +1924,7 @@ function groupColor(items){
 
 function allGroups(){
   var seen = Object.create(null), out = [];
-  liveEvents().forEach(function(e){
+  boardEvents().forEach(function(e){
     var g = (e.group || "").trim();
     if(g && !Object.prototype.hasOwnProperty.call(seen, g)){ seen[g] = 1; out.push(g); }
   });
@@ -1930,7 +1959,7 @@ function rank(ev, t){
 var odView = false;       /* 是否处于「只看已过期」 */
 var odScrollY = 0;        /* 进来前主页滚到哪，回去时还原 */
 function overdueEvents(t){
-  return liveEvents().filter(function(e){ return numInfo(e, t).state === "overdue"; })
+  return boardEvents().filter(function(e){ return numInfo(e, t).state === "overdue"; })
     .sort(function(a, b){                       /* 刚过期的在最上面：最可能还想处理的是它们 */
       return resolve(b, t).date - resolve(a, t).date || (a.order || 0) - (b.order || 0);
     });
@@ -1952,17 +1981,17 @@ function leaveOd(){
   if(st && st.od){ history.back(); return; }   /* 交给 popstate 统一收尾 */
   odView = false; render(); window.scrollTo(0, odScrollY);
 }
-/* 「只看已过期」和「短期倒计时」共用这一个出口：历史记录里记着当前该是哪个界面 */
+/* 「只看已过期」「短期倒计时」「归档区」共用这一个出口：历史记录里记着当前该是哪个界面 */
 window.addEventListener("popstate", function(){
   var st = history.state || {};
-  var wantOd = !!st.od, wantSc = !!st.sc;
-  if(wantOd === odView && wantSc === scView) return;
-  var backY = scView && !wantSc ? scScrollY : odScrollY;
-  odView = wantOd; scView = wantSc;
+  var wantOd = !!st.od, wantSc = !!st.sc, wantAr = !!st.ar;
+  if(wantOd === odView && wantSc === scView && wantAr === arView) return;
+  var backY = scView && !wantSc ? scScrollY : arView && !wantAr ? arScrollY : odScrollY;
+  odView = wantOd; scView = wantSc; arView = wantAr;
   lswClose(false);
   render();
   scSafe(function(){ scRender(); scWakeSync(); });
-  window.scrollTo(0, (wantOd || wantSc) ? 0 : backY);
+  window.scrollTo(0, (wantOd || wantSc || wantAr) ? 0 : backY);
 });
 document.getElementById("odBar").addEventListener("click", enterOd);
 document.getElementById("odDone").addEventListener("click", leaveOd);
@@ -1981,6 +2010,167 @@ function renderOverdue(t, make, isCard){
   box.className = isCard ? "cards" : "list";
   list.forEach(function(ev){ box.appendChild(make(ev)); });   /* 平铺、不分组、不叠放 */
   board.appendChild(box);
+}
+
+/* ================= 归档区（2026-10-16 用户要的） =================
+   左滑一张卡片 →「归档」：它离开主页，放进右上角归档区；里面的日程**时间全部定格在放进来的那一刻**——
+   天数、过期与否、顶条上的日期都按「归档那天」算，以后不再跟着日子变。
+   数据上只是在这条日程上记一个 archivedAt（归档时刻），别的字段一个不动：
+   · 同步、导出、导入、清空照旧带着它（它还在 state.events 里，用的是 liveEvents）
+   · 主页、分组、过期统计、分组名册对账都只看 boardEvents（没删、没归档的），所以归档的不会出现在主页任何地方
+   · 定格的做法：算的时候把「今天」换成 archivedAt 那天的零点（arDay），numInfo / cardEl / rowEl 一行没改
+   · 「移回主页」＝删掉 archivedAt：回到原来的分组（joinOrder，同取消置顶），时间恢复跟着今天走
+   · 归档的日程不跟着分组改名 / 解散 / 连同删除变，它记的是放进来时的样子 */
+var arView = false;       /* 是否处于归档区 */
+var arScrollY = 0;        /* 进来前主页滚到哪 */
+/* 归档区怎么摆：month 按归档月份分节 / group 按原来的分组分节 / flat 平铺。
+   ?ar= 只给出对比图用，用户定了之后写死成一种 */
+var AR_LAYOUT = (function(){
+  var m = /[?&]ar=(month|group|flat)\b/.exec(location.search);
+  return m ? m[1] : "month";
+})();
+function arDay(ev){ return midnight(new Date(ev.archivedAt)); }
+function archivedEvents(){
+  return liveEvents().filter(isArchived).sort(function(a, b){       /* 刚放进来的在最上面 */
+    return b.archivedAt - a.archivedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+}
+function arStamp(ts){
+  var d = new Date(ts);
+  return ymd(d) + " " + WEEK[d.getDay()] + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+function arArchive(id){
+  var ev = lswEvent(id);
+  if(!ev || ev.deletedAt || isArchived(ev)) return;
+  lswClose(false);
+  var now = Date.now();
+  ev.archivedAt = now;
+  ev.updatedAt = now;
+  delete ev.demo;                     /* 动过的示例就是你自己的数据了（同置顶） */
+  save(); queueSync(); render();
+  arPulse();
+}
+function arRestore(id){
+  var ev = lswEvent(id);
+  if(!ev || ev.deletedAt || !isArchived(ev)) return;
+  lswClose(false);
+  var now = Date.now();
+  var g = (ev.group || "").trim();
+  if(!isPinned(ev)) ev.order = joinOrder(ev, g);   /* 回原分组眼下的位置，不把分组拽走（同取消置顶） */
+  delete ev.archivedAt;
+  ev.updatedAt = now;
+  if(g){
+    gsSafe(function(){ gsEnsure(g, now); });       /* 原分组删掉了的话，回来时把它建回来 */
+    if(!isExpanded(g)) state.expanded.push(g);     /* 回去就看得见（同新建日程） */
+  }
+  save(); queueSync(); render();
+}
+/* 归档后卡片从主页消失：右上角的归档按钮跳一下，告诉用户它去哪了 */
+function arPulse(){
+  var b = document.getElementById("arBtn");
+  if(!b || !b.animate) return;
+  if(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  b.animate([{transform:"none", boxShadow:"0 0 0 0 rgba(138,110,242,.6)"},
+             {transform:"scale(1.18)", offset:.35},
+             {transform:"none", boxShadow:"0 0 0 14px rgba(138,110,242,0)"}],
+            {duration:700, easing:"cubic-bezier(.2,.9,.3,1)"});
+}
+/* 点归档区里的一张：看详情，能移回主页（删除走左滑，和主页一样） */
+function arDetail(ev){
+  var lines = ["归档于 " + arStamp(ev.archivedAt)];
+  var g = (ev.group || "").trim();
+  lines.push(g ? "原属分组：" + g : "原来没有分组");
+  if(ev.note) lines.push("备注：" + ev.note);
+  lines.push("这里的天数停在归档那天；移回主页后重新跟着今天算。");
+  ask({title: ev.title || "未命名", msg: lines.join("\n"), pre: true, ok: "移回主页",
+       onOk: function(){ arRestore(ev.id); }});
+}
+
+/* 进出：和「只看已过期」「短期倒计时」同一套历史记录写法（Safari 左边缘右滑能退回主页）。
+   从那两个界面直接点过来时替换那一格，返回时回主页 */
+function enterAr(){
+  if(arView) return;
+  var st = null; try{ st = history.state; }catch(e){}
+  if((odView && st && st.od) || (scView && st && st.sc)){
+    arScrollY = odView ? odScrollY : scScrollY;
+    try{ history.replaceState({ar:1}, ""); }catch(e){}
+    odView = false; scView = false;
+  }else{
+    arScrollY = window.scrollY;
+    try{ history.pushState({ar:1}, ""); }catch(e){}
+  }
+  arView = true;
+  lswClose(false);
+  render();
+  scSafe(function(){ scRender(); scWakeSync(); });
+  window.scrollTo(0, 0);
+}
+function leaveAr(){
+  if(!arView) return;
+  var st = null; try{ st = history.state; }catch(e){}
+  if(st && st.ar){ history.back(); return; }      /* 交给 popstate 统一收尾 */
+  arView = false; render(); window.scrollTo(0, arScrollY);
+}
+document.getElementById("arBtn").addEventListener("click", function(){ arView ? leaveAr() : enterAr(); });
+document.getElementById("arDone").addEventListener("click", leaveAr);
+
+function arSection(title, color, items, make, isCard){
+  var sec = document.createElement("section");
+  sec.className = "group ar-sec";
+  sec.style.setProperty("--gc", color);
+  var head = document.createElement("div");
+  head.className = "group-head pinned-head";
+  head.innerHTML = '<span class="g-name"></span><span class="g-count"></span>';
+  head.querySelector(".g-name").textContent = title;
+  head.querySelector(".g-count").textContent = items.length;
+  var box = document.createElement("div");
+  box.className = isCard ? "cards" : "list";
+  items.forEach(function(ev){ box.appendChild(make(ev)); });
+  sec.appendChild(head); sec.appendChild(box);
+  return sec;
+}
+function renderArchive(isCard){
+  var list = archivedEvents();
+  document.getElementById("arCount").textContent = list.length;
+  var make = function(ev){ var t = arDay(ev); return isCard ? cardEl(ev, t) : rowEl(ev, t); };
+  if(!list.length){
+    var e = document.createElement("div");
+    e.className = "empty";
+    e.innerHTML = '<div class="big">🗄</div><p>归档区还是空的</p>' +
+      '<p style="color:var(--text-3);font-size:13px">在主页左滑一张卡片，点「归档」放进来。<br>放进来的日程，时间会停在那一刻。</p>';
+    board.appendChild(e);
+    return;
+  }
+  var cap = document.createElement("p");
+  cap.className = "ar-cap";
+  cap.textContent = "这里的天数都停在归档那天，不再变化。";
+  board.appendChild(cap);
+  if(AR_LAYOUT === "flat"){
+    var box = document.createElement("div");
+    box.className = isCard ? "cards" : "list";
+    list.forEach(function(ev){ box.appendChild(make(ev)); });
+    board.appendChild(box);
+    return;
+  }
+  /* 分节：节的先后＝节里最近一次归档的先后（list 已按归档时间倒序，按第一次出现的顺序收拢即可） */
+  var secs = [], at = Object.create(null);
+  list.forEach(function(ev){
+    var k, title;
+    if(AR_LAYOUT === "group"){
+      k = (ev.group || "").trim(); title = k || "未分组";
+    }else{
+      var d = new Date(ev.archivedAt);
+      k = d.getFullYear() + "-" + (d.getMonth() + 1);
+      title = d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月";
+    }
+    if(!Object.prototype.hasOwnProperty.call(at, k)){ at[k] = secs.length; secs.push({title:title, items:[]}); }
+    secs[at[k]].items.push(ev);
+  });
+  secs.forEach(function(s){
+    var color = AR_LAYOUT === "group" ? (s.items[0].color || COLORS[0]) : "var(--lsw-arc-fg)";
+    board.appendChild(arSection(s.title, color, s.items, make, isCard));
+  });
 }
 
 /* 整块重画时保住页面滚动位置（2026-10-08 用户 iPhone 截图：长按拖动松手后整页往上翻一大段）。
@@ -2022,11 +2212,15 @@ function renderNow(){
      退出时 render() 先跑，卡片区还是 display:none，量出来的高度全是 0，展开的分组叠成一坨（2026-09-26 用户截图） */
   document.body.classList.toggle("sc-mode", scView);
   document.getElementById("odHead").hidden = !odView;
-  var odN = odView ? 0 : overdueEvents(t).length;
+  document.body.classList.toggle("ar-mode", arView);
+  document.getElementById("arHead").hidden = !arView;
+  document.getElementById("arBtn").setAttribute("aria-pressed", arView ? "true" : "false");
+  var odN = (odView || arView) ? 0 : overdueEvents(t).length;
   var odBar = document.getElementById("odBar");
-  odBar.hidden = odView || odN === 0;
+  odBar.hidden = odView || arView || odN === 0;
   document.getElementById("odNum").textContent = odN;
   odBar.setAttribute("aria-label", odN + " 个日程已过期，点击查看");
+  if(arView){ renderArchive(state.view === "card"); return; }
   if(odView){
     renderOverdue(t, function(ev){ return state.view === "card" ? cardEl(ev, t) : rowEl(ev, t); }, state.view === "card");
     return;
@@ -2352,12 +2546,13 @@ function numInfo(ev, t){
    结果点置顶区的卡（原分组收着、算上它有两张）去展开了原分组，编辑页打不开（2026-10-14） */
 function groupCount(g){
   var c = 0;
-  liveEvents().forEach(function(e){ if((e.group || "").trim() === g && !isPinned(e)) c++; });
+  boardEvents().forEach(function(e){ if((e.group || "").trim() === g && !isPinned(e)) c++; });
   return c;
 }
 /* 收起状态下点这一叠＝展开；展开状态（或没分组、组里只有一条）下点＝编辑 */
 function activate(ev){
   var g = (ev.group || "").trim();
+  if(arView && isArchived(ev)){ arDetail(ev); return; }   /* 归档区里定格了，不进编辑，看详情 / 移回主页 */
   /* 「只看已过期」里是平铺的，不存在"先展开那一摞"，点了就是编辑 */
   if(!odView && !isPinned(ev) && g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
   openForm(ev.id);
@@ -2394,7 +2589,8 @@ function cardEl(ev, t){
 
   var top = document.createElement("div");
   top.className = "card-top";
-  top.textContent = (t.getMonth()+1) + "月" + t.getDate() + "日 " + WEEK[t.getDay()];
+  /* 归档区里 t 是归档那天（定格），写明「归档于」，免得当成今天 */
+  top.textContent = (arView && isArchived(ev) ? "归档于 " : "") + (t.getMonth()+1) + "月" + t.getDate() + "日 " + WEEK[t.getDay()];
 
   var body = document.createElement("div");
   body.className = "card-body";
@@ -2417,7 +2613,7 @@ function cardEl(ev, t){
     /* 置顶的卡片离开了原分组，把它原来属于哪组标出来，免得找不着 */
     if(isPinned(ev) && (ev.group || "").trim()) tags.push(tagEl("原属 " + ev.group.trim()));
     /* 「只看已过期」是打散分组平铺的，标出它原来在哪组 */
-    else if(odView && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
+    else if((odView || (arView && AR_LAYOUT !== "group")) && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
   /* 目标日下面单独一行显示农历 */
@@ -2561,6 +2757,7 @@ function ask(o){
   document.getElementById("askTitle").textContent = o.title || "";
   var m = document.getElementById("askMsg");
   m.textContent = o.msg || ""; m.hidden = !o.msg;
+  m.classList.toggle("ask-pre", !!o.pre);      /* 多行详情（归档区）：换行照原样显示、靠左 */
   var okB = document.getElementById("askOk");
   okB.textContent = o.ok || "好";
   okB.className = "btn " + (o.danger ? "btn-danger" : "primary");
@@ -2675,6 +2872,7 @@ fileInput.addEventListener("change", function(){
           color: /^#[0-9a-fA-F]{6}$/.test(x.color || "") ? x.color : COLORS[0],
           createdAt: (typeof x.createdAt === "number" && x.createdAt > 0) ? x.createdAt : undefined,
           note: cleanNote(x.note) || undefined,      /* undefined 的字段 JSON 里不出现，和没写备注一样 */
+          archivedAt: (typeof x.archivedAt === "number" && x.archivedAt > 0 && x.archivedAt <= tImp) ? x.archivedAt : undefined,
           updatedAt: tImp
         });
       });
@@ -2716,7 +2914,10 @@ document.getElementById("mClear").addEventListener("click", function(){
   var ng = gsSafe(function(){ return gs.items.filter(function(r){ return !r.deletedAt; }).length; }, 0);
   if(!n && !ng){ notify("现在没有日程", "没有需要清空的。"); return; }
   ask({title: n ? "清空全部 " + n + " 条日程？" : "清空全部 " + ng + " 个空分组？",
-       msg: (n && ng ? "分组也会一起清掉。" : "") + delHint(), ok: "全部清空", danger: true, onOk: function(){
+       /* 归档的也算在「全部」里，一起清（清空是从头再来）；有归档时写明，免得以为归档区是另存的不受影响 */
+       msg: (n && ng ? "分组也会一起清掉。" : "") +
+            (function(){ var na = liveEvents().filter(isArchived).length; return na ? "其中 " + na + " 条在归档区里，也会一起清掉。" : ""; })() +
+            delHint(), ok: "全部清空", danger: true, onOk: function(){
     var tnow = Date.now();
     state.events.forEach(function(x){ if(!x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; } });
     gsSafe(function(){ gs.items.forEach(function(r){ if(!r.deletedAt) gsDrop(r.name, tnow); }); });
@@ -2909,12 +3110,17 @@ function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; }
 function openGroupMenu(name, anchor){
   gpTarget = name;
   gmMenu.innerHTML = "";
-  [["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
+  /* 「＋ 新建日程」排第一、蓝字（2026-10-16 用户要的）：和右上角 ⋯ 的「＋ 新建分组」同一个写法——动作在上、蓝字，设置类在下。
+     直接进新增、分组已经选好，和空分组下面那行「＋ 添加日程」是同一条路（openForm 的 presetGroup）。
+     openForm 必须在这次点击里同步调用：它要当场 focus 事件名称，iOS 才弹键盘 */
+  [["＋ 新建日程", function(){ closeGroupMenu(); openForm(null, name); }, "m-accent"],
+   ["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
    ["删除分组",   function(){ closeGroupMenu(); openGroupSheet("delete"); }]
   ].forEach(function(pair){
     var b = document.createElement("button");
     b.type = "button";
     b.textContent = pair[0];
+    if(pair[2]) b.className = pair[2];
     b.addEventListener("click", pair[1]);
     gmMenu.appendChild(b);
   });
@@ -2946,7 +3152,7 @@ window.addEventListener("resize", function(){
 gmMask.addEventListener("click", closeGroupMenu);
 
 function groupMemberCount(name){
-  return liveEvents().filter(function(e){ return (e.group || "").trim() === name; }).length;
+  return boardEvents().filter(function(e){ return (e.group || "").trim() === name; }).length;
 }
 /* 三个按钮固定存在，只是按模式换位置和文案 */
 var gpBtnOk = document.createElement("button");
@@ -3009,7 +3215,7 @@ function closeGroupSheet(){
 /* 主页新建分组（右上角 ⋯ →「＋ 新建分组」）：只在名册里登记一个空分组，日程数据不动。
    和「删空的分组留着」是同一套：排在最后、下面一行「＋ 添加日程」，跟着名册同步（space=groups） */
 function groupExists(name){
-  if(liveEvents().some(function(e){ return (e.group || "").trim() === name; })) return true;
+  if(boardEvents().some(function(e){ return (e.group || "").trim() === name; })) return true;
   var rec = gsBroken ? null : gsFind(name);
   return !!(rec && !rec.deletedAt);
 }
@@ -3057,7 +3263,8 @@ gpBtnOk.addEventListener("click", function(){
     if(!name){ document.getElementById("gpHint").textContent = "分组名不能是空的。"; return; }
     if(name === gpTarget){ closeGroupSheet(); return; }
     state.events.forEach(function(e){
-      if((e.group || "").trim() === gpTarget){ e.group = name; e.updatedAt = now; }
+      /* 归档的不跟着改：归档＝定格在放进去那一刻，「原属」写的还是当时的分组名（下同：解散、连同删除都不碰归档的） */
+      if((e.group || "").trim() === gpTarget && !e.archivedAt){ e.group = name; e.updatedAt = now; }
     });
     /* 展开状态跟着改名走，否则改完名字这个组会莫名收起来 */
     state.expanded = state.expanded.map(function(g){ return g === gpTarget ? name : g; });
@@ -3069,7 +3276,7 @@ gpBtnOk.addEventListener("click", function(){
     });
   }else{
     state.events.forEach(function(e){         /* 解散：日程保留，只是不再属于任何分组 */
-      if((e.group || "").trim() === gpTarget){ e.group = ""; e.updatedAt = now; }
+      if((e.group || "").trim() === gpTarget && !e.archivedAt){ e.group = ""; e.updatedAt = now; }
     });
     gsSafe(function(){ gsDrop(gpTarget, now); });   /* 空分组走的也是这里：没有日程可动，只把名字删掉 */
   }
@@ -3082,7 +3289,7 @@ gpBtnDel.addEventListener("click", function(){
   ask({title: "删除「" + name + "」和里面的 " + n + " 条日程？", msg: delHint(), ok: "删除", danger: true, onOk: function(){
     var now = Date.now();
     state.events.forEach(function(e){        /* 打墓碑而不是真删，删除才能同步到另一台设备 */
-      if((e.group || "").trim() === name && !e.deletedAt){ e.deletedAt = now; e.updatedAt = now; }
+      if((e.group || "").trim() === name && !e.deletedAt && !e.archivedAt){ e.deletedAt = now; e.updatedAt = now; }
     });
     gsSafe(function(){ gsDrop(name, now); });   /* 这是删分组，不是删日程：名字也不留 */
     pruneExpanded();
@@ -3909,7 +4116,7 @@ function deTick(now){
 }
 
 /* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
-function dragEnabled(){ return state.sort === "manual" && !odView; }
+function dragEnabled(){ return state.sort === "manual" && !odView && !arView; }
 
 /* 从被按住的元素往上找：它属于哪个容器、容器里的同级项有哪些 */
 function dragScope(target){
@@ -4503,6 +4710,9 @@ var lswEatUntil = 0;      /* 滑完浏览器可能补发一个 click，在这个
 
 /* 图钉 / 垃圾桶的线条图标（描边色 = currentColor，跟按钮文字同色） */
 var LSW_ICO_PIN = '<svg class="lsw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
+/* 归档盒 / 从盒子里拿出来（线条画法同上，图形参照 SF Symbols 的 archivebox） */
+var LSW_ICO_ARC = '<svg class="lsw-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="5" rx="1"/><path d="M4.5 8.5V19a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.5"/><path d="M10 12.5h4"/></svg>';
+var LSW_ICO_OUT = '<svg class="lsw-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="5" rx="1"/><path d="M4.5 8.5V19a2 2 0 0 0 2 2h1.5"/><path d="M19.5 8.5V19a2 2 0 0 1-2 2H16"/><path d="m9 15.5 3-3 3 3"/><path d="M12 12.5V21"/></svg>';
 var LSW_ICO_DEL = '<svg class="lsw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
 function lswActive(){ return !!(lsw && lsw.locked); }
@@ -4527,21 +4737,28 @@ function lswMount(el){
   if(!host || !ev) return null;
   var acts = document.createElement("div");
   acts.className = "lsw-acts";
-  var pin = document.createElement("button");
-  pin.type = "button"; pin.className = "lsw-btn lsw-pin"; pin.setAttribute("data-act", "pin");
-  pin.innerHTML = LSW_ICO_PIN + '<span class="lsw-txt"></span>';
-  pin.querySelector(".lsw-txt").textContent = isPinned(ev) ? "取消置顶" : "置顶";
-  var del = document.createElement("button");
-  del.type = "button"; del.className = "lsw-btn lsw-del"; del.setAttribute("data-act", "del");
-  del.innerHTML = LSW_ICO_DEL + '<span class="lsw-txt">删除</span>';
-  acts.appendChild(pin); acts.appendChild(del);
+  var id = ev.id;
+  function btn(cls, act, ico, text, fn){
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "lsw-btn " + cls; b.setAttribute("data-act", act);
+    b.innerHTML = ico + '<span class="lsw-txt"></span>';
+    b.querySelector(".lsw-txt").textContent = text;
+    b.addEventListener("click", function(){ fn(id); });
+    acts.appendChild(b);
+  }
+  /* 主页：置顶 / 归档 / 删除。删除留在最右边——原来就在那儿，手指记得住；归档插在中间。
+     归档区里：移回主页 / 删除（归档的不能置顶，它不在主页上） */
+  if(isArchived(ev)){
+    btn("lsw-pin", "out", LSW_ICO_OUT, "移回主页", arRestore);
+  }else{
+    btn("lsw-pin", "pin", LSW_ICO_PIN, isPinned(ev) ? "取消置顶" : "置顶", lswTogglePin);
+    btn("lsw-arc", "arc", LSW_ICO_ARC, "归档", arArchive);
+  }
+  btn("lsw-del", "del", LSW_ICO_DEL, "删除", cfOpen);
   acts.style.top = el.offsetTop + "px";
   acts.style.height = el.offsetHeight + "px";
   acts.style.right = (host.clientWidth - el.offsetLeft - el.offsetWidth) + "px";
   host.insertBefore(acts, el);     /* 排在卡片前面 → 被卡片盖住 */
-  var id = ev.id;
-  pin.addEventListener("click", function(){ lswTogglePin(id); });
-  del.addEventListener("click", function(){ cfOpen(id); });
   /* 卡片最终停在：按钮总宽 + 与卡片之间留 8px 缝 */
   return {acts:acts, w:acts.offsetWidth + 8};
 }
@@ -5201,9 +5418,10 @@ document.addEventListener("visibilitychange", function(){ if(!document.hidden) s
 function enterSc(){
   if(scView) return;
   var st = null; try{ st = history.state; }catch(e){}
-  if(odView && st && st.od){           /* 从「只看已过期」直接跳过来：替换那一格，返回时回主页 */
+  if((odView && st && st.od) || (arView && st && st.ar)){   /* 从「只看已过期」/ 归档区直接跳过来：替换那一格，返回时回主页 */
+    scScrollY = odView ? odScrollY : arScrollY;
     try{ history.replaceState({sc:1}, ""); }catch(e){}
-    odView = false;
+    odView = false; arView = false;
   }else{
     scScrollY = window.scrollY;
     try{ history.pushState({sc:1}, ""); }catch(e){}
@@ -5663,6 +5881,7 @@ viewList.setAttribute("aria-pressed", state.view === "list" ? "true" : "false");
 sortSel.value = state.sort;
 try{ odView = !!(history.state && history.state.od); }catch(e){}   /* 在「只看已过期」里刷新，还留在里面 */
 try{ scView = !!(history.state && history.state.sc); }catch(e){}   /* 短期倒计时同理 */
+try{ arView = !!(history.state && history.state.ar); }catch(e){}   /* 归档区同理 */
 scSafe(function(){ scLoad(); scPurge(); });
 render();
 scSafe(function(){ scRender(); scWakeSync(); });
