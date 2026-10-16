@@ -141,13 +141,20 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 /* ---- 顶部 ---- */
 /* 顶栏：标题要有标题的份量。字号跟着视口走，别写死成某一台设备上好看的数
    （320 下 28px，390 下约 31px，宽屏封顶 36px，和卡片上的大数字才配得上） */
-.topbar{display:flex;align-items:flex-start;gap:10px;margin:6px 2px 16px}
-.brand{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
+/* 2026-10-16 起是网格：第一行「标题 + 三个按钮」，日期（和同步状态）各占下面一整行。
+   原来日期跟标题挤在左边一栏；加了归档按钮后左栏在 375/390 宽只剩 200px，「日期 · 农历」被挤成两行、整页下移 21px。
+   用户看对比图选的「乙」：各种宽度日期都不折行，下面内容的起点在所有宽度都一样高。
+   .brand 用 display:contents，h1 / 日期 / 同步状态直接当网格的格子；再加按钮要改 grid-template-columns */
+.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;column-gap:10px;align-items:start;margin:6px 2px 16px}
+.brand{display:contents}
+.brand h1{grid-column:1;grid-row:1;min-width:0}
+.brand .today, .brand .sync-line{grid-column:1 / -1}
+.topbar > .icon-btn{grid-row:1}
 .brand h1{
   margin:0;font-size:clamp(28px,8vw,36px);font-weight:800;
   letter-spacing:-.2px;line-height:1.16;
 }
-.brand .today{margin:6px 0 0;font-size:14px;color:var(--text-2);font-weight:600}
+.brand .today{margin:0;font-size:14px;color:var(--text-2);font-weight:600}   /* 第一行已被 46px 的按钮撑高，不再要上边距 */
 .nw{white-space:nowrap}   /* 日期、星期、农历这类整段不许从中间断开（顶栏和卡片、列表的说明行共用） */
 .sync-line{margin:3px 0 0;font-size:12px;color:var(--text-3);font-weight:600}
 .sync-line.bad{color:#e0483d}
@@ -486,7 +493,16 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
    · 分组之间多留的空隙用 padding 而不是 margin：margin 会穿透 section 塌陷，
      拖拽时量出来的整组高度就少了这一截，挪位会错位 */
 .group{display:block;padding-top:10px}
-/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
+/* 卡片视图：每个分组（标题 + 卡片）垫一块淡淡的分组色底托，没分组的卡露在页面底色上，一眼分得出谁在组里
+   （2026-10-16 用户看对比图选的 A；和列表视图「每组一个框」同一个意思）。
+   底托用 ::before 画到分组外 8px，不占位；底边靠 padding-bottom 撑出来——别用 margin：
+   margin 会穿透 section 塌陷，整组拖动时量的高度少一截（见上一条）。置顶区、归档区、只看已过期不加 */
+#board > .cards > .group:not(.pinned-sec){position:relative;isolation:isolate;padding-bottom:8px}
+#board > .cards > .group:not(.pinned-sec)::before{
+  content:"";position:absolute;z-index:-1;left:-8px;right:-8px;top:2px;bottom:0;pointer-events:none;
+  border-radius:26px;background:color-mix(in srgb, var(--gc) 9%, var(--bg));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--gc) 14%, transparent);
+}/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
 #board > .group:first-child, #board > .cards:first-child > .group:first-child, #board > .list > .group:first-child{padding-top:0}
 .group-head{
   display:flex;align-items:center;gap:6px;width:100%;
@@ -2023,12 +2039,6 @@ function renderOverdue(t, make, isCard){
    · 归档的日程不跟着分组改名 / 解散 / 连同删除变，它记的是放进来时的样子 */
 var arView = false;       /* 是否处于归档区 */
 var arScrollY = 0;        /* 进来前主页滚到哪 */
-/* 归档区怎么摆：month 按归档月份分节 / group 按原来的分组分节 / flat 平铺。
-   ?ar= 只给出对比图用，用户定了之后写死成一种 */
-var AR_LAYOUT = (function(){
-  var m = /[?&]ar=(month|group|flat)\b/.exec(location.search);
-  return m ? m[1] : "month";
-})();
 function arDay(ev){ return midnight(new Date(ev.archivedAt)); }
 function archivedEvents(){
   return liveEvents().filter(isArchived).sort(function(a, b){       /* 刚放进来的在最上面 */
@@ -2146,31 +2156,19 @@ function renderArchive(isCard){
   cap.className = "ar-cap";
   cap.textContent = "这里的天数都停在归档那天，不再变化。";
   board.appendChild(cap);
-  if(AR_LAYOUT === "flat"){
-    var box = document.createElement("div");
-    box.className = isCard ? "cards" : "list";
-    list.forEach(function(ev){ box.appendChild(make(ev)); });
-    board.appendChild(box);
-    return;
-  }
-  /* 分节：节的先后＝节里最近一次归档的先后（list 已按归档时间倒序，按第一次出现的顺序收拢即可） */
+  /* 按归档的月份分节（2026-10-16 用户看对比图选的 A；按原分组分节、平铺没选）：
+     最近的月份在上，节里最近归档的在上，卡片上标出原来的分组。分组以后改名或删掉，这种分法也不会过时。
+     list 已按归档时间倒序，按第一次出现的顺序收拢就是对的 */
   var secs = [], at = Object.create(null);
   list.forEach(function(ev){
-    var k, title;
-    if(AR_LAYOUT === "group"){
-      k = (ev.group || "").trim(); title = k || "未分组";
-    }else{
-      var d = new Date(ev.archivedAt);
-      k = d.getFullYear() + "-" + (d.getMonth() + 1);
-      title = d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月";
+    var d = new Date(ev.archivedAt), k = d.getFullYear() + "-" + (d.getMonth() + 1);
+    if(!Object.prototype.hasOwnProperty.call(at, k)){
+      at[k] = secs.length;
+      secs.push({title: d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月", items: []});
     }
-    if(!Object.prototype.hasOwnProperty.call(at, k)){ at[k] = secs.length; secs.push({title:title, items:[]}); }
     secs[at[k]].items.push(ev);
   });
-  secs.forEach(function(s){
-    var color = AR_LAYOUT === "group" ? (s.items[0].color || COLORS[0]) : "var(--lsw-arc-fg)";
-    board.appendChild(arSection(s.title, color, s.items, make, isCard));
-  });
+  secs.forEach(function(s){ board.appendChild(arSection(s.title, "var(--lsw-arc-fg)", s.items, make, isCard)); });
 }
 
 /* 整块重画时保住页面滚动位置（2026-10-08 用户 iPhone 截图：长按拖动松手后整页往上翻一大段）。
@@ -2230,7 +2228,10 @@ function renderNow(){
   if(list.length === 0 && !empties.length){
     var e = document.createElement("div");
     e.className = "empty";
-    e.innerHTML = '<div class="big">🗓</div><p>还没有日程</p><p style="color:var(--text-3);font-size:13px">点右下角的「＋」添加第一个</p>';
+    var nAr = archivedEvents().length;     /* 全都归档了：说一声在哪，别让人以为数据没了 */
+    e.innerHTML = nAr
+      ? '<div class="big">🗓</div><p>主页没有日程了</p><p style="color:var(--text-3);font-size:13px">归档区里还有 ' + nAr + ' 条（右上角的盒子）；点「＋」添加新的</p>'
+      : '<div class="big">🗓</div><p>还没有日程</p><p style="color:var(--text-3);font-size:13px">点右下角的「＋」添加第一个</p>';
     board.appendChild(e);
     return;
   }
@@ -2613,7 +2614,7 @@ function cardEl(ev, t){
     /* 置顶的卡片离开了原分组，把它原来属于哪组标出来，免得找不着 */
     if(isPinned(ev) && (ev.group || "").trim()) tags.push(tagEl("原属 " + ev.group.trim()));
     /* 「只看已过期」是打散分组平铺的，标出它原来在哪组 */
-    else if((odView || (arView && AR_LAYOUT !== "group")) && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
+    else if((odView || arView) && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
   /* 目标日下面单独一行显示农历 */
