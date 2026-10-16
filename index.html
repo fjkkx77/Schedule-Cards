@@ -797,9 +797,15 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .time-btn.on{background:#2f86f6;color:#fff;box-shadow:none}
 .time-btn.on::after{color:rgba(255,255,255,.8)}
 .time-colon{font-weight:800;color:var(--text-3)}
+.time-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}   /* 比整组还窄的屏幕（<320）组内再换行，兜底不溢出 */
 .time-clear{
   min-height:44px;padding:0 12px;border:0;border-radius:10px;background:transparent;
   color:var(--text-3);font-size:13px;font-weight:700;
+}
+/* 「现在」是个动作：淡蓝底蓝字（借左滑「置顶」那套变量，深浅主题对比度已达标），和灰字的「清除」分开 */
+.time-now{
+  min-height:44px;padding:0 10px;border:0;border-radius:10px;   /* 10 不是 12：375 宽时 12 会让整组差 1px 掉到下一行（实测行宽 311） */
+  background:var(--lsw-pin-bg);color:var(--lsw-pin-fg);font-size:14px;font-weight:700;
 }
 /* 按下反馈统一由「按下反馈」那段 JS（pressStart）做，见 CSS「按下反馈」 */
 .time-row .dp-menu{min-width:88px;max-height:220px}
@@ -1286,6 +1292,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <!-- 可选时刻：不填就按当天 00:00 算，填了倒计时就按这个点算 -->
       <div class="time-row" id="fTimeRow">
         <span class="time-lab" id="fTimeLab">具体时刻</span>
+        <!-- 时 : 分 / 现在 / 清除 绑成一组：窄屏放不下时整组换到标签下面一行，不会有一个按钮单独掉下去（320 宽实测） -->
+        <span class="time-ctl">
         <span class="dp-sel">
           <button type="button" class="time-btn" id="fHourBtn">--</button>
           <div class="dp-menu" id="fHourMenu" hidden></div>
@@ -1295,7 +1303,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
           <button type="button" class="time-btn" id="fMinBtn">--</button>
           <div class="dp-menu" id="fMinMenu" hidden></div>
         </span>
+        <!-- 「现在」（2026-10-17 用户要的）：一点就把时刻填成此刻，只改时刻、不动日期 -->
+        <button type="button" class="time-now" id="fTimeNow" aria-label="具体时刻填成现在的时间">现在</button>
         <button type="button" class="time-clear" id="fTimeClear" hidden>清除</button>
+        </span>
       </div>
       <div class="countdown dbox dbox-cd" id="fCountdown" hidden>
         <span class="cd-num" id="fCdNum"></span>
@@ -3019,6 +3030,12 @@ document.getElementById("fMinBtn").addEventListener("click", function(e){
   e.stopPropagation(); buildTimeMenus(); toggleTimeMenu(document.getElementById("fMinMenu"));
 });
 document.getElementById("fTimeClear").addEventListener("click", function(){ setFormTime(""); });
+document.getElementById("fTimeNow").addEventListener("click", function(){
+  var d = new Date();
+  document.getElementById("fHourMenu").hidden = true;    /* 开着的时 / 分下拉一并收起 */
+  document.getElementById("fMinMenu").hidden = true;
+  setFormTime(cdPad(d.getHours()) + ":" + cdPad(d.getMinutes()));
+});
 
 /* ================= 编辑弹窗里的实时倒计时 =================
    日程只存日期不存时刻，所以基准是目标日的 00:00 —— 这一点在第二行明写出来，
