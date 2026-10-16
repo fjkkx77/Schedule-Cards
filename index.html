@@ -502,7 +502,9 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
   content:"";position:absolute;z-index:-1;left:-8px;right:-8px;top:2px;bottom:0;pointer-events:none;
   border-radius:26px;background:color-mix(in srgb, var(--gc) 9%, var(--bg));
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--gc) 14%, transparent);
-}/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
+}
+/* 页面最上面那一组没有 10px 的上内边距（见下面 :first-child 那条），底托往上多伸 8px，标题上方和别的分组一样留出底托边 */
+#board > .cards:first-child > .group:first-child:not(.pinned-sec)::before{top:-8px}/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
 #board > .group:first-child, #board > .cards:first-child > .group:first-child, #board > .list > .group:first-child{padding-top:0}
 .group-head{
   display:flex;align-items:center;gap:6px;width:100%;
@@ -1530,9 +1532,11 @@ function liveEvents(){
 /* 主页上显示的那些＝没删、也没归档的（2026-10-16 加归档）。主页的显示、分组、排序、过期统计、分组名册对账都只看这个；
    归档的照样在 state.events 里，跟着同步、导出、清空走——所以那几处仍然用 liveEvents */
 function boardEvents(){
-  return state.events.filter(function(e){ return !e.deletedAt && !e.archivedAt; });
+  return state.events.filter(function(e){ return !e.deletedAt && !isArchived(e); });
 }
-function isArchived(ev){ return !!(ev && ev.archivedAt); }
+/* 只认正数时间戳：云端同步下来的可能是坏数据（字符串、true），那样排序会得 NaN、按月分节会分出「1970 年 1 月」。
+   不合格的当没归档，留在主页上，不会因此"消失" */
+function isArchived(ev){ return !!ev && typeof ev.archivedAt === "number" && ev.archivedAt > 0; }
 function orderMax(){
   var m = 0;
   state.events.forEach(function(e){ if(typeof e.order === "number" && e.order > m) m = e.order; });
@@ -2201,7 +2205,6 @@ function renderNow(){
     tl.appendChild(p2);
   }
 
-  var list = sortedEvents();
   lswForget();              /* 整块重建，之前滑开的那张卡已经不在了 */
   board.innerHTML = "";
 
@@ -2224,6 +2227,7 @@ function renderNow(){
     return;
   }
 
+  var list = sortedEvents();       /* 归档区 / 只看已过期在上面就返回了，用不着排主页 */
   var empties = gsEmptyList();     /* 没有日程可显示、但还留着的分组 */
   if(list.length === 0 && !empties.length){
     var e = document.createElement("div");
@@ -2578,20 +2582,29 @@ function tagEl(text, extra){
   return s;
 }
 
-function cardEl(ev, t){
+/* 归档区里的卡：t 是归档那天。「就是今天」「今天到期」这类字眼说的是那一天、不是真正的今天，换成「当天」 */
+function frozen(ev){ return arView && isArchived(ev); }
+function frozenInfo(ev, t){
   var info = numInfo(ev, t);
+  if(frozen(ev) && info.bigText){
+    info.bigText = {"就是今天":"就在当天", "今天到期":"当天到期", "今天开始":"当天开始"}[info.bigText] || info.bigText;
+  }
+  return info;
+}
+function cardEl(ev, t){
+  var info = frozenInfo(ev, t);
   var el = document.createElement("button");
   el.type = "button";
   el.className = "card" + (info.state === "overdue" ? " is-over" : "");
   el.style.setProperty("--c", ev.color || COLORS[0]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[0], -0.16));
-  el.setAttribute("aria-label", (ev.title || "未命名") + "，点击编辑");
+  el.setAttribute("aria-label", (ev.title || "未命名") + (frozen(ev) ? "，已归档，点击查看详情" : "，点击编辑"));
   el.setAttribute("data-id", ev.id);      /* 拖拽重排时靠它把 DOM 顺序写回数据 */
 
   var top = document.createElement("div");
   top.className = "card-top";
   /* 归档区里 t 是归档那天（定格），写明「归档于」，免得当成今天 */
-  top.textContent = (arView && isArchived(ev) ? "归档于 " : "") + (t.getMonth()+1) + "月" + t.getDate() + "日 " + WEEK[t.getDay()];
+  top.textContent = (frozen(ev) ? "归档于 " : "") + (t.getMonth()+1) + "月" + t.getDate() + "日 " + WEEK[t.getDay()];
 
   var body = document.createElement("div");
   body.className = "card-body";
@@ -2660,13 +2673,13 @@ function cardEl(ev, t){
 }
 
 function rowEl(ev, t){
-  var info = numInfo(ev, t);
+  var info = frozenInfo(ev, t);
   var el = document.createElement("button");
   el.type = "button";
   el.className = "row" + (info.state === "overdue" ? " is-over" : "");
   el.style.setProperty("--c", ev.color || COLORS[1]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[1], -0.16));
-  el.setAttribute("aria-label", (ev.title || "未命名") + "，点击编辑");
+  el.setAttribute("aria-label", (ev.title || "未命名") + (frozen(ev) ? "，已归档，点击查看详情" : "，点击编辑"));
   el.setAttribute("data-id", ev.id);      /* 拖拽重排时靠它把 DOM 顺序写回数据 */
 
   var main = document.createElement("div");
@@ -2675,10 +2688,19 @@ function rowEl(ev, t){
   tt.className = "row-title";
   tt.textContent = ev.title || "未命名";
   main.appendChild(tt);
+  /* 归档区的列表行：不管开没开「列表显示日期」，都写一行「归档于 …」，看得出这个天数是哪天的 */
+  var arTag = frozen(ev) ? "归档于 " + (t.getMonth() + 1) + "月" + t.getDate() + "日 " + WEEK[t.getDay()] : "";
+  if(arTag && !(state.showDateInList && !info.bad)){
+    var s0 = document.createElement("div");
+    s0.className = "row-sub";
+    nwLine(s0, [arTag]);
+    main.appendChild(s0);
+  }
   if(state.showDateInList && !info.bad){
     var s = document.createElement("div");
     s.className = "row-sub";
     var parts = [info.dateLabel + ymd(info.target), WEEK[info.target.getDay()]];
+    if(arTag) parts.unshift(arTag + " ·");
     if(ev.time) parts.push(ev.time);
     var more = [lunarLabel(info.target),
                 {overdue:"已过期", elapsed:"已累计", notStarted:"未开始"}[info.state] || ""];
@@ -2895,7 +2917,8 @@ fileInput.addEventListener("change", function(){
           if(nm) want[nm] = {order: typeof g.order === "number" ? g.order : undefined,
                              color: /^#[0-9a-fA-F]{6}$/.test(g.color || "") ? g.color : ""};
         });
-        clean.forEach(function(x){ if(!x.deletedAt && x.group && !want[x.group]) want[x.group] = {}; });
+        /* 归档的不算：只剩归档日程还在用的分组（比如分组已经删了）不该在主页上复活成空分组，同 gsReconcile 只看 boardEvents */
+        clean.forEach(function(x){ if(!x.deletedAt && !isArchived(x) && x.group && !want[x.group]) want[x.group] = {}; });
         gs.items.forEach(function(r){ if(!r.deletedAt && !want[r.name]) gsDrop(r.name, tnow); });
         for(var nm in want) gsEnsure(nm, tnow, want[nm]);
       });
@@ -2917,7 +2940,7 @@ document.getElementById("mClear").addEventListener("click", function(){
   ask({title: n ? "清空全部 " + n + " 条日程？" : "清空全部 " + ng + " 个空分组？",
        /* 归档的也算在「全部」里，一起清（清空是从头再来）；有归档时写明，免得以为归档区是另存的不受影响 */
        msg: (n && ng ? "分组也会一起清掉。" : "") +
-            (function(){ var na = liveEvents().filter(isArchived).length; return na ? "其中 " + na + " 条在归档区里，也会一起清掉。" : ""; })() +
+            (archivedEvents().length ? "其中 " + archivedEvents().length + " 条在归档区里，也会一起清掉。" : "") +
             delHint(), ok: "全部清空", danger: true, onOk: function(){
     var tnow = Date.now();
     state.events.forEach(function(x){ if(!x.deletedAt){ x.deletedAt = tnow; x.updatedAt = tnow; } });
@@ -3231,8 +3254,8 @@ function createGroup(now){
     return;
   }
   queueSync(); closeGroupSheet(); render();
-  /* 滚到新分组那里亮一下，让人知道它出现在哪（只看已过期 / 短期倒计时界面里主页是藏着的，不滚） */
-  if(odView || scView) return;
+  /* 滚到新分组那里亮一下，让人知道它出现在哪（只看已过期 / 短期倒计时 / 归档区里主页是藏着的，不滚） */
+  if(odView || scView || arView) return;
   var esc = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/["\\]/g, "\\$&");
   var add = board.querySelector('.g-empty[data-group="' + esc + '"]');
   var sec = add && add.closest(".group");
@@ -3264,8 +3287,9 @@ gpBtnOk.addEventListener("click", function(){
     if(!name){ document.getElementById("gpHint").textContent = "分组名不能是空的。"; return; }
     if(name === gpTarget){ closeGroupSheet(); return; }
     state.events.forEach(function(e){
-      /* 归档的不跟着改：归档＝定格在放进去那一刻，「原属」写的还是当时的分组名（下同：解散、连同删除都不碰归档的） */
-      if((e.group || "").trim() === gpTarget && !e.archivedAt){ e.group = name; e.updatedAt = now; }
+      /* 归档的也跟着改名：「定格」说的是时间，分组名只是它属于哪组的指向。不跟的话，移回主页时会用旧名字另建一个分组，
+         和改名后的那个分开（2026-10-16 代码审查指出）。连同删除分组时归档的不删——归档区就是留着的地方 */
+      if((e.group || "").trim() === gpTarget){ e.group = name; e.updatedAt = now; }
     });
     /* 展开状态跟着改名走，否则改完名字这个组会莫名收起来 */
     state.expanded = state.expanded.map(function(g){ return g === gpTarget ? name : g; });
@@ -3277,7 +3301,7 @@ gpBtnOk.addEventListener("click", function(){
     });
   }else{
     state.events.forEach(function(e){         /* 解散：日程保留，只是不再属于任何分组 */
-      if((e.group || "").trim() === gpTarget && !e.archivedAt){ e.group = ""; e.updatedAt = now; }
+      if((e.group || "").trim() === gpTarget){ e.group = ""; e.updatedAt = now; }    /* 归档的同样变成不分组，移回时不会把分组建回来 */
     });
     gsSafe(function(){ gsDrop(gpTarget, now); });   /* 空分组走的也是这里：没有日程可动，只把名字删掉 */
   }
