@@ -131,6 +131,31 @@ body{
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
+/* ============ 顶部固定小栏（2026-10-17） ============
+   用户：往下翻以后右上角的按钮（归档区 / 短期倒计时 / ⋯）被滚走了，还得滑回顶上找。
+   照 iOS 的大标题导航栏：顶栏原样不动；大标题滚出屏幕后，顶上滑下一条细栏——中间小标题、右边还是那三个按钮
+   （不是复制一份：是把同一批按钮挪进来，回到顶上再挪回去，状态、角标、事件都不用同步）。
+   不把整个顶栏钉住：标题 + 日期 + 同步状态有一百多 px，一直占着太浪费 */
+.cbar{position:fixed;left:0;right:0;top:0;z-index:30;
+  padding:var(--safe-t) calc(12px + var(--safe-r)) 0 calc(12px + var(--safe-l));
+  background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(14px);backdrop-filter:saturate(1.6) blur(14px);
+  box-shadow:0 1px 0 var(--line);
+  transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform .22s cubic-bezier(.22,.68,.36,1),opacity .18s}
+.cbar.on{transform:none;opacity:1;pointer-events:auto}
+.cbar-in{position:relative;max-width:576px;margin:0 auto;min-height:56px;display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.cbar-t{position:absolute;left:50%;transform:translateX(-50%);font-size:16px;font-weight:700;color:var(--text);white-space:nowrap;pointer-events:none}
+@media (prefers-reduced-motion:reduce){.cbar{transition:none}}
+/* 小栏开着时弹出的 ⋯ 菜单也钉在屏幕上（按钮不再跟页面走了） */
+.menu.fx{position:fixed}
+/* 「只看已过期」「归档区」的标题行里有「完成」（退出这个视图的按钮）：钉在小栏下面，不跟着列表滚走 */
+.group-head.od-head{position:sticky;top:calc(var(--safe-t) + 56px);z-index:6;background:var(--bg);box-shadow:0 -10px 0 var(--bg)}
+/* 弹窗底下的「保存 / 开始倒计时 / 开启并同步」：内容比屏幕长时钉在弹窗底部（新增日程那张有 1500 多 px，以前一打开根本看不到保存）。
+   只钉这三张、每张只钉一行：重命名分组那张有两行按钮，都钉会叠在一起；警告框本来就短。
+   bottom 负 10px + padding 底 10px+安全区：钉住时按钮刚好让出 Home 条；最后一行再用负 margin 抵掉多出来的那截留白 */
+#form > .actions,#scSheet > .actions,#syncSheet > .actions{position:sticky;bottom:-10px;z-index:3;background:var(--surface);
+  padding:10px 0 calc(10px + var(--safe-b));box-shadow:0 -1px 0 var(--line)}
+#syncSheet > .actions:last-child{margin-bottom:calc(-10px - var(--safe-b))}
+
 /* ============ 外层布局 ============ */
 .app{
   max-width:600px;
@@ -1060,6 +1085,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 <body>
 
 <div class="app">
+  <div class="cbar" id="cbar" aria-hidden="true"><div class="cbar-in"><span class="cbar-t">日程卡片</span><span id="cbarB" style="display:flex;gap:10px"></span></div></div>
   <div class="topbar">
     <div class="brand">
       <h1>日程卡片</h1>
@@ -2838,15 +2864,45 @@ function placePopup(el, r, left, gap){
 }
 /* 菜单右边缘对齐 ⋯ 按钮右边缘，向下 8px；两侧各留 12px 不许出屏 */
 function positionMenu(){
-  var b = document.getElementById("menuBtn").getBoundingClientRect();
+  var btn = document.getElementById("menuBtn"), b = btn.getBoundingClientRect();
   var dw = document.documentElement.clientWidth;
   var w = menu.offsetWidth || 196;
-  placePopup(menu, b, Math.max(12, Math.min(b.right - w, dw - w - 12)), 8);
+  var left = Math.max(12, Math.min(b.right - w, dw - w - 12));
+  /* ⋯ 在顶部小栏里（页面已经往下滚了）：按钮钉在屏幕上，菜单也钉在屏幕上，不然一滑两边就错开 */
+  var inBar = document.getElementById("cbar").contains(btn);
+  menu.classList.toggle("fx", inBar);
+  /* 小栏刚滑下来时还带着 translateY(-100%) 的过渡，那一刻量到的按钮比最终位置高 56px，菜单会挂到按钮上面去
+     （feat.js「滚 120px 后菜单仍在按钮下方」量出来的）——减掉小栏当前还没走完的那段位移，得到它停稳后的位置 */
+  if(inBar){
+    var tf = getComputedStyle(document.getElementById("cbar")).transform, ty = 0;
+    if(tf && tf !== "none") try{ ty = new DOMMatrixReadOnly(tf).m42; }catch(_){ ty = 0; }
+    menu.style.left = Math.round(left) + "px"; menu.style.top = (b.bottom - ty + 8) + "px";   /* 不取整：按钮底边常在半像素上 */
+  }
+  else placePopup(menu, b, left, 8);
 }
 /* 转屏/改窗口大小时按钮会挪位置，菜单要跟上 */
 window.addEventListener("resize", function(){ if(!menu.hidden) positionMenu(); });
 function closeMenu(){ menu.hidden = true; menuMask.hidden = true; }
 document.getElementById("menuBtn").addEventListener("click", openMenu);
+/* 顶部小栏（见 CSS「顶部固定小栏」）。大标题的底边滚到屏幕顶以上就算「滚走了」 */
+(function(){
+  var bar = document.getElementById("cbar"), slot = document.getElementById("cbarB");
+  var top = document.querySelector(".topbar"), h1 = top.querySelector("h1");
+  var IDS = ["arBtn", "scBtn", "menuBtn"], on = false;
+  function sync(){
+    var want = h1.getBoundingClientRect().bottom <= 4;
+    if(want === on) return;
+    on = want;
+    bar.classList.toggle("on", on);
+    bar.setAttribute("aria-hidden", on ? "false" : "true");
+    /* 按原来的顺序挪：顶栏里它们排在 .brand 后面，appendChild 依次放回去顺序不变 */
+    IDS.forEach(function(id){ var b = document.getElementById(id); if(b) (on ? slot : top).appendChild(b); });
+    if(!menu.hidden) positionMenu();
+  }
+  window.addEventListener("scroll", sync, {passive: true});
+  window.addEventListener("resize", sync);
+  sync();
+})();
 menuMask.addEventListener("click", closeMenu);
 
 document.getElementById("mToggleDate").addEventListener("click", function(){
