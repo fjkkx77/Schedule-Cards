@@ -171,7 +171,9 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
    原来日期跟标题挤在左边一栏；加了归档按钮后左栏在 375/390 宽只剩 200px，「日期 · 农历」被挤成两行、整页下移 21px。
    用户看对比图选的「乙」：各种宽度日期都不折行，下面内容的起点在所有宽度都一样高。
    .brand 用 display:contents，h1 / 日期 / 同步状态直接当网格的格子；再加按钮要改 grid-template-columns */
-.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;column-gap:10px;align-items:start;margin:6px 2px 16px}
+.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-rows:minmax(calc(44px + 2px),auto);column-gap:10px;align-items:start;margin:6px 2px 16px}
+/* 第一行最少等于按钮的高（44 + 上边距 2）：往下滚时三个按钮会被挪进顶部小栏（见「顶部固定小栏」），
+   不撑住的话这一行从 46 缩到标题的 36，整页往上跳 10px——拖动时卡片和手指错开、⋯ 菜单错位（10-17 twohand/edge/feat 测出） */
 .brand{display:contents}
 .brand h1{grid-column:1;grid-row:1;min-width:0}
 .brand .today, .brand .sync-line{grid-column:1 / -1}
