@@ -399,8 +399,12 @@ body.od-mode .toolbar, body.od-mode .fab{display:none}
 /* ---- 归档区（2026-10-16） ---- */
 .ar-btn[aria-pressed="true"]{background:#2f86f6;color:#fff}      /* 进入后高亮，同 ⏱ */
 body.ar-mode .toolbar, body.ar-mode .fab, body.ar-mode #odBar{display:none}
-.group-head.od-head.ar-head{--gc:var(--lsw-arc-fg)}
-.ar-cap{margin:-6px 4px 12px;font-size:13px;color:var(--text-2);font-weight:600}
+/* 标题行照「短期倒计时」那一行写（2026-10-17 用户要求）：不要色条、标题 20px，文字起点同为内容边 +6px（左内边距 4 + 外边距 2）。
+   数量圆牌和「完成」照旧；下面那行说明也左移到和标题对齐 */
+.group-head.od-head.ar-head{padding-left:4px;letter-spacing:normal}
+.group-head.od-head.ar-head::before{display:none}
+.ar-head .g-name{font-size:20px}
+.ar-cap{margin:-6px 6px 12px;font-size:13px;color:var(--text-2);font-weight:600}
 .ar-sec + .ar-sec{margin-top:14px}
 .ar-sec > .group-head{margin-bottom:10px}
 .ask-pre{white-space:pre-line;text-align:left}
