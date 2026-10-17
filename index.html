@@ -152,8 +152,10 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 .group-head.od-head{position:sticky;top:calc(var(--safe-t) + 56px);z-index:6;background:var(--bg);box-shadow:0 -10px 0 var(--bg)}
 /* 弹窗底下的「保存 / 开始倒计时 / 开启并同步」：内容比屏幕长时钉在弹窗底部（新增日程那张有 1500 多 px，以前一打开根本看不到保存）。
    只钉这三张、每张只钉一行：重命名分组那张有两行按钮，都钉会叠在一起；警告框本来就短。
-   bottom 负 10px + padding 底 10px+安全区：钉住时按钮刚好让出 Home 条；最后一行再用负 margin 抵掉多出来的那截留白 */
-#form > .actions,#scSheet > .actions,#syncSheet > .actions{position:sticky;bottom:-10px;z-index:3;background:var(--surface);
+   bottom 负 10px + padding 底 10px+安全区：钉住时按钮刚好让出 Home 条；最后一行再用负 margin 抵掉多出来的那截留白。
+   2026-10-18 编辑日程那张（#form）不钉了，回到表单最底下：用户真机上看到「取消 / 保存」悬在页面中间、弹键盘时骑在键盘上，
+   「看着像 UI 错乱」，要求照以前放回最底下。另外两张没点名，照旧 */
+#scSheet > .actions,#syncSheet > .actions{position:sticky;bottom:-10px;z-index:3;background:var(--surface);
   padding:10px 0 calc(10px + var(--safe-b));box-shadow:0 -1px 0 var(--line)}
 #syncSheet > .actions:last-child{margin-bottom:calc(-10px - var(--safe-b))}
 
@@ -2142,6 +2144,8 @@ function arPulse(){
 /* 点归档区里的一张：看详情，能移回主页（删除走左滑，和主页一样） */
 function arDetail(ev){
   var lines = ["归档于 " + arStamp(ev.archivedAt)];
+  var lt = lunarTime(ev.archivedAt);               /* 农历 + 时辰，写法同编辑页「创建时间」下面那行；超出农历表就不写 */
+  if(lt) lines.push(lt);
   var g = (ev.group || "").trim();
   lines.push(g ? "原属分组：" + g : "原来没有分组");
   if(ev.note) lines.push("备注：" + ev.note);
@@ -4683,11 +4687,21 @@ var PRESS_RANGES = [   /* [参数, 名字, 最小, 最大, 步长, 说明] */
   ["glowD", "彩色/深色按钮光晕亮度", 0,  1,    .05, "蓝色等彩色按钮上那圈白光有多亮"],
   ["hold",  "按下至少停",         0,    400,  10,  "单位毫秒：快点一下时按下的样子至少保留多久"]
 ];
+/* 下拉关闭弹窗的「甩」门槛（用在 sdEnd）。原来是 0.6 px/ms + 30px（我定的，无出处），2026-10-18 用户真机反馈「太灵敏、常误关」，
+   两个都调高。新值也是我估的起点、不是实测：用户真机在面板里调定后改这里，来源记成「用户真机调定」。
+   拉的距离那条（弹窗高 22%、封顶 160px）没进面板：慢慢拉过去就是想关 */
+var SD_DEFAULT = {sdV: 0.9, sdDist: 60};
+var SD_RANGES = [
+  ["sdV",    "甩多快才关",   0.3, 2,   .05, "单位 px/ms：松手前 100ms 的平均速度超过它，就算「甩」，直接关", ""],
+  ["sdDist", "甩至少拉多远", 10,  200, 5,   "甩的时候至少得拉下来这么多，太短的一抖不算", "px"]
+];
 var pressTP = TunePanel({
   project: "日程卡片", version: "press-v3", finalName: "PRESS_DEFAULT", qrSrc: "qrcode.js", secret: ".brand h1",
   groups: [{title: "按钮按下", params: PRESS_RANGES.map(function(t){
     return {key: t[0], label: t[1], min: t[2], max: t[3], step: t[4], default: PRESS_DEFAULT[t[0]], hint: t[5],
             unit: /时长/.test(t[1]) ? "秒" : t[0] === "hold" ? "毫秒" : t[0] === "grow" ? "px" : /glow/.test(t[0]) || /弹性/.test(t[1]) ? "" : "倍"};
+  })}, {title: "下拉关闭弹窗", params: SD_RANGES.map(function(t){
+    return {key: t[0], label: t[1], min: t[2], max: t[3], step: t[4], default: SD_DEFAULT[t[0]], hint: t[5], unit: t[6]};
   })}],
   curves: [{label: "按下", resp: "inR", bounce: "inB"}, {label: "松开", resp: "outR", bounce: "outB"}],
   onChange: function(v){ PRESS_CFG = v; }
@@ -5144,7 +5158,13 @@ document.addEventListener("touchstart", function(e){
   /* 弹窗内容（或手指下面任何一层可滚动的东西）没在顶部：这一下是滚内容，不是拉弹窗 */
   for(var n = t; n && n !== S.mask; n = n.parentElement){ if(n.scrollTop > 0) return; }
   var p = e.touches[0];
-  sd = {S:S, x0:p.clientX, y0:p.clientY, locked:false, dy:0, h:0, samples:[]};
+  /* 2026-10-18 用户：新建日程时只想把键盘往下划掉，却常常把整张弹窗划没了。
+     现在：按下时弹窗里有输入框正在输入（键盘开着），这一下只收键盘、弹窗不动；键盘收了以后再拉才是关弹窗。
+     这条顺序是我定的（先收键盘、再关弹窗），不是 HIG 原文 */
+  var ae = document.activeElement;
+  var kb = !!(ae && S.sheet.contains(ae) && (ae.tagName === "TEXTAREA" ||
+           (ae.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset|color|range|file)$/i.test(ae.type))));
+  sd = {S:S, x0:p.clientX, y0:p.clientY, locked:false, dy:0, h:0, samples:[], kb:kb};
 }, {passive:true});
 
 document.addEventListener("touchmove", function(e){
@@ -5159,6 +5179,12 @@ document.addEventListener("touchmove", function(e){
     /* 顶在最上面还往下拉：死区里就先挡住浏览器的回弹，iOS 回弹一旦开始，后面的 touchmove 就拦不住了 */
     if(e.cancelable) e.preventDefault();
     if(dy < SD_DEAD) return;
+    if(sd.kb){                                 /* 只收键盘：这次手势到此为止，弹窗不跟着走 */
+      var ke = document.activeElement;
+      if(ke && ke.blur) ke.blur();
+      sd = null;
+      return;
+    }
     sd.locked = true;
     clearTimeout(sdTimer);   /* 上一次弹回的收尾还没跑：别让它在这次拉到一半时把位置清掉 */
     sd.h = sd.S.sheet.getBoundingClientRect().height;
@@ -5185,13 +5211,14 @@ function sdEnd(cancel){
   if(!g.locked) return;
   var S = g.S;
   sdEatIn = S.mask; sdEatUntil = Date.now() + 350;
-  /* 距离阈值跟着弹窗高度走：矮的确认框拉 80 就够，高的编辑框要到 22%（封顶 160） */
+  /* 距离阈值跟着弹窗高度走：矮的确认框拉 80 就够，高的编辑框要到 22%（封顶 160）。
+     甩动的两个门槛 2026-10-18 起调高（用户：太灵敏、常误关），数值从调手感面板取（?tune=1 →「下拉关闭弹窗」），见 SD_DEFAULT */
   var far = g.dy > Math.min(160, Math.max(80, g.h * 0.22));
   var s0 = g.samples[0], s1 = g.samples[g.samples.length - 1];
   var span = s1 && s0 ? s1.t - s0.t : 0;
   var v = span >= 30 ? (s1.y - s0.y) / span : 0;          /* px/ms；采样不到 30ms 不算甩 */
   if(s1 && performance.now() - s1.t > 100) v = 0;          /* 拉完停住再松手，不算甩 */
-  var flick = v > 0.6 && g.dy > 30;
+  var flick = v > PRESS_CFG.sdV && g.dy > PRESS_CFG.sdDist;
   var go = !cancel && (far || flick);
   S.sheet.style.transition = "transform .28s cubic-bezier(.2,.8,.3,1)";
   S.mask.style.transition = "background-color .28s ease";
