@@ -408,6 +408,9 @@ body.ar-mode .toolbar, body.ar-mode .fab, body.ar-mode #odBar{display:none}
 .ar-sec + .ar-sec{margin-top:14px}
 .ar-sec > .group-head{margin-bottom:10px}
 .ask-pre{white-space:pre-line;text-align:left}
+/* 编辑页打开的是归档的日程：顶上一条紫色说明，时间停在归档那一刻 */
+.ar-freeze{margin:-4px 2px 14px;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;font-weight:600;
+  background:var(--lsw-arc-bg);color:var(--lsw-arc-fg)}
 
 /* ============ 短期倒计时 ============ */
 /* 右上角入口：和 ⋯ 同款按钮，右上角叠一个数量；有超时的变红。进入后按钮高亮 */
@@ -523,18 +526,14 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
    · 分组之间多留的空隙用 padding 而不是 margin：margin 会穿透 section 塌陷，
      拖拽时量出来的整组高度就少了这一截，挪位会错位 */
 .group{display:block;padding-top:10px}
-/* 卡片视图：每个分组（标题 + 卡片）垫一块淡淡的分组色底托，没分组的卡露在页面底色上，一眼分得出谁在组里
-   （2026-10-16 用户看对比图选的 A；和列表视图「每组一个框」同一个意思）。
-   底托用 ::before 画到分组外 8px，不占位；底边靠 padding-bottom 撑出来——别用 margin：
-   margin 会穿透 section 塌陷，整组拖动时量的高度少一截（见上一条）。置顶区、归档区、只看已过期不加 */
-#board > .cards > .group:not(.pinned-sec){position:relative;isolation:isolate;padding-bottom:8px}
-#board > .cards > .group:not(.pinned-sec)::before{
-  content:"";position:absolute;z-index:-1;left:-8px;right:-8px;top:2px;bottom:0;pointer-events:none;
-  border-radius:26px;background:color-mix(in srgb, var(--gc) 9%, var(--bg));
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--gc) 14%, transparent);
-}
-/* 页面最上面那一组没有 10px 的上内边距（见下面 :first-child 那条），底托往上多伸 8px，标题上方和别的分组一样留出底托边 */
-#board > .cards:first-child > .group:first-child:not(.pinned-sec)::before{top:-8px}/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
+/* 卡片视图：分组结束、后面紧跟一张没分组的卡时，中间多留一段空、画一条细线——线下面的就不属于上面那个分组了
+   （2026-10-17 用户看了真机后换成对比图里的 C；10-16 先选的 A「分组底托」真机上不好看，已撤掉）。
+   线画在分组自己的 ::after 里、算进分组高度（整组拖动时量的高度包含它）；不用 margin，见上一条。
+   只在「分组 → 没分组的卡」之间画：分组接分组有标题分隔，不需要；置顶区、归档区、只看已过期不加 */
+#board > .cards > .group:not(.pinned-sec):has(+ .card)::after{
+  content:"";display:block;height:1px;margin:22px 6px 4px;pointer-events:none;
+  background:color-mix(in srgb, var(--text-3) 35%, transparent);
+}/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
 #board > .group:first-child, #board > .cards:first-child > .group:first-child, #board > .list > .group:first-child{padding-top:0}
 .group-head{
   display:flex;align-items:center;gap:6px;width:100%;
@@ -1074,6 +1073,9 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sheet.alert h2{font-size:17px;margin:0 0 6px}
 .sheet.alert .hint{font-size:13px;line-height:1.45}
 .sheet.alert .actions{margin-top:18px}
+/* 三个按钮时竖着排、「取消」在最下面（苹果警告框按钮多于两个时就是竖排） */
+.sheet.alert .actions.stack{flex-direction:column;gap:8px}
+.sheet.alert .actions.stack #askExtra{order:1} .sheet.alert .actions.stack #askOk{order:2} .sheet.alert .actions.stack #askCancel{order:3}
 .sheet.alert .btn{min-height:46px;border-radius:999px}
 .sheet.alert .btn.btn-danger{background:#e0483d;color:#fff;box-shadow:none}
 /* 按下反馈统一由「按下反馈」那段 JS（pressStart）做，见 CSS「按下反馈」 */
@@ -1261,6 +1263,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 <div class="mask" id="mask" hidden>
   <form class="sheet" id="form">
     <h2 id="sheetTitle">新增日程</h2>
+    <p class="ar-freeze" id="fFreeze" hidden></p>
 
     <!-- 三个小节（2026-10-15 用户从四套对比图里选的「C 卡片 + 彩色小节标题」）：
          记录（创建时间、备注）/ 日程（名称、计算方式、日期）/ 整理（分组、颜色、置顶）。字段顺序没动——
@@ -1491,7 +1494,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   <div class="sheet alert" id="askSheet" role="alertdialog" aria-labelledby="askTitle">
     <h2 id="askTitle"></h2>
     <p class="hint" id="askMsg" style="margin-top:0"></p>
-    <div class="actions">
+    <div class="actions" id="askActs">
+      <button type="button" class="btn" id="askExtra" hidden></button>
       <button type="button" class="btn" id="askCancel">取消</button>
       <button type="button" class="btn" id="askOk">好</button>
     </div>
@@ -2139,7 +2143,9 @@ function arDetail(ev){
   lines.push(g ? "原属分组：" + g : "原来没有分组");
   if(ev.note) lines.push("备注：" + ev.note);
   lines.push("这里的天数停在归档那天；移回主页后重新跟着今天算。");
-  ask({title: ev.title || "未命名", msg: lines.join("\n"), pre: true, ok: "移回主页",
+  ask({title: ev.title || "未命名", msg: lines.join("\n"), pre: true, ok: "移回主页", plainOk: true,
+       /* 2026-10-17 用户要的：进编辑页看全部信息、也能改，但页面里的时间都停在归档那一刻（见 openForm 的 formFreeze） */
+       extra: {text: "查看详细信息", onClick: function(){ openForm(ev.id); }},
        onOk: function(){ arRestore(ev.id); }});
 }
 
@@ -2817,7 +2823,7 @@ function applyTheme(){
      ask({title, msg, ok:"删除", danger:true, onOk})  两个按钮，onOk 只在点了确认时调用
      notify(title, msg)                               只有一个「好」 */
 var askMask = document.getElementById("askMask");
-var askCb = null, askPrevOverflow = "";
+var askCb = null, askExtraCb = null, askPrevOverflow = "";
 function ask(o){
   document.getElementById("askTitle").textContent = o.title || "";
   var m = document.getElementById("askMsg");
@@ -2826,7 +2832,15 @@ function ask(o){
   var okB = document.getElementById("askOk");
   okB.textContent = o.ok || "好";
   okB.className = "btn " + (o.danger ? "btn-danger" : "primary");
+  if(o.plainOk) okB.className = "btn";
   document.getElementById("askCancel").hidden = !!o.single;
+  /* extra：第三个按钮 {text, onClick}，蓝色、排在最上面；有它时按钮竖排 */
+  var exB = document.getElementById("askExtra");
+  exB.hidden = !o.extra;
+  exB.textContent = o.extra ? o.extra.text : "";
+  exB.className = "btn primary";
+  document.getElementById("askActs").classList.toggle("stack", !!o.extra);
+  askExtraCb = o.extra ? o.extra.onClick : null;
   askCb = o.onOk || null;
   askPrevOverflow = document.body.style.overflow;   /* 可能叠在别的弹窗上：关掉时恢复成原来的锁定状态 */
   document.body.style.overflow = "hidden";
@@ -2842,6 +2856,12 @@ function askClose(run){
 }
 document.getElementById("askOk").addEventListener("click", function(){ askClose(true); });
 document.getElementById("askCancel").addEventListener("click", function(){ askClose(false); });
+/* 第三个按钮：先关框再跑——它可能要打开别的弹窗（编辑页）；必须在这次点击里同步调用，iOS 才认这是用户手势 */
+document.getElementById("askExtra").addEventListener("click", function(){
+  var cb = askExtraCb; askExtraCb = null;
+  askClose(false);
+  if(cb) cb();
+});
 askMask.addEventListener("click", function(e){ if(e.target === askMask) askClose(false); });
 
 /* ================= 菜单 ================= */
@@ -3026,6 +3046,10 @@ document.getElementById("mClear").addEventListener("click", function(){
    设了之后只影响"编辑弹窗里的实时倒计时"和卡片副标题的显示——
    卡片上那个大数字仍然按整天算，"还剩几天"不该因为填了 09:00 就少一天。 */
 var formTime = "";      /* 当前表单里的时刻 */
+/* 编辑页的「现在」：平时就是现在；打开的是归档的日程时是归档那一刻（2026-10-17，用户要求页面里的时间全部冻结） */
+var formFreeze = 0;
+function formNowMs(){ return formFreeze || Date.now(); }
+function formToday(){ return midnight(new Date(formNowMs())); }
 
 function validTime(s){ return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(s || "")); }
 
@@ -3092,7 +3116,7 @@ document.getElementById("fMinBtn").addEventListener("click", function(e){
 });
 document.getElementById("fTimeClear").addEventListener("click", function(){ setFormTime(""); });
 document.getElementById("fTimeNow").addEventListener("click", function(){
-  var d = new Date();
+  var d = new Date(formNowMs());      /* 归档的日程：「现在」＝归档那一刻 */
   document.getElementById("fHourMenu").hidden = true;    /* 开着的时 / 分下拉一并收起 */
   document.getElementById("fMinMenu").hidden = true;
   setFormTime(cdPad(d.getHours()) + ":" + cdPad(d.getMinutes()));
@@ -3118,7 +3142,7 @@ function paintCountdown(){
   var d = parseYMD(fDate.value);
   if(!d){ box.hidden = true; return; }
   var mode = pickedMode();
-  var now = new Date();
+  var now = new Date(formNowMs());
   var hh = formTime ? +formTime.slice(0,2) : 0;
   var mi = formTime ? +formTime.slice(3) : 0;
   var target = d.getTime() + (hh * 3600 + mi * 60) * 1000;   /* 有时刻就按时刻，没有就按 00:00 */
@@ -3135,8 +3159,8 @@ function paintCountdown(){
       if(left <= 86400000) cls = "urgent";
       else if(left <= 7 * 86400000) cls = "soon";
     }else if(now.getTime() < dayEnd){
-      num = "就是今天 · 还剩 " + cdSplit(dayEnd - now.getTime());
-      base = "距今天结束（" + ymd(d) + " 24:00）";
+      num = (formFreeze ? "就在当天 · 还剩 " : "就是今天 · 还剩 ") + cdSplit(dayEnd - now.getTime());
+      base = (formFreeze ? "距当天结束（" : "距今天结束（") + ymd(d) + " 24:00）";
       cls = "urgent";
     }else{
       num = "已过 " + cdSplit(now.getTime() - target);
@@ -3631,7 +3655,7 @@ var daysSrc = false;       /* 日期最后一次是不是从「填天数」来�
 function syncDaysInput(){
   var d = parseYMD(fDate.value);
   if(!d){ fDays.value = ""; return; }
-  var diff = dayDiff(d, today());
+  var diff = dayDiff(d, formToday());
   var n = (pickedMode() === "up") ? -diff : diff - (exclState ? 1 : 0);
   fDays.value = n >= 0 ? String(n) : "";    /* 日期在另一个方向上（比如倒数选了过去的日子）就留空 */
 }
@@ -3639,7 +3663,7 @@ fDays.addEventListener("input", function(){
   var v = fDays.value.replace(/\D/g, "").slice(0, 5);
   if(v !== fDays.value) fDays.value = v;
   if(v === "") return;
-  var n = +v, t = today();
+  var n = +v, t = formToday();
   var off = (pickedMode() === "up") ? -n : n + (exclState ? 1 : 0);
   daysTyping = true; daysSrc = true;
   setFormDate(ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + off)));
@@ -3795,7 +3819,12 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
   if(id){
     for(var i=0;i<state.events.length;i++){ if(state.events[i].id === id) ev = state.events[i]; }
   }
-  document.getElementById("sheetTitle").textContent = ev ? "编辑日程" : "新增日程";
+  /* 归档的日程：页面里所有「现在 / 今天」都换成归档那一刻（倒计时、直接填天数、「现在」按钮），下面的 setFormDate 等都要在这之后 */
+  formFreeze = (ev && isArchived(ev)) ? ev.archivedAt : 0;
+  document.getElementById("sheetTitle").textContent = ev ? (formFreeze ? "归档的日程" : "编辑日程") : "新增日程";
+  var fz = document.getElementById("fFreeze");
+  fz.hidden = !formFreeze;
+  fz.textContent = formFreeze ? "已归档 · 这里的时间都停在 " + arStamp(formFreeze) + "（归档那一刻）。可以照常修改，保存后它还在归档区。" : "";
   fTitle.value = ev ? (ev.title || "") : "";
   /* iOS 上空的 date 控件是完全空白的一个图标，所以永远给个默认值 */
   buildTimeMenus();
@@ -3828,6 +3857,7 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
 }
 function closeForm(){
   stopCountdown();
+  formFreeze = 0;
   mask.hidden = true;
   document.body.style.overflow = "";
   editingId = null;
@@ -3892,9 +3922,10 @@ form.addEventListener("submit", function(e){
     state.events.push(nev);
   }
   /* 往这个分组里存了东西 = 明确要这个分组：名册里没有就登记，删过就恢复 */
-  if(group) gsSafe(function(){ gsEnsure(group, now); });
+  /* 归档的日程不算：它不在主页上，不该因此登记 / 复活一个分组（同 gsReconcile 只看 boardEvents） */
+  if(group && !formFreeze) gsSafe(function(){ gsEnsure(group, now); });
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
-  if(group && !isExpanded(group)) state.expanded.push(group);
+  if(group && !formFreeze && !isExpanded(group)) state.expanded.push(group);
   pruneExpanded();
   save(); queueSync(); closeForm(); render();
 });
@@ -4834,7 +4865,12 @@ document.addEventListener("click", function(e){
 }, true);
 
 /* 把两块按钮垫到卡片后面。按钮宽度用 CSS 的 clamp 决定，这里只量出来用，不再写一遍数 */
-function lswMount(el){
+/* side：-1＝往左滑，按钮垫在右边；+1＝往右滑，按钮垫在左边。
+   2026-10-17 用户从四套对比图里选「乙 分两边」（照 iPhone 邮件：往右滑露出前面的操作、往左滑露出后面的）：
+   原来三个按钮都在右边，往左推 254px，卡片只剩 132px、标题被推出屏幕（用户真机截图）。
+   现在：往右滑 →「置顶」；往左滑 →「归档 / 删除」（归档区里是「移回主页 / 删除」，没有往右滑）。
+   返回 null＝这一侧没有操作 */
+function lswMount(el, side){
   var host = el.parentElement;
   var ev = lswEvent(el.getAttribute("data-id"));
   if(!host || !ev) return null;
@@ -4849,21 +4885,21 @@ function lswMount(el){
     b.addEventListener("click", function(){ fn(id); });
     acts.appendChild(b);
   }
-  /* 主页：置顶 / 归档 / 删除。删除留在最右边——原来就在那儿，手指记得住；归档插在中间。
-     归档区里：移回主页 / 删除（归档的不能置顶，它不在主页上） */
-  if(isArchived(ev)){
-    btn("lsw-pin", "out", LSW_ICO_OUT, "移回主页", arRestore);
-  }else{
+  if(side > 0){
+    if(isArchived(ev)) return null;                    /* 归档的不能置顶，它不在主页上 */
     btn("lsw-pin", "pin", LSW_ICO_PIN, isPinned(ev) ? "取消置顶" : "置顶", lswTogglePin);
-    btn("lsw-arc", "arc", LSW_ICO_ARC, "归档", arArchive);
+  }else{
+    if(isArchived(ev)) btn("lsw-pin", "out", LSW_ICO_OUT, "移回主页", arRestore);
+    else btn("lsw-arc", "arc", LSW_ICO_ARC, "归档", arArchive);
+    btn("lsw-del", "del", LSW_ICO_DEL, "删除", cfOpen);   /* 删除始终在最右边 */
   }
-  btn("lsw-del", "del", LSW_ICO_DEL, "删除", cfOpen);
   acts.style.top = el.offsetTop + "px";
   acts.style.height = el.offsetHeight + "px";
-  acts.style.right = (host.clientWidth - el.offsetLeft - el.offsetWidth) + "px";
+  if(side > 0) acts.style.left = el.offsetLeft + "px";
+  else acts.style.right = (host.clientWidth - el.offsetLeft - el.offsetWidth) + "px";
   host.insertBefore(acts, el);     /* 排在卡片前面 → 被卡片盖住 */
   /* 卡片最终停在：按钮总宽 + 与卡片之间留 8px 缝 */
-  return {acts:acts, w:acts.offsetWidth + 8};
+  return {acts:acts, w:acts.offsetWidth + 8, side:side};
 }
 
 function lswSet(el, x, animate){
@@ -4986,24 +5022,25 @@ document.addEventListener("touchmove", function(e){
       if(lsw.fromOpen) lswClose(true);
       lsw = null; return;
     }
-    if(!lsw.fromOpen && dx > 0){ lsw = null; return; }        /* 没滑开的卡往右滑，没有意义 */
     lsw.locked = true;
     dragCancelHold();
     var ps = document.querySelectorAll(".stack.is-pressed");
     for(var i = 0; i < ps.length; i++) ps[i].classList.remove("is-pressed");
     if(lsw.fromOpen){
-      lsw.acts = lswOpen.acts; lsw.w = lswOpen.w; lswOpen = null;
+      lsw.acts = lswOpen.acts; lsw.w = lswOpen.w; lsw.side = lswOpen.side; lswOpen = null;
     }else{
-      var m = lswMount(lsw.el);
-      if(!m){ lsw = null; return; }
-      lsw.acts = m.acts; lsw.w = m.w;
+      var m = lswMount(lsw.el, dx < 0 ? -1 : 1);       /* 出死区那一刻往哪边，就露哪边的按钮 */
+      if(!m){ lsw.locked = false; lsw = null; return; }
+      lsw.acts = m.acts; lsw.w = m.w; lsw.side = m.side;
     }
     lsw.acts.classList.remove("is-open");
   }
   e.preventDefault();
-  var pos = (lsw.fromOpen ? -lsw.w : 0) + dx;
-  if(pos > 0) pos = pos * LSW_OVER;
-  else if(pos < -lsw.w) pos = -lsw.w + (pos + lsw.w) * LSW_OVER;
+  /* 统一换算成「往按钮那边拉了多远」q（0～w），两边共用一套阻尼：反方向和拉过头都按 LSW_OVER 衰减 */
+  var sd = lsw.side, q = (lsw.fromOpen ? lsw.w : 0) + dx * sd;
+  if(q < 0) q = q * LSW_OVER;
+  else if(q > lsw.w) q = lsw.w + (q - lsw.w) * LSW_OVER;
+  var pos = sd * q;                              /* 卡片往按钮的反方向挪：按钮在右（sd=-1）就往左 */
   lsw.pos = pos;
   lswSet(lsw.el, pos, false);
 }, {passive:false});
@@ -5017,13 +5054,13 @@ function lswEnd(cancel){
   }
   lswEatClick();
   /* 从关着拉开：过 35% 就停在打开；从开着往回推：推回超过 35% 就收起 */
-  var open = !cancel && (g.fromOpen ? g.pos < -g.w * 0.65 : g.pos < -g.w * 0.35);
+  var q = g.pos * g.side;                        /* 往按钮那边拉了多远 */
+  var open = !cancel && (g.fromOpen ? q > g.w * 0.65 : q > g.w * 0.35);
+  lswOpen = {el:g.el, acts:g.acts, w:g.w, side:g.side};
   if(open){
-    lswSet(g.el, -g.w, true);
+    lswSet(g.el, g.side * g.w, true);
     g.acts.classList.add("is-open");
-    lswOpen = {el:g.el, acts:g.acts, w:g.w};
   }else{
-    lswOpen = {el:g.el, acts:g.acts, w:g.w};
     lswClose(true);
   }
 }
