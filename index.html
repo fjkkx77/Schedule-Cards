@@ -2838,7 +2838,7 @@ function ask(o){
   var exB = document.getElementById("askExtra");
   exB.hidden = !o.extra;
   exB.textContent = o.extra ? o.extra.text : "";
-  exB.className = "btn primary";
+  exB.className = o.extra ? "btn primary" : "btn";     /* 不用时别挂 primary：按「主按钮」找按钮的代码会误中这个藏起来的 */
   document.getElementById("askActs").classList.toggle("stack", !!o.extra);
   askExtraCb = o.extra ? o.extra.onClick : null;
   askCb = o.onOk || null;
