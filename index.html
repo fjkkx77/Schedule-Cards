@@ -95,7 +95,7 @@
 
 /* 关掉浏览器自带的下拉刷新，换成下面这套自己的，避免两套同时触发 */
 html,body{overscroll-behavior-y:contain}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%}   /* 别在 html 上加 overflow-x:clip：试过，会让拖动时滚轮滚不动（10-17 twohand2 实测）。往右滑卡片伸出右边，靠 body 的 overflow-x:hidden 挡住横向拖动 */
 
 /* ---- 下拉刷新指示器 ---- */
 .ptr{
@@ -529,8 +529,9 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
 /* 卡片视图：分组结束、后面紧跟一张没分组的卡时，中间多留一段空、画一条细线——线下面的就不属于上面那个分组了
    （2026-10-17 用户看了真机后换成对比图里的 C；10-16 先选的 A「分组底托」真机上不好看，已撤掉）。
    线画在分组自己的 ::after 里、算进分组高度（整组拖动时量的高度包含它）；不用 margin，见上一条。
+   滑动时左滑按钮层会临时插在分组和卡片之间，所以选择器也认「+ .lsw-acts + .card」，否则一滑线就没了、卡片跳 27px（10-17 代码审查指出）。
    只在「分组 → 没分组的卡」之间画：分组接分组有标题分隔，不需要；置顶区、归档区、只看已过期不加 */
-#board > .cards > .group:not(.pinned-sec):has(+ .card)::after{
+#board > .cards > .group:not(.pinned-sec):has(+ .card, + .lsw-acts + .card)::after{
   content:"";display:block;height:1px;margin:22px 6px 4px;pointer-events:none;
   background:color-mix(in srgb, var(--text-3) 35%, transparent);
 }/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
@@ -1074,8 +1075,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sheet.alert .hint{font-size:13px;line-height:1.45}
 .sheet.alert .actions{margin-top:18px}
 /* 三个按钮时竖着排、「取消」在最下面（苹果警告框按钮多于两个时就是竖排） */
-.sheet.alert .actions.stack{flex-direction:column;gap:8px}
-.sheet.alert .actions.stack #askExtra{order:1} .sheet.alert .actions.stack #askOk{order:2} .sheet.alert .actions.stack #askCancel{order:3}
+.sheet.alert .actions.ask-stack{flex-direction:column;gap:8px}
+.sheet.alert .actions.ask-stack #askExtra{order:1} .sheet.alert .actions.ask-stack #askOk{order:2} .sheet.alert .actions.ask-stack #askCancel{order:3}
 .sheet.alert .btn{min-height:46px;border-radius:999px}
 .sheet.alert .btn.btn-danger{background:#e0483d;color:#fff;box-shadow:none}
 /* 按下反馈统一由「按下反馈」那段 JS（pressStart）做，见 CSS「按下反馈」 */
@@ -1386,7 +1387,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <div class="colors" id="fColors"></div>
     </div>
 
-    <div class="field">
+    <div class="field" id="fPinField">
       <label>置顶</label>
       <button type="button" class="pin-toggle" id="fPinBtn">
         <span id="fPinTxt">未置顶</span><span class="pin-act" id="fPinAct">点这里置顶</span>
@@ -2839,7 +2840,7 @@ function ask(o){
   exB.hidden = !o.extra;
   exB.textContent = o.extra ? o.extra.text : "";
   exB.className = o.extra ? "btn primary" : "btn";     /* 不用时别挂 primary：按「主按钮」找按钮的代码会误中这个藏起来的 */
-  document.getElementById("askActs").classList.toggle("stack", !!o.extra);
+  document.getElementById("askActs").classList.toggle("ask-stack", !!o.extra);   /* 别叫 stack：卡片堆叠用的是它（按下反馈会失效） */
   askExtraCb = o.extra ? o.extra.onClick : null;
   askCb = o.onOk || null;
   askPrevOverflow = document.body.style.overflow;   /* 可能叠在别的弹窗上：关掉时恢复成原来的锁定状态 */
@@ -3049,7 +3050,7 @@ var formTime = "";      /* 当前表单里的时刻 */
 /* 编辑页的「现在」：平时就是现在；打开的是归档的日程时是归档那一刻（2026-10-17，用户要求页面里的时间全部冻结） */
 var formFreeze = 0;
 function formNowMs(){ return formFreeze || Date.now(); }
-function formToday(){ return midnight(new Date(formNowMs())); }
+function formToday(){ return formFreeze ? arDay({archivedAt: formFreeze}) : today(); }   /* 和归档区卡片同一个口径 */
 
 function validTime(s){ return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(s || "")); }
 
@@ -3489,7 +3490,7 @@ function dpToggleMenu(menu){
 }
 
 function dpRender(){
-  var t = today();
+  var t = formToday();             /* 归档的日程：日历上标的「今天」是归档那天 */
   document.getElementById("dpYearTxt").textContent = dpY;
   document.getElementById("dpMonthTxt").textContent = dpM;
   var i, bs = dpYearMenu.children;
@@ -3524,7 +3525,7 @@ function dpRender(){
 
 function dpOpen(){
   dpBuildMenus();
-  var d = parseYMD(fDate.value) || today();
+  var d = parseYMD(fDate.value) || formToday();
   dpY = d.getFullYear(); dpM = d.getMonth() + 1; dpD = d.getDate();
   dpCloseMenus();
   dpRender();
@@ -3536,7 +3537,7 @@ document.getElementById("fDateBtn").addEventListener("click", dpOpen);
 document.getElementById("dpYearBtn").addEventListener("click", function(e){ e.stopPropagation(); dpToggleMenu(dpYearMenu); });
 document.getElementById("dpMonthBtn").addEventListener("click", function(e){ e.stopPropagation(); dpToggleMenu(dpMonthMenu); });
 document.getElementById("dpToday").addEventListener("click", function(){
-  var t = today();
+  var t = formToday();
   dpY = t.getFullYear(); dpM = t.getMonth() + 1; dpD = t.getDate();
   dpCloseMenus(); dpRender();
 });
@@ -3843,6 +3844,7 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
   setColor(ev ? ev.color : COLORS[0]);
   fDelete.hidden = !ev;
   setPinState(!!(ev && ev.pinned));
+  document.getElementById("fPinField").hidden = !!formFreeze;   /* 归档的不能置顶（同右滑） */
   fDays.value = ""; setExcl(exclState); syncDaysInput();
   fNote.value = ev && typeof ev.note === "string" ? ev.note : "";
   mask.hidden = false;
@@ -3895,11 +3897,13 @@ form.addEventListener("submit", function(e){
   /* 放进一个空分组：日程接过这个分组留下的位置，分组标题就不会因为"里面第一张是新建的"跳到最底下。
      只在这一种情况下才动 order（置顶的不算——它不在分组里显示）；其余情况 slot 是 null，和以前一样 */
   var slot = pinnedNow ? null : gsSafe(function(){ return gsEmptySlot(group); }, null);
+  /* 存的是不是归档的：按这条此刻的状态，不按打开表单时的 formFreeze——编辑期间同步可能刚把它归档 / 移回 */
+  var savingAr = !!(editingId && isArchived(lswEvent(editingId)));
   if(editingId){
     for(var i=0;i<state.events.length;i++){
       if(state.events[i].id === editingId){
         /* 回到 / 换进一个分组（取消置顶、改了分组）：分组留在原位，不被这条拽走，见 joinOrder */
-        if(!pinnedNow && (isPinned(state.events[i]) || (state.events[i].group || "").trim() !== group))
+        if(!savingAr && !pinnedNow && (isPinned(state.events[i]) || (state.events[i].group || "").trim() !== group))
           state.events[i].order = joinOrder(state.events[i], group);
         state.events[i].title = title;
         state.events[i].date = date;
@@ -3923,9 +3927,9 @@ form.addEventListener("submit", function(e){
   }
   /* 往这个分组里存了东西 = 明确要这个分组：名册里没有就登记，删过就恢复 */
   /* 归档的日程不算：它不在主页上，不该因此登记 / 复活一个分组（同 gsReconcile 只看 boardEvents） */
-  if(group && !formFreeze) gsSafe(function(){ gsEnsure(group, now); });
+  if(group && !savingAr) gsSafe(function(){ gsEnsure(group, now); });
   /* 新东西刚放进某个分组，就把那个分组展开，免得看不见自己刚存的那条 */
-  if(group && !formFreeze && !isExpanded(group)) state.expanded.push(group);
+  if(group && !savingAr && !isExpanded(group)) state.expanded.push(group);
   pruneExpanded();
   save(); queueSync(); closeForm(); render();
 });
@@ -5038,6 +5042,17 @@ document.addEventListener("touchmove", function(e){
   e.preventDefault();
   /* 统一换算成「往按钮那边拉了多远」q（0～w），两边共用一套阻尼：反方向和拉过头都按 LSW_OVER 衰减 */
   var sd = lsw.side, q = (lsw.fromOpen ? lsw.w : 0) + dx * sd;
+  if(q < 0){
+    /* 往回拉过了零点：另一边有操作就换过去（照 iPhone 邮件，一次手势里能从「置顶」一路拉到「归档 / 删除」）。
+       换边后以这一刻为新起点：新的 q＝已经拉过零点的那段 */
+    var m2 = lswMount(lsw.el, -sd);
+    if(m2){
+      lsw.acts.remove();
+      lsw.acts = m2.acts; lsw.w = m2.w; lsw.side = m2.side; lsw.fromOpen = false;
+      lsw.x0 = e.touches[0].clientX - q * sd;
+      sd = lsw.side; q = -q;
+    }
+  }
   if(q < 0) q = q * LSW_OVER;
   else if(q > lsw.w) q = lsw.w + (q - lsw.w) * LSW_OVER;
   var pos = sd * q;                              /* 卡片往按钮的反方向挪：按钮在右（sd=-1）就往左 */
