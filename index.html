@@ -1161,7 +1161,8 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
      抬到 99 又会盖过顶部小栏和弹窗，卡片那层没有自己的层叠上下文）
    · 放大用独立的 scale 属性、不用 transform：左右滑动写的是卡片的 transform，动画占着它的话刚跳过来就滑不动。
      1.03 在卡片上下各多出不到 3px，碰不到 14px 外的邻居 */
-.card.sr-hit::after,.row.sr-hit::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;
+.g-empty.sr-hit{position:relative}            /* 空分组的「＋ 添加日程」那行也这么闪（跳到分组时）；蓝边画在虚线里侧 */
+.card.sr-hit::after,.row.sr-hit::after,.g-empty.sr-hit::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;
   animation:sr-ring 1.6s ease-in-out 1 both}
 @keyframes sr-ring{
   0%,100%{box-shadow:inset 0 0 0 0 transparent}
@@ -1172,7 +1173,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sr-hit{animation:sr-hit 1.6s ease-in-out 1}
 @media (prefers-reduced-motion: reduce){
   .sr-hit{animation:none}
-  .card.sr-hit::after,.row.sr-hit::after{animation:none;box-shadow:inset 0 0 0 4px #2f86f6}
+  .card.sr-hit::after,.row.sr-hit::after,.g-empty.sr-hit::after{animation:none;box-shadow:inset 0 0 0 4px #2f86f6}
 }
 
 /* ============ 批量整理（2026-10-18） ============
@@ -6576,7 +6577,10 @@ function srJump(d){
     var off = (bar ? bar.offsetHeight : 56) + 10;       /* 停在顶部小栏下面 */
     var y = Math.max(0, (head || el).getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
     try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-    flashEl(head || el, head ? "sr-flash" : "sr-hit", head ? 1500 : 1700);   /* 卡片用点结果那种闪法（lsw-flash 改 box-shadow，会吃掉列表行的灰框） */
+    /* 指出是哪一组：这一组的卡片一起闪，闪法同点日程结果（卡片里面描蓝边 + 轻微放大）；空分组闪「＋ 添加日程」那行。
+       原来是给分组标题套蓝框 + 淡蓝底（sr-flash），用户：「跳转效果好奇怪好别扭」，点名的是标题外那个框（2026-10-18） */
+    var hits = head ? [].slice.call(el.querySelectorAll(".card[data-id], .row[data-id], .g-empty")) : [el];
+    hits.forEach(function(n){ flashEl(n, "sr-hit", 1700); });
   });
 }
 /* 点搜索结果里的一条日程：回到它所在的界面（主页 / 归档区），收着的分组先展开，滚到屏幕中间、闪两下 */
