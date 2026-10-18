@@ -1151,18 +1151,21 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sr-field input::-webkit-search-cancel-button{display:none}
 .sr-clear{flex:0 0 auto;width:32px;height:32px;border:0;border-radius:50%;background:none;color:var(--text-3);font-size:18px;line-height:1}
 .sr-cancel{flex:0 0 auto;border:0;background:none;color:#2f86f6;font-size:16px;font-weight:600;min-height:44px;padding:0 4px}
-/* 跳到分组后，那个分组的标题亮一下 */
-@keyframes sr-flash{0%,35%{box-shadow:0 0 0 3px color-mix(in srgb,#2f86f6 55%,transparent);background:color-mix(in srgb,#2f86f6 10%,transparent)}100%{box-shadow:0 0 0 3px transparent;background:transparent}}
-.group-head.sr-flash{animation:sr-flash 1.4s ease-out 1;border-radius:14px}
-@media (prefers-reduced-motion: reduce){ .group-head.sr-flash{animation:none} }
+/* 跳到分组（以及批量「移到分组」做完）后，那个分组的标题闪两下：闪法同下面卡片的 sr-hit（里面描蓝边 + 光；标题不放大）。
+   2026-10-18 用户：原来的「外面套 3px 框 + 淡蓝底、亮着慢慢淡掉」效果别扭，框的下沿还被下面的卡片盖住一截（框往外扩，卡片在它后面画）。
+   现在蓝边画在标题自己的范围里面（::after inset），下面的卡片盖不到。动画定义（sr-ring / sr-hit）在下面，CSS 里 @keyframes 不分先后 */
+/* 标题不放大：卡片视图里标题下沿和第一张卡是贴着的（量过，差 0px），放大 3% 下沿会伸进卡片底下、又被压住不到 1px */
+.group-head.sr-flash{position:relative;border-radius:14px}
+.group-head.sr-flash::after{content:"";position:absolute;inset:3px 0;border-radius:inherit;   /* 上下各收 3px：和贴着的第一张卡之间留道缝，文字仍居中 */pointer-events:none;z-index:5;
+  animation:sr-ring 1.6s ease-in-out 1 both}
+@media (prefers-reduced-motion: reduce){ .group-head.sr-flash::after{animation:none;box-shadow:inset 0 0 0 4px #2f86f6} }
 /* 点搜索结果跳到主页上的那张卡：滚到屏幕中间，闪两下（照课表站「下一节课」点过去的效果：描边 + 外光 + 轻微放大）。
    · 圈画在卡片「里面」（::after 叠一层：蓝边 + 往里的光），不画在外面——两轮代码审查踩过的坑都因此绕开：
      画在外面要么改 box-shadow（列表视图没分组的行那圈 10px 灰框会消失），要么得抬层级（上下相邻的卡会盖住圈；
      抬到 99 又会盖过顶部小栏和弹窗，卡片那层没有自己的层叠上下文）
    · 放大用独立的 scale 属性、不用 transform：左右滑动写的是卡片的 transform，动画占着它的话刚跳过来就滑不动。
      1.03 在卡片上下各多出不到 3px，碰不到 14px 外的邻居 */
-.g-empty.sr-hit{position:relative}            /* 空分组的「＋ 添加日程」那行也这么闪（跳到分组时）；蓝边画在虚线里侧 */
-.card.sr-hit::after,.row.sr-hit::after,.g-empty.sr-hit::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;
+.card.sr-hit::after,.row.sr-hit::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;
   animation:sr-ring 1.6s ease-in-out 1 both}
 @keyframes sr-ring{
   0%,100%{box-shadow:inset 0 0 0 0 transparent}
@@ -1173,7 +1176,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sr-hit{animation:sr-hit 1.6s ease-in-out 1}
 @media (prefers-reduced-motion: reduce){
   .sr-hit{animation:none}
-  .card.sr-hit::after,.row.sr-hit::after,.g-empty.sr-hit::after{animation:none;box-shadow:inset 0 0 0 4px #2f86f6}
+  .card.sr-hit::after,.row.sr-hit::after{animation:none;box-shadow:inset 0 0 0 4px #2f86f6}
 }
 
 /* ============ 批量整理（2026-10-18） ============
@@ -6577,10 +6580,9 @@ function srJump(d){
     var off = (bar ? bar.offsetHeight : 56) + 10;       /* 停在顶部小栏下面 */
     var y = Math.max(0, (head || el).getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
     try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-    /* 指出是哪一组：这一组的卡片一起闪，闪法同点日程结果（卡片里面描蓝边 + 轻微放大）；空分组闪「＋ 添加日程」那行。
-       原来是给分组标题套蓝框 + 淡蓝底（sr-flash），用户：「跳转效果好奇怪好别扭」，点名的是标题外那个框（2026-10-18） */
-    var hits = head ? [].slice.call(el.querySelectorAll(".card[data-id], .row[data-id], .g-empty")) : [el];
-    hits.forEach(function(n){ flashEl(n, "sr-hit", 1700); });
+    /* 指出是哪一组：分组标题本身闪（用户要的是「分组闪」，不是组里的卡片闪——f4ca548 试过卡片一起闪，用户又改回标题）；
+       「没有分组的」没有标题，闪第一张卡。两种闪法一样，见 CSS「sr-flash」 */
+    flashEl(head || el, head ? "sr-flash" : "sr-hit", 1700);
   });
 }
 /* 点搜索结果里的一条日程：回到它所在的界面（主页 / 归档区），收着的分组先展开，滚到屏幕中间、闪两下 */
@@ -6772,7 +6774,7 @@ function selMoveTo(name){
     var sec = name ? groupSecByName(name) : null;
     if(!sec) return;
     try{ sec.scrollIntoView({block:"nearest", behavior:"smooth"}); }catch(e){ sec.scrollIntoView(); }
-    flashEl(sec.querySelector(".group-head"), "sr-flash");
+    flashEl(sec.querySelector(".group-head"), "sr-flash", 1700);
   });
 }
 function selCreateMove(now){
