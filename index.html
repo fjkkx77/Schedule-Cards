@@ -173,7 +173,7 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
    原来日期跟标题挤在左边一栏；加了归档按钮后左栏在 375/390 宽只剩 200px，「日期 · 农历」被挤成两行、整页下移 21px。
    用户看对比图选的「乙」：各种宽度日期都不折行，下面内容的起点在所有宽度都一样高。
    .brand 用 display:contents，h1 / 日期 / 同步状态直接当网格的格子；再加按钮要改 grid-template-columns */
-.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-rows:minmax(calc(44px + 2px),auto);column-gap:10px;align-items:start;margin:6px 2px 16px}
+.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-rows:minmax(calc(44px + 2px),auto);column-gap:10px;align-items:start;margin:6px 2px 16px}
 /* 第一行最少等于按钮的高（44 + 上边距 2）：往下滚时三个按钮会被挪进顶部小栏（见「顶部固定小栏」），
    不撑住的话这一行从 46 缩到标题的 36，整页往上跳 10px——拖动时卡片和手指错开、⋯ 菜单错位（10-17 twohand/edge/feat 测出） */
 .brand{display:contents}
@@ -183,6 +183,12 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 .brand h1{
   margin:0;font-size:clamp(28px,8vw,36px);font-weight:800;
   letter-spacing:-.2px;line-height:1.16;
+}
+/* 2026-10-18 右上角多了搜索按钮（用户选的「丙」），一行四个 44px 按钮。360 以下放不下 28px 的标题：
+   列间距收到 6、标题按剩下的宽度算（「日程卡片」四个字，(屏宽 − 两侧 28 − 四个按钮和间距 200) ÷ 4，320 宽约 23px）。375 起跟以前一样 */
+@media (max-width:359px){
+  .topbar{column-gap:6px}
+  .brand h1{font-size:clamp(20px, calc((100vw - 228px - var(--safe-l) - var(--safe-r)) / 4), 28px)}
 }
 .brand .today{margin:0;font-size:14px;color:var(--text-2);font-weight:600}   /* 第一行已被 46px 的按钮撑高，不再要上边距 */
 .nw{white-space:nowrap}   /* 日期、星期、农历这类整段不许从中间断开（顶栏和卡片、列表的说明行共用） */
@@ -535,9 +541,14 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
    线画在分组自己的 ::after 里、算进分组高度（整组拖动时量的高度包含它）；不用 margin，见上一条。
    滑动时左滑按钮层会临时插在分组和卡片之间，所以选择器也认「+ .lsw-acts + .card」，否则一滑线就没了、卡片跳 27px（10-17 代码审查指出）。
    只在「分组 → 没分组的卡」之间画：分组接分组有标题分隔，不需要；置顶区、归档区、只看已过期不加 */
+/* 2026-10-18 用户嫌 1px 淡线「太不明显」，从对比图 A 加粗加深 / B 线中写字 / C 分组色收尾线 里选了 B：
+   线中间写「以下未分组」，两边各一段线（两层渐变各画半边，中间让出文字的宽度）。高 16px，总占位和原来差不多 */
 #board > .cards > .group:not(.pinned-sec):has(+ .card, + .lsw-acts + .card)::after{
-  content:"";display:block;height:1px;margin:22px 6px 4px;pointer-events:none;
-  background:color-mix(in srgb, var(--text-3) 35%, transparent);
+  content:"以下未分组";display:flex;align-items:center;justify-content:center;height:16px;margin:22px 6px 4px;pointer-events:none;
+  font-size:13px;font-weight:700;line-height:1;letter-spacing:.5px;color:var(--text-2);
+  --sep:color-mix(in srgb, var(--text-3) 70%, transparent);
+  background:linear-gradient(var(--sep),var(--sep)) left center/calc(50% - 46px) 1px no-repeat,
+             linear-gradient(var(--sep),var(--sep)) right center/calc(50% - 46px) 1px no-repeat;
 }/* 贴着页面顶部 / 贴着列表盒子顶边的那一组不需要额外空隙（紧跟在置顶区后面的仍然要留） */
 #board > .group:first-child, #board > .cards:first-child > .group:first-child, #board > .list > .group:first-child{padding-top:0}
 .group-head{
@@ -1092,6 +1103,86 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .extra-row .btn{min-height:44px;font-size:14px}
 
 .foot{margin:22px 4px 0;text-align:center;font-size:12px;color:var(--text-3);line-height:1.7}
+/* ============ 搜索 + 跳到分组（2026-10-18） ============
+   右上角放大镜（用户选的「丙」）→ 整屏一层：没打字时是「跳到分组」目录，打了字分「分组 / 日程 / 归档区」三段。
+   搜索框在底下、贴着键盘上沿（照对比图；HIG Search fields 的 iOS 节：顶部的搜索按钮点开后，搜索框出现在键盘上方）。
+   z-index 45：比小栏、菜单高，比弹窗（50）低——在结果里点日程，编辑弹窗盖在搜索层上面，关掉回到结果 */
+.sr-mask{position:fixed;inset:0;z-index:45;background:var(--bg)}
+.sr-list{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding:calc(var(--safe-t) + 10px) calc(14px + var(--safe-r)) 90px calc(14px + var(--safe-l))}
+.sr-in{max-width:576px;margin:0 auto}
+.sr-h{font-size:13px;font-weight:700;color:var(--text-2);margin:16px 6px 8px;letter-spacing:.3px}
+.sr-h:first-child{margin-top:6px}
+.sr-tip{font-size:13px;color:var(--text-3);margin:14px 6px;line-height:1.5}
+.sr-box{background:var(--surface);border-radius:16px;box-shadow:var(--shadow-sm);overflow:hidden}
+.sr-row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:0 14px;border:0;border-top:1px solid var(--line);
+  background:none;text-align:left;font-size:16px;color:var(--text)}
+.sr-row:first-child{border-top:0}
+.sr-bar{flex:0 0 auto;width:5px;height:18px;border-radius:3px;background:var(--c, var(--text-3))}
+.sr-t{display:flex;flex-direction:column;min-width:0;flex:1 1 auto;padding:7px 0}
+.sr-title{font-weight:700;overflow-wrap:anywhere}
+.sr-sub{font-size:12.5px;color:var(--text-2);margin-top:1px;overflow-wrap:anywhere}
+.sr-n{flex:0 0 auto;margin-left:auto;color:var(--text-3);font-size:14px;white-space:nowrap}
+.sr-n b{font-size:18px;color:var(--text);font-variant-numeric:tabular-nums;margin-right:2px}
+.sr-hl{background:color-mix(in srgb,#2f86f6 24%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+.sr-bar-wrap{position:absolute;left:0;right:0;bottom:0;background:var(--bg);box-shadow:0 -1px 0 var(--line);
+  padding:8px calc(12px + var(--safe-r)) calc(8px + var(--safe-b)) calc(12px + var(--safe-l))}
+.sr-bar-wrap.kb{padding-bottom:8px}
+.sr-bar-in{max-width:576px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.sr-field{flex:1;display:flex;align-items:center;gap:8px;height:44px;border-radius:22px;padding:0 6px 0 14px;background:var(--surface);
+  box-shadow:inset 0 0 0 1.5px var(--line);color:var(--text-2)}
+.sr-field:focus-within{box-shadow:inset 0 0 0 2px #2f86f6}
+.sr-field input{flex:1;min-width:0;border:0;background:none;outline:0;font-size:16px;color:var(--text);height:100%;padding:0}
+.sr-field input::-webkit-search-cancel-button{display:none}
+.sr-clear{flex:0 0 auto;width:32px;height:32px;border:0;border-radius:50%;background:none;color:var(--text-3);font-size:18px;line-height:1}
+.sr-cancel{flex:0 0 auto;border:0;background:none;color:#2f86f6;font-size:16px;font-weight:600;min-height:44px;padding:0 4px}
+/* 跳到分组后，那个分组的标题亮一下 */
+@keyframes sr-flash{0%,35%{box-shadow:0 0 0 3px color-mix(in srgb,#2f86f6 55%,transparent);background:color-mix(in srgb,#2f86f6 10%,transparent)}100%{box-shadow:0 0 0 3px transparent;background:transparent}}
+.group-head.sr-flash{animation:sr-flash 1.4s ease-out 1;border-radius:14px}
+@media (prefers-reduced-motion: reduce){ .group-head.sr-flash{animation:none} }
+
+/* ============ 批量整理（2026-10-18） ============
+   右上角 ⋯ →「批量整理」或分组 ⋯ →「选择本组日程」进入。顶上一条「全选 / 已选择 N 项 / 完成」，底下一排「移到分组 / 置顶 / 归档 / 删除」。
+   勾选圈在卡片右上角（用户从 左边一列 / 右上角 / 整卡描边 里选的「乙」：卡片不变窄）；列表视图的行太矮，圈放在行的左边。
+   这个模式里所有分组都展开（收起的一摞没法一张张选）、不能拖动、左滑、下拉刷新 */
+body.sel-mode .topbar, body.sel-mode .toolbar, body.sel-mode #odBar, body.sel-mode .fab, body.sel-mode .cbar{display:none !important}
+body.sel-mode .app{padding-top:calc(var(--safe-t) + 66px);padding-bottom:calc(96px + var(--safe-b))}
+/* 空分组只藏「＋ 添加日程」那行、标题留着：整个藏掉的话「以下未分组」那条线（靠 .group + .card 相邻）会断（代码审查指出） */
+body.sel-mode .group-head .g-more, body.sel-mode .group-head .g-chev, body.sel-mode .g-empty{display:none}
+/* 顶条文字左右各让出勾选圈的位置，长一点的日期也不会被圈压住（左右对称，文字仍居中） */
+body.sel-mode .card .card-top{padding-left:44px;padding-right:44px}
+.sel-top{position:fixed;left:0;right:0;top:0;z-index:31;padding:var(--safe-t) calc(16px + var(--safe-r)) 0 calc(16px + var(--safe-l));
+  background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(14px);backdrop-filter:saturate(1.6) blur(14px);box-shadow:0 1px 0 var(--line)}
+.sel-top-in{position:relative;max-width:576px;margin:0 auto;height:56px;display:flex;align-items:center}
+.sel-top-in b{position:absolute;left:84px;right:84px;text-align:center;font-size:17px;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-top-in button{border:0;background:none;color:#2f86f6;font-size:17px;font-weight:600;min-height:44px;min-width:44px;padding:0}
+.sel-top-in button:last-child{margin-left:auto;font-weight:800}
+.sel-bot{position:fixed;left:0;right:0;bottom:0;z-index:31;padding:6px calc(8px + var(--safe-r)) calc(6px + var(--safe-b)) calc(8px + var(--safe-l));
+  background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(14px);backdrop-filter:saturate(1.6) blur(14px);box-shadow:0 -1px 0 var(--line)}
+.sel-bot-in{max-width:576px;margin:0 auto;display:flex;justify-content:space-around}
+.sel-bot button{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:52px;border:0;background:none;
+  color:#2f86f6;font-size:12px;font-weight:700;padding:4px 0}
+.sel-bot button svg{width:24px;height:24px}
+.sel-bot button.del{color:#e0483d}
+.sel-bot button:disabled{opacity:.35}
+.sel-c{position:absolute;right:10px;top:9px;z-index:3;width:26px;height:26px;border-radius:50%;box-sizing:border-box;pointer-events:none;
+  border:2px solid #fff;background:rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center}
+.sel-c svg{width:16px;height:16px;opacity:0}
+.is-sel > .sel-c{background:#fff}
+.is-sel > .sel-c svg{opacity:1}
+/* 已过期的卡顶条是浅灰斜纹（--over），白圈看不见：圈改用顶条上文字的颜色，选中时实心 + 白勾 */
+.card.is-over > .sel-c{border-color:var(--over-fg);background:transparent}
+.card.is-over.is-sel > .sel-c{background:var(--over-fg)}
+.card.is-over.is-sel > .sel-c svg{stroke:var(--over)}
+.row .sel-c{right:auto;left:12px;top:50%;margin-top:-13px;border-color:color-mix(in srgb,var(--text-3) 80%,transparent);background:var(--surface)}
+.row.is-sel > .sel-c{background:#2f86f6;border-color:#2f86f6}
+.row.is-sel > .sel-c svg{stroke:#fff}
+body.sel-mode .row .row-main{padding-left:48px}
+.g-sel{flex:0 0 auto;margin-left:auto;border:0;background:none;color:#2f86f6;font-size:14px;font-weight:700;min-height:44px;padding:0 6px}
+.mv-list{margin-top:4px}
+.mv-list .sr-box + .sr-box{margin-top:12px}
+.mv-list .sr-row.acc{color:#2f86f6;font-weight:700}
+.mv-list .sr-row:disabled{opacity:.45}
 </style>
 </head>
 <body>
@@ -1104,6 +1195,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <p class="today" id="todayLine">今天</p>
       <p class="sync-line" id="syncLine" hidden></p>
     </div>
+    <!-- 搜索 + 跳到分组（2026-10-18 用户从「底部搜索栏 / 标题下搜索框 / 右上角按钮」里选的右上角）。放最左边：⏱ 和 ⋯ 的位置不变 -->
+    <button class="icon-btn" id="srBtn" aria-label="搜索日程、跳到分组">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+    </button>
     <!-- 归档区入口（2026-10-16 用户定的位置：短期倒计时按钮旁边）。放在 ⏱ 左边：⏱ 和 ⋯ 的位置不变，手指记得住 -->
     <button class="icon-btn ar-btn" id="arBtn" aria-label="归档区" aria-pressed="false">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="5" rx="1"/><path d="M4.5 8.5V19a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.5"/><path d="M10 12.5h4"/></svg>
@@ -1174,6 +1269,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 <div class="menu" id="menu" hidden>
   <!-- 主页新建分组（2026-10-15 用户从三种放法里选的「A 放在 ⋯ 菜单第一项」；B 列表最底部、C 点＋先选 没选） -->
   <button id="mNewGroup" class="m-accent">＋ 新建分组</button>
+  <button id="mBatch">批量整理</button>
   <hr>
   <button id="mSync">云同步<span class="switch" id="mSyncState">未开启</span></button>
   <hr>
@@ -1410,6 +1506,38 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
       <button type="button" class="btn btn-danger" id="fDelete" hidden>删除这条日程</button>
     </div>
   </form>
+</div>
+
+<!-- 搜索 + 跳到分组（2026-10-18，见 CSS「搜索 + 跳到分组」） -->
+<div class="sr-mask" id="srMask" hidden role="dialog" aria-label="搜索日程">
+  <div class="sr-list" id="srList"><div class="sr-in" id="srIn"></div></div>
+  <div class="sr-bar-wrap" id="srBar"><div class="sr-bar-in">
+    <label class="sr-field">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input type="search" id="srInput" placeholder="搜索日程、备注、分组" autocomplete="off" enterkeyhint="search" aria-label="搜索">
+      <button type="button" class="sr-clear" id="srClear" aria-label="清空" hidden>✕</button>
+    </label>
+    <button type="button" class="sr-cancel" id="srCancel">取消</button>
+  </div></div>
+</div>
+
+<!-- 批量整理（2026-10-18，见 CSS「批量整理」） -->
+<div class="sel-top" id="selTop" hidden><div class="sel-top-in">
+  <button type="button" id="selAll">全选</button><b id="selTitle">选择日程</b><button type="button" id="selDone">完成</button>
+</div></div>
+<div class="sel-bot" id="selBot" hidden><div class="sel-bot-in">
+  <button type="button" id="selMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 13h6M13.5 10.5 16 13l-2.5 2.5"/></svg><span>移到分组</span></button>
+  <button type="button" id="selPin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg><span id="selPinTxt">置顶</span></button>
+  <button type="button" id="selAr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="5" rx="1"/><path d="M4.5 8.5V19a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.5"/><path d="M10 12.5h4"/></svg><span>归档</span></button>
+  <button type="button" id="selDel" class="del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg><span>删除</span></button>
+</div></div>
+<div class="mask" id="mvMask" hidden>
+  <div class="sheet" id="mvSheet" role="dialog" aria-labelledby="mvTitle">
+    <h2 id="mvTitle">移到分组</h2>
+    <p class="hint" id="mvHint" style="margin-top:-8px"></p>
+    <div class="mv-list" id="mvList"></div>
+    <div class="actions"><button type="button" class="btn" id="mvCancel" style="flex:1">取消</button></div>
+  </div>
 </div>
 
 <!-- 左滑删除的二次确认（不用原生 confirm：文案里要带上日程名字） -->
@@ -2007,7 +2135,8 @@ function allGroups(){
   });
   return out;
 }
-function isExpanded(name){ return state.expanded.indexOf(name) > -1; }
+/* 批量整理时一律当展开（收起的一摞没法一张张选），不改存着的展开状态，退出后还是原样 */
+function isExpanded(name){ return selMode || state.expanded.indexOf(name) > -1; }
 /* 分组被删空/改名后，把记在展开列表里的空壳清掉 */
 function pruneExpanded(){
   var live = allGroups();
@@ -2243,6 +2372,8 @@ function render(){
     board.style.minHeight = "";
     if(window.scrollY !== keepY) window.scrollTo(0, keepY);
   }
+  /* 搜索层开着时数据变了（在结果里点开编辑、保存了；或同步下来新东西）：结果跟着刷新。出错只停搜索自己 */
+  if(srOpen) try{ srRender(); }catch(e){}
 }
 function renderNow(){
   var t = today();
@@ -2269,6 +2400,7 @@ function renderNow(){
   document.body.classList.toggle("sc-mode", scView);
   document.getElementById("odHead").hidden = !odView;
   document.body.classList.toggle("ar-mode", arView);
+  document.body.classList.toggle("sel-mode", !!selMode);
   document.getElementById("arHead").hidden = !arView;
   document.getElementById("arBtn").setAttribute("aria-pressed", arView ? "true" : "false");
   var odN = (odView || arView) ? 0 : overdueEvents(t).length;
@@ -2392,6 +2524,7 @@ function renderNow(){
   });
 
   board.appendChild(box);
+  if(selMode) selDecorate();      /* 勾选圈要在排版之前放好：列表视图里它会让行变宽的左边距生效 */
   layoutStacks(false);
 }
 
@@ -2531,6 +2664,7 @@ function place(el, o){
 }
 
 function toggleGroup(name){
+  if(selMode){ selToggleGroup(name); return; }   /* 批量整理里点分组名＝选 / 不选这一组 */
   var i = state.expanded.indexOf(name);
   if(i > -1) state.expanded.splice(i, 1);
   else state.expanded.push(name);
@@ -2611,6 +2745,7 @@ function groupCount(g){
 }
 /* 收起状态下点这一叠＝展开；展开状态（或没分组、组里只有一条）下点＝编辑 */
 function activate(ev){
+  if(selMode){ selToggle(ev.id); return; }       /* 批量整理里点卡片＝勾上 / 去掉 */
   var g = (ev.group || "").trim();
   if(arView && isArchived(ev)){ arDetail(ev); return; }   /* 归档区里定格了，不进编辑，看详情 / 移回主页 */
   /* 「只看已过期」里是平铺的，不存在"先展开那一摞"，点了就是编辑 */
@@ -2920,7 +3055,7 @@ document.getElementById("menuBtn").addEventListener("click", openMenu);
 (function(){
   var bar = document.getElementById("cbar"), slot = document.getElementById("cbarB");
   var top = document.querySelector(".topbar"), h1 = top.querySelector("h1");
-  var IDS = ["arBtn", "scBtn", "menuBtn"], on = false;
+  var IDS = ["srBtn", "arBtn", "scBtn", "menuBtn"], on = false;
   function sync(){
     var want = h1.getBoundingClientRect().bottom <= 4;
     if(want === on) return;
@@ -3247,6 +3382,7 @@ function openGroupMenu(name, anchor){
      直接进新增、分组已经选好，和空分组下面那行「＋ 添加日程」是同一条路（openForm 的 presetGroup）。
      openForm 必须在这次点击里同步调用：它要当场 focus 事件名称，iOS 才弹键盘 */
   [["＋ 新建日程", function(){ closeGroupMenu(); openForm(null, name); }, "m-accent"],
+   ["选择本组日程", function(){ closeGroupMenu(); selEnter(name); }],      /* 2026-10-18 批量整理：直接选好这一组 */
    ["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
    ["删除分组",   function(){ closeGroupMenu(); openGroupSheet("delete"); }]
   ].forEach(function(pair){
@@ -3305,12 +3441,13 @@ function openGroupSheet(mode){
   row1.innerHTML = ""; row2.innerHTML = "";
   document.getElementById("gpTitle").textContent =
     (mode === "rename") ? "重命名分组" : "删除分组「" + gpTarget + "」";
-  document.getElementById("gpRenameField").hidden = (mode !== "rename" && mode !== "create");
+  var creating = (mode === "create" || mode === "createMove");     /* createMove：批量整理里「新建分组并移进去」 */
+  document.getElementById("gpRenameField").hidden = (mode !== "rename" && !creating);
   document.getElementById("gpInput").value = gpTarget;
-  if(mode === "create"){
-    document.getElementById("gpTitle").textContent = "新建分组";
+  if(creating){
+    document.getElementById("gpTitle").textContent = mode === "createMove" ? "新建分组并移进去" : "新建分组";
     document.getElementById("gpInput").value = "";
-    gpBtnOk.textContent = "创建";
+    gpBtnOk.textContent = mode === "createMove" ? "创建并移进去" : "创建";
     row1.appendChild(gpBtnCancel); row1.appendChild(gpBtnOk);
     row2.hidden = true;
   }else if(mode === "rename"){
@@ -3328,7 +3465,9 @@ function openGroupSheet(mode){
     row2.appendChild(gpBtnCancel);                           /* 取消单独一行在下面 */
     row2.hidden = false;
   }
-  document.getElementById("gpHint").textContent = (mode === "create")
+  document.getElementById("gpHint").textContent = (mode === "createMove")
+    ? "选中的 " + selCount() + " 条会移进这个新分组；名字和已有分组一样的话，就直接移进那个分组。"
+    : (mode === "create")
     ? "新分组会排在最后，先空着，之后点它下面的「＋ 添加日程」往里放。"
     : (mode === "rename")
     ? (n === 0 ? "这个分组里现在没有日程；如果新名字和已有分组重名，两个分组会合并。"
@@ -3339,7 +3478,7 @@ function openGroupSheet(mode){
   gpMask.hidden = false;
   document.body.style.overflow = "hidden";
   /* 同步 focus，别套 setTimeout——iOS 脱离点击手势后不弹键盘（同 openForm） */
-  if(mode === "rename" || mode === "create"){ try{ document.getElementById("gpInput").focus(); }catch(e){} }
+  if(mode === "rename" || creating){ try{ document.getElementById("gpInput").focus(); }catch(e){} }
 }
 function closeGroupSheet(){
   gpMask.hidden = true;
@@ -3376,7 +3515,7 @@ function createGroup(now){
 /* 键盘上按回车＝点「创建 / 保存」。中文输入法选词时的回车不算（isComposing / 229） */
 document.getElementById("gpInput").addEventListener("keydown", function(e){
   if(e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
-  if(gpMode !== "create" && gpMode !== "rename") return;
+  if(gpMode !== "create" && gpMode !== "rename" && gpMode !== "createMove") return;
   e.preventDefault();
   gpBtnOk.click();
 });
@@ -3391,6 +3530,7 @@ gpMask.addEventListener("click", function(e){ if(e.target === gpMask) closeGroup
 gpBtnOk.addEventListener("click", function(){
   var now = Date.now();
   if(gpMode === "create"){ createGroup(now); return; }
+  if(gpMode === "createMove"){ selCreateMove(now); return; }
   if(gpMode === "rename"){
     var name = document.getElementById("gpInput").value.trim().slice(0, 12);
     if(!name){ document.getElementById("gpHint").textContent = "分组名不能是空的。"; return; }
@@ -3854,6 +3994,9 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
   fDays.value = ""; setExcl(exclState); syncDaysInput();
   fNote.value = ev && typeof ev.note === "string" ? ev.note : "";
   mask.hidden = false;
+  /* 每次都从最上面开始：取消 / 保存回到表单最底下以后（2026-10-18），点完保存表单停在底部，
+     不复位的话下一次打开别的日程会直接显示在最底下 */
+  form.scrollTop = 0;
   document.body.style.overflow = "hidden";
   fitNote();                  /* 弹窗显示出来之后才量得到高度 */
   startCountdown();
@@ -3867,7 +4010,7 @@ function closeForm(){
   stopCountdown();
   formFreeze = 0;
   mask.hidden = true;
-  document.body.style.overflow = "";
+  document.body.style.overflow = srOpen ? "hidden" : "";   /* 从搜索结果里打开的：搜索层还盖着，背景继续锁住 */
   editingId = null;
 }
 /* 同一个＋：在短期倒计时界面里是「新的倒计时」，其它时候是新增日程 */
@@ -3884,6 +4027,9 @@ document.addEventListener("keydown", function(e){
     if(!gmMenu.hidden){ closeGroupMenu(); return; }
     if(!gpMask.hidden){ closeGroupSheet(); return; }
     if(!dpMask.hidden){ dpClose(); return; }
+    if(!mvMask.hidden){ mvClose(); return; }
+    if(mask.hidden && srOpen){ srClose(); return; }   /* 搜索层上面开着编辑弹窗时，先关弹窗 */
+    if(selMode && mask.hidden){ selExit(); return; }
     if(!mask.hidden) closeForm();
     if(!syncMask.hidden) closeSyncSheet();
     if(!menu.hidden) closeMenu();
@@ -4260,7 +4406,7 @@ function deTick(now){
 }
 
 /* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
-function dragEnabled(){ return state.sort === "manual" && !odView && !arView; }
+function dragEnabled(){ return state.sort === "manual" && !odView && !arView && !selMode; }
 
 /* 从被按住的元素往上找：它属于哪个容器、容器里的同级项有哪些 */
 function dragScope(target){
@@ -4521,6 +4667,7 @@ document.addEventListener("pointerdown", function(e){
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的长按不起拖动 */
   if(e.pointerType === "mouse" && e.button !== 0) return;
   if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden || !askMask.hidden) return;
+  if(srOpen || !mvMask.hidden) return;
   if(lswOpen) return;       /* 有卡片正滑开着：这一下是去收回它/点按钮的，不起拖拽 */
   var scope = dragScope(e.target);
   if(!scope) return;
@@ -5012,6 +5159,7 @@ document.addEventListener("touchstart", function(e){
   if(e.touches.length !== 1 || dragOn) return;
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的触摸不起左滑 */
   if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden) return;
+  if(srOpen || selMode || !mvMask.hidden) return;   /* 搜索层、批量整理里不起左滑 */
   var t = e.target;
   if(lswOpen && t.closest(".lsw-acts")) return;              /* 点的是露出来的按钮，交给它的 click */
   var el = t.closest("#board .card[data-id], #board .row[data-id]");
@@ -5117,7 +5265,7 @@ function formSnap(){
 var SHEETS = [
   {mask: gpMask,   sheet: document.getElementById("gpSheet"),   close: closeGroupSheet,
    dirty: function(){ var v = document.getElementById("gpInput").value.trim();
-     return gpMode === "rename" ? v !== gpTarget : gpMode === "create" ? v !== "" : false; }},
+     return gpMode === "rename" ? v !== gpTarget : (gpMode === "create" || gpMode === "createMove") ? v !== "" : false; }},
   {mask: syncMask, sheet: document.getElementById("syncSheet"), close: closeSyncSheet},
   {mask: mask,     sheet: form,                                 close: closeForm,
    dirty: function(){ return formSnap() !== formOrig; }},
@@ -5260,7 +5408,7 @@ var ptrPulling = false, ptrLocked = false, ptrBusy = false, ptrUnlockTimer = nul
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden;
+  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -6054,8 +6202,478 @@ async function syncShort(){
   saveSync();      /* 记下版本号：离开页面时 flushSync 要拿它直接上传 */
 }
 
+/* ================= 搜索 + 跳到分组（2026-10-18） =================
+   用户：日程多了以后找起来麻烦，想要搜索和「导航到某个分组」。两样合成一个入口（右上角放大镜，用户选的「丙」）：
+   · 没打字：列出「跳到分组」——置顶、各分组（按主页上的顺序，空分组也在）、没有分组的。点了回到主页、滚过去、展开、标题亮一下
+   · 打了字：按名称 / 备注 / 分组名找（空格隔开的几个词要都对上），分「分组 / 日程 / 归档区」三段。
+     点日程＝打开编辑弹窗（盖在搜索层上，关掉回到结果）；点归档的＝归档详情；点分组＝同上面的跳过去
+   弹层三件事（记忆 feedback_overlay_scroll_keyboard）：拦背景穿透、搜索框贴着键盘上沿、点按钮的同一拍里 focus。
+   不进浏览器历史：主屏幕 App 没有返回手势，进出都靠「取消」 */
+var srOpen = false, srPrevOverflow = "", srPending = null;
+var srMask = document.getElementById("srMask"), srList = document.getElementById("srList"), srIn = document.getElementById("srIn");
+var srInput = document.getElementById("srInput"), srBarEl = document.getElementById("srBar"), srClearBtn = document.getElementById("srClear");
+function srOpenLayer(){
+  if(srOpen) return;
+  srOpen = true;
+  closeMenu();
+  lswClose(false);
+  srInput.value = "";
+  srMask.hidden = false;
+  srPrevOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  srRender();
+  srList.scrollTop = 0;
+  try{ srInput.focus(); }catch(e){}       /* 同一拍里 focus，iPhone 才弹键盘 */
+  srFit();
+}
+function srClose(){
+  if(!srOpen) return;
+  srOpen = false;
+  if(document.activeElement === srInput) srInput.blur();
+  srMask.hidden = true;
+  document.body.style.overflow = srPrevOverflow;
+}
+/* 搜索框贴着键盘上沿：只在搜索框正聚焦时认 visualViewport 的差值（没键盘时两者也可能对不齐） */
+function srFit(){
+  if(!srOpen) return;
+  var vv = window.visualViewport;
+  var kb = (vv && document.activeElement === srInput) ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+  srBarEl.style.bottom = kb ? kb + "px" : "";
+  srBarEl.classList.toggle("kb", kb > 0);
+  srList.style.paddingBottom = (srBarEl.offsetHeight + kb + 16) + "px";
+}
+if(window.visualViewport){ visualViewport.addEventListener("resize", srFit); visualViewport.addEventListener("scroll", srFit); }
+srInput.addEventListener("focus", srFit);
+srInput.addEventListener("blur", function(){ setTimeout(srFit, 50); });
+srInput.addEventListener("input", function(){ srRender(); srList.scrollTop = 0; });
+srInput.addEventListener("keydown", function(e){
+  if(e.key === "Enter" && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); srInput.blur(); }   /* 键盘上的「搜索」＝收键盘看结果 */
+});
+srClearBtn.addEventListener("click", function(){ srInput.value = ""; srRender(); try{ srInput.focus(); }catch(e){} });
+document.getElementById("srCancel").addEventListener("click", srClose);
+document.getElementById("srBtn").addEventListener("click", srOpenLayer);
+/* 背景穿透：搜索层开着、上面没盖别的弹窗时，只让结果列表自己在还能滚的方向上滚；列表一滚就收键盘（同 iOS 的搜索结果） */
+var srGuardY = 0, srGuardY0 = 0;
+document.addEventListener("touchstart", function(e){ if(e.touches[0]){ srGuardY = srGuardY0 = e.touches[0].clientY; } }, {capture:true, passive:true});
+document.addEventListener("touchmove", function(e){
+  if(!srOpen || !mask.hidden || !askMask.hidden || !dpMask.hidden) return;    /* 盖着编辑弹窗等：交给它们自己 */
+  var t = e.touches[0]; if(!t) return;
+  if(Math.abs(t.clientY - srGuardY0) > 8 && document.activeElement === srInput) srInput.blur();
+  var n = document.elementFromPoint(t.clientX, t.clientY);
+  var canScroll = !!(n && srList.contains(n) && srList.scrollHeight > srList.clientHeight + 1);
+  /* 列表外（底部搜索栏）或列表本身滚不动：一律拦，起手 4px 内也拦——iOS 回弹一旦开始，后面的 touchmove 就不可取消了
+     （同下拉关闭弹窗那段的做法；代码审查 2026-10-18 指出） */
+  if(!canScroll){ if(e.cancelable) e.preventDefault(); return; }
+  var dy = t.clientY - srGuardY;
+  if(Math.abs(dy) < 4) return;                  /* 能滚的列表里：轻点的抖动不判，交给浏览器 */
+  srGuardY = t.clientY;
+  if(dy < 0 && srList.scrollTop + srList.clientHeight < srList.scrollHeight - 1) return;
+  if(dy > 0 && srList.scrollTop > 0) return;
+  if(e.cancelable) e.preventDefault();
+}, {passive:false});
+
+/* 把 text 放进 el，命中的词包一层 <mark>。只用 textContent / createTextNode，日程名里有尖括号也不会变成标签 */
+function srHl(el, text, words){
+  text = String(text || "");
+  var low = text.toLowerCase(), marks = [];
+  /* 个别字符转小写后长度会变（如 İ），位置就对不上原文了：这种就不高亮，照原样显示 */
+  if(low.length !== text.length){ el.appendChild(document.createTextNode(text)); return; }
+  words.forEach(function(w){
+    for(var i = low.indexOf(w); i > -1 && w; i = low.indexOf(w, i + w.length)) marks.push([i, i + w.length]);
+  });
+  marks.sort(function(a, b){ return a[0] - b[0]; });
+  var at = 0;
+  marks.forEach(function(m){
+    if(m[0] < at) return;                     /* 和前一个重叠：跳过 */
+    if(m[0] > at) el.appendChild(document.createTextNode(text.slice(at, m[0])));
+    var k = document.createElement("mark"); k.className = "sr-hl"; k.textContent = text.slice(m[0], m[1]);
+    el.appendChild(k); at = m[1];
+  });
+  if(at < text.length) el.appendChild(document.createTextNode(text.slice(at)));
+}
+function srRow(o){
+  var b = document.createElement("button");
+  b.type = "button";
+  b.className = "sr-row";
+  if(o.color) b.style.setProperty("--c", o.color);
+  var bar = document.createElement("span"); bar.className = "sr-bar"; b.appendChild(bar);
+  var tx = document.createElement("span"); tx.className = "sr-t";
+  var tt = document.createElement("span"); tt.className = "sr-title"; srHl(tt, o.title, o.words || []); tx.appendChild(tt);
+  if(o.sub){ var sb = document.createElement("span"); sb.className = "sr-sub"; srHl(sb, o.sub, o.words || []); tx.appendChild(sb); }
+  b.appendChild(tx);
+  var n = document.createElement("span"); n.className = "sr-n";
+  if(o.num != null){ var nb = document.createElement("b"); nb.textContent = o.num; n.appendChild(nb); }
+  if(o.unit) n.appendChild(document.createTextNode(o.unit));
+  b.appendChild(n);
+  b.addEventListener("click", o.onClick);
+  return b;
+}
+function srSection(title, rows){
+  var h = document.createElement("div"); h.className = "sr-h"; h.textContent = title; srIn.appendChild(h);
+  var box = document.createElement("div"); box.className = "sr-box";
+  rows.forEach(function(r){ box.appendChild(r); });
+  srIn.appendChild(box);
+}
+/* 主页上从上到下的分组目录：置顶 → 各分组（空分组也在，位置同主页）→ 没有分组的 */
+function srDirectory(list){
+  list = list || sortedEvents();             /* srRender 把排好的传进来，一次搜索只排一遍 */
+  var out = [], loose = [];
+  var pins = list.filter(isPinned);
+  if(pins.length) out.push({kind:"pin", name:"📌 置顶", count:pins.length, color:groupColor(pins)});
+  var empties = gsSafe(gsEmptyList, []) || [];
+  gsWeave(groupize(list.filter(function(e){ return !isPinned(e); })), empties).forEach(function(g){
+    if(g.empty) out.push({kind:"group", name:g.name, count:0, color:g.color || COLORS[0]});
+    else if(!g.name) loose.push(g.items[0]);
+    else out.push({kind:"group", name:g.name, count:g.items.length, color:groupColor(g.items)});
+  });
+  if(loose.length) out.push({kind:"loose", name:"没有分组的", count:loose.length, color:"", first:loose[0].id});
+  return out;
+}
+function srNum(ev, t){
+  var info = numInfo(ev, t);
+  if(info.bad) return {num:"—", unit:""};
+  if(info.bigText) return {num:null, unit:info.bigText};
+  return {num:String(info.abs), unit:info.unit};
+}
+function srRender(){
+  if(!srOpen) return;
+  srIn.innerHTML = "";
+  var raw = srInput.value;
+  srClearBtn.hidden = !raw;
+  var words = raw.toLowerCase().split(/\s+/).filter(Boolean);
+  var sorted = sortedEvents();
+  var dir = srDirectory(sorted);
+  var jump = function(d){ return function(){ srJump(d); }; };
+  if(!words.length){
+    if(!dir.length){
+      var e0 = document.createElement("p"); e0.className = "sr-tip"; e0.textContent = "主页上还没有日程。"; srIn.appendChild(e0);
+    }else{
+      srSection("跳到分组", dir.map(function(d){
+        return srRow({title:d.name, color:d.color, num:null, unit:d.count + " ›", onClick:jump(d)});
+      }));
+    }
+    var tip = document.createElement("p"); tip.className = "sr-tip";
+    tip.textContent = "输入名称、备注或分组名，可以搜日程（包括归档区里的）。";
+    srIn.appendChild(tip);
+    return;
+  }
+  var hit = function(s){ s = String(s || "").toLowerCase(); return function(w){ return s.indexOf(w) > -1; }; };
+  var evHit = function(ev){
+    var all = [ev.title, ev.note, ev.group].join("\n").toLowerCase();
+    return words.every(function(w){ return all.indexOf(w) > -1; });
+  };
+  /* 分组：名字里把每个词都包含了的 */
+  var gHits = dir.filter(function(d){ return d.kind === "group" && words.every(hit(d.name)); });
+  var t = today();
+  var evRow = function(ev, archived){
+    var g = (ev.group || "").trim();
+    var subs = [];
+    if(archived) subs.push("归档于 " + ymd(new Date(ev.archivedAt)));
+    else if(isPinned(ev)) subs.push("置顶");
+    subs.push(g || "没有分组");
+    if(!archived){ var info = numInfo(ev, t); if(!info.bad) subs.push(ymd(info.target)); }
+    /* 只在备注里对上了：把备注里命中的那一段带出来，不然看不出为什么搜到它 */
+    var titleHasAll = words.every(hit(ev.title)) || words.every(hit((ev.title || "") + "\n" + g));
+    if(ev.note && !titleHasAll){
+      var nl = ev.note.replace(/\s+/g, " "), k = -1;
+      words.some(function(w){ k = nl.toLowerCase().indexOf(w); return k > -1; });
+      if(k > -1) subs.push("备注：" + (k > 10 ? "…" : "") + nl.slice(Math.max(0, k - 10), k + 30) + (k + 30 < nl.length ? "…" : ""));
+    }
+    var nm = archived ? {num:null, unit:"›"} : srNum(ev, t);
+    return srRow({title:ev.title || "未命名", sub:subs.join(" · "), color:ev.color || COLORS[0], words:words, num:nm.num, unit:nm.unit,
+      onClick:function(){
+        if(document.activeElement === srInput) srInput.blur();
+        if(archived){ arDetail(ev); return; }
+        openForm(ev.id);                       /* 弹窗盖在搜索层上；保存后 render() 会顺带刷新结果 */
+      }});
+  };
+  var evs = sorted.filter(evHit);
+  evs = evs.filter(isPinned).concat(evs.filter(function(e){ return !isPinned(e); }));   /* 同主页：置顶的在前 */
+  var ars = archivedEvents().filter(evHit);
+  if(gHits.length) srSection("分组 · " + gHits.length, gHits.map(function(d){
+    return srRow({title:d.name, color:d.color, words:words, num:null, unit:d.count + " 条 ›", onClick:jump(d)});
+  }));
+  if(evs.length) srSection("日程 · " + evs.length, evs.map(function(ev){ return evRow(ev, false); }));
+  if(ars.length) srSection("归档区 · " + ars.length, ars.map(function(ev){ return evRow(ev, true); }));
+  if(!gHits.length && !evs.length && !ars.length){
+    var e1 = document.createElement("p"); e1.className = "sr-tip"; e1.textContent = "没有找到包含「" + raw.trim() + "」的日程。";
+    srIn.appendChild(e1);
+  }
+}
+/* 回到主页（从「只看已过期 / 短期倒计时 / 归档区」里搜的）再做事：那三个界面记在浏览器历史里，退回去交给 popstate 收尾 */
+function srToMain(cb){
+  if(!odView && !scView && !arView){ cb(); return; }
+  var st = null; try{ st = history.state; }catch(e){}
+  var direct = function(){
+    odView = scView = arView = false;
+    try{ history.replaceState(null, ""); }catch(e){}
+    render(); scSafe(function(){ scRender(); });
+    cb();
+  };
+  if(st && (st.od || st.sc || st.ar)){
+    srPending = cb;
+    history.back();
+    /* 退不回去（这一格前面没有历史，比如刷新后直接停在归档区）就不会有 popstate：
+       400ms 还没执行就直接切回主页，别让这个回调挂着、等以后哪次返回时突然冒出来（代码审查指出） */
+    setTimeout(function(){ if(srPending === cb){ srPending = null; direct(); } }, 400);
+    return;
+  }
+  direct();
+}
+window.addEventListener("popstate", function(){       /* 注册在主 popstate 之后：那边先切回主页、重画完，这里再滚 */
+  if(!srPending || odView || scView || arView) return;
+  var cb = srPending; srPending = null;
+  setTimeout(cb, 0);
+});
+/* 按分组名找主页上的那一节（有日程的认 .stack，空分组认「＋ 添加日程」那行） */
+function groupSecByName(name){
+  var esc = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/["\\]/g, "\\$&");
+  var a = board.querySelector('.stack[data-group="' + esc + '"], .g-empty[data-group="' + esc + '"]');
+  return a ? a.closest(".group") : null;
+}
+/* 让一个元素亮一下（重复触发时先摘掉再挂上，动画才会重播） */
+function flashEl(el, cls){
+  if(!el) return;
+  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  setTimeout(function(){ el.classList.remove(cls); }, 1500);
+}
+function srJump(d){
+  srClose();
+  srToMain(function(){
+    var el = null, head = null;
+    if(d.kind === "group"){
+      if(!isExpanded(d.name) && groupCount(d.name) > 1){ state.expanded.push(d.name); save(); render(); }
+      el = groupSecByName(d.name);
+    }else if(d.kind === "pin") el = board.querySelector(".pinned-sec");
+    else el = board.querySelector('[data-id="' + d.first + '"]');
+    if(!el) return;
+    head = el.querySelector(".group-head");
+    var bar = document.getElementById("cbar");
+    var off = (bar ? bar.offsetHeight : 56) + 10;       /* 停在顶部小栏下面 */
+    var y = Math.max(0, (head || el).getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
+    try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
+    flashEl(head || el, head ? "sr-flash" : "lsw-flash");
+  });
+}
+
+/* ================= 批量整理（2026-10-18） =================
+   用户：选中几张卡片一起分组、删除、移出 / 换分组。照 iOS 邮件的「编辑」模式：顶上 全选 / 已选择 N 项 / 完成，底下一排操作。
+   · 入口：右上角 ⋯ →「批量整理」；分组 ⋯ →「选择本组日程」（进来就把这一组勾好）
+   · 操作：移到分组（含移出分组、新建分组并移进去）/ 置顶（全是置顶的就变「取消置顶」）/ 归档 / 删除（先确认）。做完就退出
+   · 只在主页：从「只看已过期 / 归档区 / 短期倒计时」点进来会先回主页
+   · 一条进分组走 joinOrder（同表单换分组），删除走墓碑，放进分组要 gsEnsure + 展开——都和单条操作同一套规则 */
+var selMode = false, selIds = Object.create(null);
+var selTop = document.getElementById("selTop"), selBot = document.getElementById("selBot");
+var mvMask = document.getElementById("mvMask"), mvList = document.getElementById("mvList");
+var SEL_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="#2f86f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+function selEvents(){ return boardEvents().filter(function(e){ return selIds[e.id]; }); }
+function selCount(){ return selEvents().length; }
+/* 进 / 出这个模式时顶栏、工具条会藏起来或回来，整页会上下挪：记住屏幕上第一张卡在哪，换完把它放回原处 */
+function selKeepPlace(fn){
+  var cards = board.querySelectorAll(".card[data-id], .row[data-id]"), mark = null, top = 0;
+  for(var i = 0; i < cards.length; i++){
+    var r = cards[i].getBoundingClientRect();
+    if(r.bottom > 60 && r.height){ mark = cards[i].getAttribute("data-id"); top = r.top; break; }
+  }
+  fn();
+  if(!mark) return;
+  var el = board.querySelector('[data-id="' + mark + '"]');
+  if(el) window.scrollBy(0, el.getBoundingClientRect().top - top);
+}
+function selEnter(groupName){
+  srToMain(function(){
+    closeMenu(); lswClose(false);
+    selIds = Object.create(null);
+    if(groupName) boardEvents().forEach(function(e){ if((e.group || "").trim() === groupName && !isPinned(e)) selIds[e.id] = true; });
+    selKeepPlace(function(){
+      selMode = true;
+      selTop.hidden = false; selBot.hidden = false;
+      render();                    /* renderNow → selDecorate 里已经 selPaint 过 */
+    });
+  });
+}
+function selExit(){
+  if(!selMode) return;
+  mvClose();
+  selKeepPlace(function(){
+    selMode = false;
+    selIds = Object.create(null);
+    selTop.hidden = true; selBot.hidden = true;
+    render();
+  });
+}
+/* 给卡片挂勾选圈、给分组标题挂「选择本组」（renderNow 在排版前调） */
+function selDecorate(){
+  var live = Object.create(null);
+  boardEvents().forEach(function(e){ live[e.id] = 1; });
+  Object.keys(selIds).forEach(function(id){ if(!live[id]) delete selIds[id]; });   /* 同步删掉 / 归档了的不再算选中 */
+  [].forEach.call(board.querySelectorAll(".card[data-id], .row[data-id]"), function(el){
+    var c = document.createElement("span"); c.className = "sel-c"; c.innerHTML = SEL_CHECK;
+    el.appendChild(c);
+    el.classList.toggle("is-sel", !!selIds[el.getAttribute("data-id")]);
+  });
+  [].forEach.call(board.querySelectorAll(".group:not(.group-empty) > .group-head"), function(h){
+    var b = document.createElement("button"); b.type = "button"; b.className = "g-sel";
+    var sec = h.parentElement, st = sec.querySelector(".stack");
+    var name = sec.classList.contains("pinned-sec") ? "\u0000pin" : (st ? st.getAttribute("data-group") : "");   /* 置顶区用一个不会撞分组名的记号 */
+    b.setAttribute("data-sel-group", name);
+    b.addEventListener("click", function(e){ e.stopPropagation(); selToggleGroup(name); });
+    h.appendChild(b);
+  });
+  selPaint();
+}
+function selGroupIds(name){
+  return boardEvents().filter(function(e){
+    return name === "\u0000pin" ? isPinned(e) : (!isPinned(e) && (e.group || "").trim() === name);
+  }).map(function(e){ return e.id; });
+}
+function selToggle(id){
+  if(selIds[id]) delete selIds[id]; else selIds[id] = true;
+  var el = board.querySelector('[data-id="' + id + '"]');
+  if(el) el.classList.toggle("is-sel", !!selIds[id]);
+  selPaint();
+}
+function selToggleGroup(name){
+  var ids = selGroupIds(name);
+  var all = ids.length && ids.every(function(id){ return selIds[id]; });
+  ids.forEach(function(id){ if(all) delete selIds[id]; else selIds[id] = true; });
+  [].forEach.call(board.querySelectorAll(".card[data-id], .row[data-id]"), function(el){ el.classList.toggle("is-sel", !!selIds[el.getAttribute("data-id")]); });
+  selPaint();
+}
+/* 顶栏标题、全选、各组「选择本组 / 取消选择」、底栏按钮可不可点 */
+function selPaint(){
+  var evs = selEvents(), n = evs.length, total = boardEvents().length;
+  document.getElementById("selTitle").textContent = n ? "已选择 " + n + " 项" : "选择日程";
+  document.getElementById("selAll").textContent = (n && n === total) ? "全不选" : "全选";
+  ["selMove", "selPin", "selAr", "selDel"].forEach(function(id){ document.getElementById(id).disabled = !n; });
+  document.getElementById("selPinTxt").textContent = (n && evs.every(isPinned)) ? "取消置顶" : "置顶";
+  [].forEach.call(board.querySelectorAll(".g-sel"), function(b){
+    var ids = selGroupIds(b.getAttribute("data-sel-group"));
+    b.textContent = (ids.length && ids.every(function(id){ return selIds[id]; })) ? "取消选择" : "选择本组";
+  });
+}
+document.getElementById("selAll").addEventListener("click", function(){
+  var evs = boardEvents(), all = evs.length && evs.every(function(e){ return selIds[e.id]; });
+  selIds = Object.create(null);
+  if(!all) evs.forEach(function(e){ selIds[e.id] = true; });
+  [].forEach.call(board.querySelectorAll(".card[data-id], .row[data-id]"), function(el){ el.classList.toggle("is-sel", !!selIds[el.getAttribute("data-id")]); });
+  selPaint();
+});
+document.getElementById("selDone").addEventListener("click", selExit);
+document.getElementById("mBatch").addEventListener("click", function(){ selEnter(null); });
+/* 做完一件事：存、同步、退出模式 */
+function selCommit(after){
+  pruneExpanded();
+  save(); queueSync();
+  selExit();
+  if(after) after();
+}
+document.getElementById("selPin").addEventListener("click", function(){
+  var evs = selEvents(); if(!evs.length) return;
+  var unpin = evs.every(isPinned), now = Date.now();
+  evs.forEach(function(ev){
+    /* 本来就置顶的不碰：改了 updatedAt 会让本机这份旧内容在同步时盖掉另一台设备上更新的修改（代码审查指出） */
+    if(!unpin && isPinned(ev)) return;
+    if(unpin){ ev.order = joinOrder(ev, ev.group); ev.pinned = false; }   /* 回到原分组眼下的位置（同左滑取消置顶） */
+    else ev.pinned = true;
+    ev.updatedAt = now; delete ev.demo;
+  });
+  selCommit();
+});
+document.getElementById("selAr").addEventListener("click", function(){
+  var evs = selEvents(); if(!evs.length) return;
+  var now = Date.now();
+  evs.forEach(function(ev){ ev.archivedAt = now; ev.updatedAt = now; delete ev.demo; });
+  selCommit(arPulse);
+});
+function selNames(evs){
+  var names = evs.slice(0, 3).map(function(e){ return "「" + (e.title || "未命名") + "」"; }).join("");
+  return names + (evs.length > 3 ? " 等 " + evs.length + " 条" : "");
+}
+document.getElementById("selDel").addEventListener("click", function(){
+  var evs = selEvents(); if(!evs.length) return;
+  ask({title:"删除选中的 " + evs.length + " 条日程？", msg:selNames(evs) + "\n" + delHint() + "想留着但不想看见的，可以用「归档」。",
+       pre:true, ok:"删除 " + evs.length + " 条", danger:true,
+       onOk:function(){
+         var tnow = Date.now();
+         evs.forEach(function(ev){ ev.deletedAt = tnow; ev.updatedAt = tnow; });   /* 墓碑，不真删（同单条删除） */
+         selCommit();
+       }});
+});
+/* 移到 name 分组（"" = 移出分组）。一条进分组都走 joinOrder，分组不会被拽走 */
+function selMoveTo(name){
+  var evs = selEvents(); if(!evs.length) return;
+  var now = Date.now();
+  evs.forEach(function(ev){
+    if((ev.group || "").trim() === name) return;
+    if(!isPinned(ev)) ev.order = joinOrder(ev, name);
+    ev.group = name; ev.updatedAt = now; delete ev.demo;
+  });
+  if(name){
+    gsSafe(function(){ gsEnsure(name, now); });
+    if(state.expanded.indexOf(name) < 0) state.expanded.push(name);
+  }
+  mvClose();
+  selCommit(function(){
+    var sec = name ? groupSecByName(name) : null;
+    if(!sec) return;
+    try{ sec.scrollIntoView({block:"nearest", behavior:"smooth"}); }catch(e){ sec.scrollIntoView(); }
+    flashEl(sec.querySelector(".group-head"), "sr-flash");
+  });
+}
+function selCreateMove(now){
+  var hint = document.getElementById("gpHint");
+  var name = document.getElementById("gpInput").value.trim().slice(0, 12);
+  if(!name){ hint.textContent = "分组名不能是空的。"; return; }
+  closeGroupSheet();
+  selMoveTo(name);
+}
+function mvOpen(){
+  var evs = selEvents(); if(!evs.length) return;
+  mvList.innerHTML = "";
+  document.getElementById("mvHint").textContent = "已选 " + evs.length + " 条：" + selNames(evs);
+  var inGroup = function(name){ return evs.filter(function(e){ return (e.group || "").trim() === name; }).length; };
+  var box1 = document.createElement("div"); box1.className = "sr-box";
+  var loose = inGroup("");
+  var out = srRow({title:"移出分组（不放进分组）", color:"var(--text-3)", num:null,
+                   unit: loose ? loose + " 条本来就没分组" : "", onClick:function(){ selMoveTo(""); }});
+  out.disabled = loose === evs.length;
+  box1.appendChild(out);
+  mvList.appendChild(box1);
+  var box2 = document.createElement("div"); box2.className = "sr-box";
+  srDirectory().forEach(function(d){
+    if(d.kind !== "group") return;
+    var here = inGroup(d.name);
+    var r = srRow({title:d.name, color:d.color, num:null, unit:d.count + (here ? " · " + here + " 条在这儿" : ""), onClick:function(){ selMoveTo(d.name); }});
+    r.disabled = here === evs.length;            /* 全都已经在这组了，点了也没变化 */
+    box2.appendChild(r);
+  });
+  var nb = srRow({title:"＋ 新建分组并移进去…", num:null, unit:"", onClick:function(){
+    mvClose(); gpTarget = ""; openGroupSheet("createMove");     /* 同一拍里 focus 输入框，iPhone 才弹键盘 */
+  }});
+  nb.classList.add("acc"); nb.querySelector(".sr-bar").style.visibility = "hidden";
+  box2.appendChild(nb);
+  mvList.appendChild(box2);
+  mvMask.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+function mvClose(){
+  if(mvMask.hidden) return;
+  mvMask.hidden = true;
+  document.body.style.overflow = "";
+}
+document.getElementById("selMove").addEventListener("click", mvOpen);
+document.getElementById("mvCancel").addEventListener("click", mvClose);
+mvMask.addEventListener("click", function(e){ if(e.target === mvMask) mvClose(); });
+/* 登记进下拉关闭：插在删除确认框前面（数组顺序 = DOM 顺序） */
+(function(){
+  var at = -1;
+  SHEETS.forEach(function(S, i){ if(at < 0 && S.mask === cfMask) at = i; });
+  SHEETS.splice(at < 0 ? SHEETS.length : at, 0, {mask: mvMask, sheet: document.getElementById("mvSheet"), close: mvClose});
+})();
+
 /* ================= 启动 ================= */
-gsSafe(gsLoad);                 /* 分组名册要先读进来：load() 里可能就会 save()，那时名册还是空的话会把存着的那份盖掉 */
+gsSafe(gsLoad);                /* 分组名册要先读进来：load() 里可能就会 save()，那时名册还是空的话会把存着的那份盖掉 */
 load();
 gsSafe(gsReconcile);            /* 第一次用上名册的老数据：把现有的分组名补登记进去 */
 loadSync();
