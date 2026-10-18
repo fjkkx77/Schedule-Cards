@@ -213,6 +213,13 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 }
 .seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
 .sort-wrap{flex:1 1 auto;min-width:0;display:flex;justify-content:flex-end}
+/* 全部展开 / 收起：同排序框一样的白底圆角块，跟「卡片 / 列表」挨着——都是「怎么显示」这一类 */
+.xa-btn{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;padding:0 12px 0 10px;border:0;border-radius:12px;
+  background:var(--surface);color:var(--text-2);box-shadow:var(--shadow-sm);font-size:14px;font-weight:600;white-space:nowrap}
+.xa-btn[hidden]{display:none}
+/* 一行放不下（320/360 这类窄屏，排序框会被挤成「自…」）就只留图标，同顶栏按钮的 44×44；放不放得下由 xaFit() 现量 */
+.xa-btn.xa-compact{width:44px;padding:0;justify-content:center}
+.xa-btn.xa-compact .xa-t{display:none}
 select.sort{
   min-height:44px;max-width:100%;
   border:0;border-radius:12px;background:var(--surface);color:var(--text-2);
@@ -1105,11 +1112,19 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .foot{margin:22px 4px 0;text-align:center;font-size:12px;color:var(--text-3);line-height:1.7}
 /* ============ 搜索 + 跳到分组（2026-10-18） ============
    右上角放大镜（用户选的「丙」）→ 整屏一层：没打字时是「跳到分组」目录，打了字分「分组 / 日程 / 归档区」三段。
-   搜索框在底下、贴着键盘上沿（照对比图；HIG Search fields 的 iOS 节：顶部的搜索按钮点开后，搜索框出现在键盘上方）。
-   z-index 45：比小栏、菜单高，比弹窗（50）低——在结果里点日程，编辑弹窗盖在搜索层上面，关掉回到结果 */
-.sr-mask{position:fixed;inset:0;z-index:45;background:var(--bg)}
-.sr-list{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
-  padding:calc(var(--safe-t) + 10px) calc(14px + var(--safe-r)) 90px calc(14px + var(--safe-l))}
+   搜索框在最上面、「跳到分组」之上（2026-10-18 用户要的；第一版放在底下贴着键盘上沿）。
+   z-index 45：比小栏、菜单高，比弹窗（50）低——归档的结果点开详情，弹框盖在搜索层上面
+
+   防穿模（2026-10-18 用户真机截图：弹出键盘后搜索框下面、键盘后面露出主页）：
+   iPhone 弹键盘时会把可见区域整个往下挪（visualViewport.offsetTop），fixed 的 inset:0 跟着的是「布局视口」，两者对不上，
+   第一版又按「innerHeight − 可见高度」去抬搜索框，结果抬多了。现在整层直接对齐可见区域（srFit 写 top/height），
+   上下再各垫一屏同色的底（::before/::after）：iOS 26 的键盘是半透明的，键盘后面也不能露出主页 */
+.sr-mask{position:fixed;left:0;right:0;top:0;bottom:0;z-index:45;background:var(--bg);display:flex;flex-direction:column}
+.sr-mask::before,.sr-mask::after{content:"";position:absolute;left:0;right:0;height:100vh;background:var(--bg)}
+.sr-mask::before{bottom:100%}
+.sr-mask::after{top:100%}
+.sr-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding:4px calc(14px + var(--safe-r)) calc(24px + var(--safe-b)) calc(14px + var(--safe-l))}
 .sr-in{max-width:576px;margin:0 auto}
 .sr-h{font-size:13px;font-weight:700;color:var(--text-2);margin:16px 6px 8px;letter-spacing:.3px}
 .sr-h:first-child{margin-top:6px}
@@ -1125,9 +1140,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .sr-n{flex:0 0 auto;margin-left:auto;color:var(--text-3);font-size:14px;white-space:nowrap}
 .sr-n b{font-size:18px;color:var(--text);font-variant-numeric:tabular-nums;margin-right:2px}
 .sr-hl{background:color-mix(in srgb,#2f86f6 24%,transparent);color:inherit;border-radius:3px;padding:0 1px}
-.sr-bar-wrap{position:absolute;left:0;right:0;bottom:0;background:var(--bg);box-shadow:0 -1px 0 var(--line);
-  padding:8px calc(12px + var(--safe-r)) calc(8px + var(--safe-b)) calc(12px + var(--safe-l))}
-.sr-bar-wrap.kb{padding-bottom:8px}
+/* 顶上这条固定不动（记忆 feedback_fixed_nav_bar），结果往上滚走了才出现分隔线（同 iOS 导航栏） */
+.sr-bar-wrap{flex:0 0 auto;position:relative;z-index:1;background:var(--bg);transition:box-shadow .2s;
+  padding:calc(var(--safe-t) + 8px) calc(12px + var(--safe-r)) 8px calc(12px + var(--safe-l))}
+.sr-bar-wrap.scrolled{box-shadow:0 1px 0 var(--line)}
 .sr-bar-in{max-width:576px;margin:0 auto;display:flex;align-items:center;gap:10px}
 .sr-field{flex:1;display:flex;align-items:center;gap:8px;height:44px;border-radius:22px;padding:0 6px 0 14px;background:var(--surface);
   box-shadow:inset 0 0 0 1.5px var(--line);color:var(--text-2)}
@@ -1140,9 +1156,21 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 @keyframes sr-flash{0%,35%{box-shadow:0 0 0 3px color-mix(in srgb,#2f86f6 55%,transparent);background:color-mix(in srgb,#2f86f6 10%,transparent)}100%{box-shadow:0 0 0 3px transparent;background:transparent}}
 .group-head.sr-flash{animation:sr-flash 1.4s ease-out 1;border-radius:14px}
 @media (prefers-reduced-motion: reduce){ .group-head.sr-flash{animation:none} }
+/* 点搜索结果跳到主页上的那张卡：滚到屏幕中间，闪两下（照课表站「下一节课」点过去的效果：描边 + 外光 + 轻微放大）。
+   描边外面先垫 2px 页面底色再画蓝圈：蓝色的卡片也看得出圈；--hs 是卡片原来的阴影，动画里一起写上，不然闪的时候阴影没了 */
+.card.sr-hit{--hs:var(--shadow)}
+.row.sr-hit{--hs:var(--shadow-sm)}
+@keyframes sr-hit{
+  0%,100%{box-shadow:0 0 0 0 transparent,0 0 0 0 transparent,var(--hs);transform:scale(1)}
+  20%,55%{box-shadow:0 0 0 2px var(--bg),0 0 0 5px #2f86f6,0 10px 26px -6px color-mix(in srgb,#2f86f6 55%,transparent);transform:scale(1.03)}
+  38%{box-shadow:0 0 0 2px var(--bg),0 0 0 3px #2f86f6,0 4px 12px -6px color-mix(in srgb,#2f86f6 45%,transparent);transform:scale(1.01)}
+}
+.sr-hit{animation:sr-hit 1.6s ease-in-out 1;position:relative;z-index:4}
+/* .card 自带 overflow:hidden，但阴影画在盒子外面，不受影响 */
+@media (prefers-reduced-motion: reduce){ .sr-hit{animation:none;box-shadow:0 0 0 2px var(--bg),0 0 0 5px #2f86f6,var(--hs)} }
 
 /* ============ 批量整理（2026-10-18） ============
-   右上角 ⋯ →「批量整理」或分组 ⋯ →「选择本组日程」进入。顶上一条「全选 / 已选择 N 项 / 完成」，底下一排「移到分组 / 置顶 / 归档 / 删除」。
+   右上角 ⋯ →「批量整理」或分组 ⋯ →「选择本组日程」进入。顶上一条「全选 / 已选择 N 项 / 取消」，底下一排「移到分组 / 置顶 / 归档 / 删除」。
    勾选圈在卡片右上角（用户从 左边一列 / 右上角 / 整卡描边 里选的「乙」：卡片不变窄）；列表视图的行太矮，圈放在行的左边。
    这个模式里所有分组都展开（收起的一摞没法一张张选）、不能拖动、左滑、下拉刷新 */
 body.sel-mode .topbar, body.sel-mode .toolbar, body.sel-mode #odBar, body.sel-mode .fab, body.sel-mode .cbar{display:none !important}
@@ -1156,7 +1184,9 @@ body.sel-mode .card .card-top{padding-left:44px;padding-right:44px}
 .sel-top-in{position:relative;max-width:576px;margin:0 auto;height:56px;display:flex;align-items:center}
 .sel-top-in b{position:absolute;left:84px;right:84px;text-align:center;font-size:17px;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sel-top-in button{border:0;background:none;color:#2f86f6;font-size:17px;font-weight:600;min-height:44px;min-width:44px;padding:0}
-.sel-top-in button:last-child{margin-left:auto;font-weight:800}
+/* 右边是「取消」不是「完成」（2026-10-18 用户：只有完成没有取消，按起来没安全感）。这个按钮本来就只退出、不改任何东西，
+   叫「完成」像是要提交什么；照 iPhone 照片 App 的选择模式写「取消」，不加粗（取消类按钮不该比别的更抢眼） */
+.sel-top-in button:last-child{margin-left:auto}
 .sel-bot{position:fixed;left:0;right:0;bottom:0;z-index:31;padding:6px calc(8px + var(--safe-r)) calc(6px + var(--safe-b)) calc(8px + var(--safe-l));
   background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(14px);backdrop-filter:saturate(1.6) blur(14px);box-shadow:0 -1px 0 var(--line)}
 .sel-bot-in{max-width:576px;margin:0 auto;display:flex;justify-content:space-around}
@@ -1216,6 +1246,11 @@ body.sel-mode .row .row-main{padding-left:48px}
       <button id="viewCard" aria-pressed="true">卡片</button>
       <button id="viewList" aria-pressed="false">列表</button>
     </div>
+    <!-- 所有分组一键全部展开 / 全部收起（2026-10-18 用户要的）。只有主页上有「能收起的一摞」（2 条以上的分组）时才出现 -->
+    <button type="button" class="xa-btn" id="xaBtn" hidden>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path id="xaIco" d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>
+      <span class="xa-t" id="xaTxt">全部展开</span>
+    </button>
     <div class="sort-wrap">
       <select class="sort" id="sortSel" aria-label="排序方式">
         <option value="manual">自定义顺序</option>
@@ -1510,7 +1545,6 @@ body.sel-mode .row .row-main{padding-left:48px}
 
 <!-- 搜索 + 跳到分组（2026-10-18，见 CSS「搜索 + 跳到分组」） -->
 <div class="sr-mask" id="srMask" hidden role="dialog" aria-label="搜索日程">
-  <div class="sr-list" id="srList"><div class="sr-in" id="srIn"></div></div>
   <div class="sr-bar-wrap" id="srBar"><div class="sr-bar-in">
     <label class="sr-field">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
@@ -1519,11 +1553,12 @@ body.sel-mode .row .row-main{padding-left:48px}
     </label>
     <button type="button" class="sr-cancel" id="srCancel">取消</button>
   </div></div>
+  <div class="sr-list" id="srList"><div class="sr-in" id="srIn"></div></div>
 </div>
 
 <!-- 批量整理（2026-10-18，见 CSS「批量整理」） -->
 <div class="sel-top" id="selTop" hidden><div class="sel-top-in">
-  <button type="button" id="selAll">全选</button><b id="selTitle">选择日程</b><button type="button" id="selDone">完成</button>
+  <button type="button" id="selAll">全选</button><b id="selTitle">选择日程</b><button type="button" id="selDone">取消</button>
 </div></div>
 <div class="sel-bot" id="selBot" hidden><div class="sel-bot-in">
   <button type="button" id="selMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 13h6M13.5 10.5 16 13l-2.5 2.5"/></svg><span>移到分组</span></button>
@@ -2372,6 +2407,7 @@ function render(){
     board.style.minHeight = "";
     if(window.scrollY !== keepY) window.scrollTo(0, keepY);
   }
+  try{ xaPaint(); }catch(e){}              /* 「全部展开 / 收起」跟着分组的变化走；出错只停它自己 */
   /* 搜索层开着时数据变了（在结果里点开编辑、保存了；或同步下来新东西）：结果跟着刷新。出错只停搜索自己 */
   if(srOpen) try{ srRender(); }catch(e){}
 }
@@ -2677,7 +2713,67 @@ function toggleGroup(name){
     }
   }
   layoutStacks(true);
+  xaPaint();
 }
+
+/* ---- 全部展开 / 全部收起（2026-10-18） ----
+   只管「能收起的一摞」：主页上 2 条以上（不算置顶的）的分组。只剩 1 条的、空分组本来就没有收起这回事。
+   有一个收着就是「全部展开」，全都开着才是「全部收起」（照 Finder / 文件 App 的同类按钮：先把没开的打开）。
+   动画和单个分组点开 / 收起是同一套（layoutStacks(true)），存的也是同一个 state.expanded */
+var xaBtn = document.getElementById("xaBtn");
+function xaGroups(){
+  var c = Object.create(null), out = [];
+  boardEvents().forEach(function(e){
+    var g = (e.group || "").trim();
+    if(g && !isPinned(e)) c[g] = (c[g] || 0) + 1;
+  });
+  Object.keys(c).forEach(function(g){ if(c[g] > 1) out.push(g); });
+  return out;
+}
+function xaAllOpen(gs){ return gs.every(function(g){ return state.expanded.indexOf(g) > -1; }); }   /* 不用 isExpanded：批量整理里它恒为真 */
+function xaPaint(){
+  var gs = xaGroups();
+  xaBtn.hidden = !gs.length;
+  var open = gs.length && xaAllOpen(gs);
+  document.getElementById("xaTxt").textContent = open ? "全部收起" : "全部展开";
+  /* 箭头朝外＝展开、朝里压向中间一道线＝收起（只画两个朝里的箭头，18px 下看着像 ✕） */
+  document.getElementById("xaIco").setAttribute("d", open ? "M8 3l4 4 4-4M8 21l4-4 4 4M5 12h14" : "M7 9l5-5 5 5M7 15l5 5 5-5");
+  xaBtn.setAttribute("aria-label", open ? "所有分组全部收起" : "所有分组全部展开");
+  xaFit();
+}
+/* 带文字放得下吗：卡片/列表 + 这个按钮（带字）+ 排序框原本的宽度 + 两道间隙，跟工具条宽度比。
+   不写死断点：字体（iPhone 苹方 vs 电脑雅黑）、排序选项文字一变，宽度就变 */
+function xaFit(){
+  if(xaBtn.hidden) return;
+  var tb = xaBtn.parentElement, sel = document.getElementById("sortSel");
+  if(!tb.clientWidth) return;                       /* 工具条藏着（归档区等）：量不了，回来时 render 会再量 */
+  xaBtn.classList.remove("xa-compact");
+  var mw = sel.style.maxWidth;
+  sel.style.maxWidth = "none";                      /* 排序框平时会被压窄，量它本来要多宽 */
+  var gap = parseFloat(getComputedStyle(tb).columnGap) || 0;
+  var need = tb.querySelector(".seg").offsetWidth + xaBtn.offsetWidth + sel.offsetWidth + gap * 2;
+  sel.style.maxWidth = mw;
+  xaBtn.classList.toggle("xa-compact", need > tb.clientWidth);
+}
+window.addEventListener("resize", function(){ try{ xaFit(); }catch(e){} });
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ try{ xaFit(); }catch(e){} });
+xaBtn.addEventListener("click", function(){
+  var gs = xaGroups();
+  if(!gs.length) return;
+  lswClose(true);
+  if(xaAllOpen(gs)) state.expanded = state.expanded.filter(function(g){ return gs.indexOf(g) < 0; });
+  else gs.forEach(function(g){ if(state.expanded.indexOf(g) < 0) state.expanded.push(g); });
+  save();
+  [].forEach.call(board.querySelectorAll(".group-head"), function(h){
+    var st = h.nextElementSibling;
+    if(!st || !st.classList.contains("stack")) return;
+    var v = isExpanded(st.getAttribute("data-group")) ? "true" : "false";
+    h.setAttribute("aria-expanded", v);
+    var gm = h.querySelector(".g-main"); if(gm) gm.setAttribute("aria-expanded", v);
+  });
+  layoutStacks(true);
+  xaPaint();
+});
 
 /* 窗口尺寸变化 / 字体加载完，卡片高度会变，重新量一次 */
 var reflowTimer = null;
@@ -5176,7 +5272,8 @@ document.addEventListener("touchstart", function(e){
   var vw = document.documentElement.clientWidth;
   var fromOpen = !!(lswOpen && lswOpen.el === el);
   if(!fromOpen && (x < LSW_EDGE || x > vw - LSW_EDGE)) return;
-  lsw = {el:el, x0:x, y0:e.touches[0].clientY, fromOpen:fromOpen, locked:false, pos:0, w:0, acts:null};
+  /* startOpen：这一下是从「已经滑开」开始的。fromOpen 换边后会被清掉，这个不会 */
+  lsw = {el:el, x0:x, y0:e.touches[0].clientY, fromOpen:fromOpen, startOpen:fromOpen, locked:false, pos:0, w:0, acts:null};
 }, {passive:true});
 
 document.addEventListener("touchmove", function(e){
@@ -5206,6 +5303,10 @@ document.addEventListener("touchmove", function(e){
   e.preventDefault();
   /* 统一换算成「往按钮那边拉了多远」q（0～w），两边共用一套阻尼：反方向和拉过头都按 LSW_OVER 衰减 */
   var sd = lsw.side, q = (lsw.fromOpen ? lsw.w : 0) + dx * sd;
+  /* 从滑开的状态往回推＝只是想收起来：推到零点就停住，不换到另一边。
+     2026-10-18 用户：露着「置顶」时往左推想收起，常常推过头直接露出「归档 / 删除」（反过来也一样）。
+     要另一边的操作，松手再滑一次；从关着起手的那种「一路拉到另一边」照旧 */
+  if(q < 0 && lsw.startOpen) q = 0;
   if(q < 0){
     /* 往回拉过了零点：另一边有操作就换过去（照 iPhone 邮件，一次手势里能从「置顶」一路拉到「归档 / 删除」）。
        换边后以这一刻为新起点：新的 q＝已经拉过零点的那段 */
@@ -6206,10 +6307,11 @@ async function syncShort(){
    用户：日程多了以后找起来麻烦，想要搜索和「导航到某个分组」。两样合成一个入口（右上角放大镜，用户选的「丙」）：
    · 没打字：列出「跳到分组」——置顶、各分组（按主页上的顺序，空分组也在）、没有分组的。点了回到主页、滚过去、展开、标题亮一下
    · 打了字：按名称 / 备注 / 分组名找（空格隔开的几个词要都对上），分「分组 / 日程 / 归档区」三段。
-     点日程＝打开编辑弹窗（盖在搜索层上，关掉回到结果）；点归档的＝归档详情；点分组＝同上面的跳过去
-   弹层三件事（记忆 feedback_overlay_scroll_keyboard）：拦背景穿透、搜索框贴着键盘上沿、点按钮的同一拍里 focus。
+     点日程＝回到主页、滚到那张卡、闪两下（2026-10-18 用户要的，照课表站的点击跳转；第一版是直接进编辑页，用户想看的是「它在主页哪儿」）；
+     点归档的＝进归档区、同样指出来；点分组＝同上面的跳过去
+   弹层三件事（记忆 feedback_overlay_scroll_keyboard）：拦背景穿透、整层对齐可见区域（键盘弹出也不穿模）、点按钮的同一拍里 focus。
    不进浏览器历史：主屏幕 App 没有返回手势，进出都靠「取消」 */
-var srOpen = false, srPrevOverflow = "", srPending = null;
+var srOpen = false, srPrevOverflow = "", srPending = null, srScrollY = 0;
 var srMask = document.getElementById("srMask"), srList = document.getElementById("srList"), srIn = document.getElementById("srIn");
 var srInput = document.getElementById("srInput"), srBarEl = document.getElementById("srBar"), srClearBtn = document.getElementById("srClear");
 function srOpenLayer(){
@@ -6219,6 +6321,8 @@ function srOpenLayer(){
   lswClose(false);
   srInput.value = "";
   srMask.hidden = false;
+  srBarEl.classList.remove("scrolled");
+  srScrollY = window.scrollY;             /* iPhone 聚焦输入框时可能顺手把底下的主页滚走：关掉时放回来 */
   srPrevOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
   srRender();
@@ -6231,17 +6335,21 @@ function srClose(){
   srOpen = false;
   if(document.activeElement === srInput) srInput.blur();
   srMask.hidden = true;
+  srMask.style.top = srMask.style.height = srMask.style.bottom = "";
   document.body.style.overflow = srPrevOverflow;
+  if(Math.abs(window.scrollY - srScrollY) > 1) window.scrollTo(0, srScrollY);
 }
-/* 搜索框贴着键盘上沿：只在搜索框正聚焦时认 visualViewport 的差值（没键盘时两者也可能对不齐） */
+/* 整层对齐「眼睛看得见的那块」（visualViewport）：键盘弹出时 iPhone 会缩小、下移可见区域，
+   fixed 的 inset:0 跟的是布局视口，不跟着动，就会露出主页（用户截图）。键盘后面那截由 ::after 垫底色 */
 function srFit(){
   if(!srOpen) return;
   var vv = window.visualViewport;
-  var kb = (vv && document.activeElement === srInput) ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
-  srBarEl.style.bottom = kb ? kb + "px" : "";
-  srBarEl.classList.toggle("kb", kb > 0);
-  srList.style.paddingBottom = (srBarEl.offsetHeight + kb + 16) + "px";
+  if(!vv || !(vv.height > 0)) return;     /* 没有 visualViewport 的老浏览器：用 CSS 的 inset 0 */
+  srMask.style.top = Math.max(0, Math.round(vv.offsetTop || 0)) + "px";
+  srMask.style.height = Math.round(vv.height) + "px";
+  srMask.style.bottom = "auto";
 }
+srList.addEventListener("scroll", function(){ srBarEl.classList.toggle("scrolled", srList.scrollTop > 2); }, {passive:true});
 if(window.visualViewport){ visualViewport.addEventListener("resize", srFit); visualViewport.addEventListener("scroll", srFit); }
 srInput.addEventListener("focus", srFit);
 srInput.addEventListener("blur", function(){ setTimeout(srFit, 50); });
@@ -6261,7 +6369,7 @@ document.addEventListener("touchmove", function(e){
   if(Math.abs(t.clientY - srGuardY0) > 8 && document.activeElement === srInput) srInput.blur();
   var n = document.elementFromPoint(t.clientX, t.clientY);
   var canScroll = !!(n && srList.contains(n) && srList.scrollHeight > srList.clientHeight + 1);
-  /* 列表外（底部搜索栏）或列表本身滚不动：一律拦，起手 4px 内也拦——iOS 回弹一旦开始，后面的 touchmove 就不可取消了
+  /* 列表外（顶上搜索栏）或列表本身滚不动：一律拦，起手 4px 内也拦——iOS 回弹一旦开始，后面的 touchmove 就不可取消了
      （同下拉关闭弹窗那段的做法；代码审查 2026-10-18 指出） */
   if(!canScroll){ if(e.cancelable) e.preventDefault(); return; }
   var dy = t.clientY - srGuardY;
@@ -6381,11 +6489,7 @@ function srRender(){
     }
     var nm = archived ? {num:null, unit:"›"} : srNum(ev, t);
     return srRow({title:ev.title || "未命名", sub:subs.join(" · "), color:ev.color || COLORS[0], words:words, num:nm.num, unit:nm.unit,
-      onClick:function(){
-        if(document.activeElement === srInput) srInput.blur();
-        if(archived){ arDetail(ev); return; }
-        openForm(ev.id);                       /* 弹窗盖在搜索层上；保存后 render() 会顺带刷新结果 */
-      }});
+      onClick:function(){ srJumpEv(ev.id, archived); }});
   };
   var evs = sorted.filter(evHit);
   evs = evs.filter(isPinned).concat(evs.filter(function(e){ return !isPinned(e); }));   /* 同主页：置顶的在前 */
@@ -6454,6 +6558,33 @@ function srJump(d){
     try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
     flashEl(head || el, head ? "sr-flash" : "lsw-flash");
   });
+}
+/* 点搜索结果里的一条日程：回到它所在的界面（主页 / 归档区），收着的分组先展开，滚到屏幕中间、闪两下 */
+function srJumpEv(id, archived){
+  srClose();
+  var show = function(){
+    var ev = lswEvent(id);
+    if(!ev) return;
+    var g = (ev.group || "").trim();
+    if(!archived && g && !isPinned(ev) && !isExpanded(g) && groupCount(g) > 1){ state.expanded.push(g); save(); render(); }
+    srShowCard(id);
+  };
+  if(!archived){ srToMain(show); return; }
+  if(arView){ show(); return; }
+  srToMain(function(){ enterAr(); show(); });   /* 先回主页再进：从「只看已过期 / 短期倒计时」过来也走同一条路 */
+}
+function srShowCard(id){
+  var esc = window.CSS && CSS.escape ? CSS.escape(id) : String(id).replace(/["\\]/g, "\\$&");
+  var el = board.querySelector('.card[data-id="' + esc + '"], .row[data-id="' + esc + '"]');
+  if(!el) return;
+  var bar = document.getElementById("cbar");
+  var head = (bar ? bar.offsetHeight : 56) + 10;       /* 顶部小栏下面才算看得见 */
+  var r = el.getBoundingClientRect();
+  /* 放屏幕中间；卡片太高放不下就让顶边停在小栏下面 */
+  var y = Math.max(0, Math.round(r.top + window.scrollY - Math.max(head, (window.innerHeight - r.height) / 2)));
+  try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
+  el.classList.remove("sr-hit"); void el.offsetWidth; el.classList.add("sr-hit");
+  setTimeout(function(){ el.classList.remove("sr-hit"); }, 1700);
 }
 
 /* ================= 批量整理（2026-10-18） =================
