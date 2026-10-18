@@ -1156,17 +1156,24 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .group-head.sr-flash{animation:sr-flash 1.4s ease-out 1;border-radius:14px}
 @media (prefers-reduced-motion: reduce){ .group-head.sr-flash{animation:none} }
 /* 点搜索结果跳到主页上的那张卡：滚到屏幕中间，闪两下（照课表站「下一节课」点过去的效果：描边 + 外光 + 轻微放大）。
-   · 圈用 outline（离卡片 2px，蓝色卡片也看得出），外光用 drop-shadow：都不碰 box-shadow——卡片在不同位置阴影不一样
-     （列表视图没分组的行还带一圈 10px 灰框），动画改 box-shadow 会让它们闪的时候消失（代码审查指出）
-   · 放大用独立的 scale 属性、不用 transform：左右滑动写的是卡片的 transform，动画占着它的话刚跳过来就滑不动（代码审查指出）
-   · 在一摞里时，srShowCard 临时把它那层 .stack-item 提到最上面，不然上一张会盖住圈的上沿 */
-@keyframes sr-hit{
-  0%,100%{outline-color:transparent;outline-offset:2px;filter:none;scale:1}
-  20%,55%{outline-color:#2f86f6;outline-offset:2px;filter:drop-shadow(0 8px 16px color-mix(in srgb,#2f86f6 45%,transparent));scale:1.03}
-  38%{outline-color:color-mix(in srgb,#2f86f6 55%,transparent);outline-offset:1px;filter:drop-shadow(0 3px 8px color-mix(in srgb,#2f86f6 30%,transparent));scale:1.01}
+   · 圈画在卡片「里面」（::after 叠一层：蓝边 + 往里的光），不画在外面——两轮代码审查踩过的坑都因此绕开：
+     画在外面要么改 box-shadow（列表视图没分组的行那圈 10px 灰框会消失），要么得抬层级（上下相邻的卡会盖住圈；
+     抬到 99 又会盖过顶部小栏和弹窗，卡片那层没有自己的层叠上下文）
+   · 放大用独立的 scale 属性、不用 transform：左右滑动写的是卡片的 transform，动画占着它的话刚跳过来就滑不动。
+     1.03 在卡片上下各多出不到 3px，碰不到 14px 外的邻居 */
+.card.sr-hit::after,.row.sr-hit::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;
+  animation:sr-ring 1.6s ease-in-out 1 both}
+@keyframes sr-ring{
+  0%,100%{box-shadow:inset 0 0 0 0 transparent}
+  20%,55%{box-shadow:inset 0 0 0 4px #2f86f6,inset 0 0 22px 4px color-mix(in srgb,#2f86f6 32%,transparent)}
+  38%{box-shadow:inset 0 0 0 2px color-mix(in srgb,#2f86f6 60%,transparent),inset 0 0 10px 2px color-mix(in srgb,#2f86f6 18%,transparent)}
 }
-.sr-hit{outline:3px solid transparent;animation:sr-hit 1.6s ease-in-out 1}
-@media (prefers-reduced-motion: reduce){ .sr-hit{animation:none;outline-color:#2f86f6;outline-offset:2px} }
+@keyframes sr-hit{0%,100%{scale:1}20%,55%{scale:1.03}38%{scale:1.01}}
+.sr-hit{animation:sr-hit 1.6s ease-in-out 1}
+@media (prefers-reduced-motion: reduce){
+  .sr-hit{animation:none}
+  .card.sr-hit::after,.row.sr-hit::after{animation:none;box-shadow:inset 0 0 0 4px #2f86f6}
+}
 
 /* ============ 批量整理（2026-10-18） ============
    右上角 ⋯ →「批量整理」或分组 ⋯ →「选择本组日程」进入。顶上一条「全选 / 已选择 N 项 / 取消」，底下一排「移到分组 / 置顶 / 归档 / 删除」。
@@ -2708,13 +2715,19 @@ function toggleGroup(name){
   for(var k = 0; k < heads.length; k++){
     var st = heads[k].nextElementSibling;
     if(st && st.getAttribute("data-group") === name){
-      heads[k].setAttribute("aria-expanded", isExpanded(name) ? "true" : "false");
-      var gm = heads[k].querySelector(".g-main");    /* 读屏读的是这个按钮的状态，原来漏了（代码审查指出） */
-      if(gm) gm.setAttribute("aria-expanded", isExpanded(name) ? "true" : "false");
+      groupAria(heads[k], isExpanded(name));
     }
   }
   layoutStacks(true);
   xaPaint();
+}
+
+/* 分组展开 / 收起后同步状态：标题行（CSS 靠它转箭头）和标题按钮（读屏读这个，原来漏了，代码审查指出） */
+function groupAria(head, open){
+  var v = open ? "true" : "false";
+  head.setAttribute("aria-expanded", v);
+  var gm = head.querySelector(".g-main");
+  if(gm) gm.setAttribute("aria-expanded", v);
 }
 
 /* ---- 全部展开 / 全部收起（2026-10-18） ----
@@ -2746,9 +2759,9 @@ function xaPaint(){
    不写死断点：字体（iPhone 苹方 vs 电脑雅黑）、排序选项文字一变，宽度就变 */
 var xaFitKey = "";
 function xaFit(force){
-  if(xaBtn.hidden) return;
   var tb = xaBtn.parentElement, sel = document.getElementById("sortSel");
-  if(!tb.clientWidth) return;                       /* 工具条藏着（归档区等）：量不了，回来时 render 会再量 */
+  /* 按钮或工具条藏着（归档区等）：量不了。要是字体刚换（force），清掉缓存，回主页时 render 一定重量（代码审查指出） */
+  if(xaBtn.hidden || !tb.clientWidth){ if(force) xaFitKey = ""; return; }
   /* render() 很频繁（30 秒一次、每次同步 / 保存）：工具条宽度、排序选项、按钮文字都没变就不再量（代码审查指出） */
   var key = tb.clientWidth + "|" + sel.value + "|" + document.getElementById("xaTxt").textContent;
   if(!force && key === xaFitKey) return;
@@ -2772,10 +2785,7 @@ xaBtn.addEventListener("click", function(){
   save();
   [].forEach.call(board.querySelectorAll(".group-head"), function(h){
     var st = h.nextElementSibling;
-    if(!st || !st.classList.contains("stack")) return;
-    var v = isExpanded(st.getAttribute("data-group")) ? "true" : "false";
-    h.setAttribute("aria-expanded", v);
-    var gm = h.querySelector(".g-main"); if(gm) gm.setAttribute("aria-expanded", v);
+    if(st && st.classList.contains("stack")) groupAria(h, isExpanded(st.getAttribute("data-group")));
   });
   layoutStacks(true);
   xaPaint();
@@ -3606,7 +3616,7 @@ function createGroup(now){
   queueSync(); closeGroupSheet(); render();
   /* 滚到新分组那里亮一下，让人知道它出现在哪（只看已过期 / 短期倒计时 / 归档区里主页是藏着的，不滚） */
   if(odView || scView || arView) return;
-  var esc = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/["\\]/g, "\\$&");
+  var esc = cssStr(name);
   var add = board.querySelector('.g-empty[data-group="' + esc + '"]');
   var sec = add && add.closest(".group");
   if(!sec) return;
@@ -4657,7 +4667,7 @@ function dragKey(n){
   return c ? "e:" + c.getAttribute("data-id") : null;
 }
 function dragFind(key){
-  var esc = window.CSS && CSS.escape ? CSS.escape(key.slice(2)) : key.slice(2).replace(/["\\]/g, "\\$&");
+  var esc = cssStr(key.slice(2));
   if(key.charAt(0) === "g"){
     var st = board.querySelector('.stack[data-group="' + esc + '"], .g-empty[data-group="' + esc + '"]');
     return st && st.closest(".group");
@@ -5203,7 +5213,7 @@ function lswTogglePin(id){
   delete ev.demo;                     /* 动过的示例就是你自己的数据了，照常同步（同表单保存） */
   save(); queueSync(); render();
   /* 卡片换了区，滚过去并亮一下；回到了收起的分组里就指向那一摞 */
-  var el = board.querySelector('[data-id="' + id + '"]');
+  var el = board.querySelector('[data-id="' + cssStr(id) + '"]');
   if(!el) return;
   var st = el.closest(".stack");
   var target = (st && !st.classList.contains("is-open")) ? st : el;
@@ -5294,6 +5304,9 @@ document.addEventListener("touchmove", function(e){
     }
     lsw.locked = true;
     dragCancelHold();
+    /* 搜索跳过来正在闪的卡，一开始滑就别闪了（已经找到它、开始操作了）。不停的话，滑开以后闪烁结束摘掉 ::after 那一下，
+       Chrome 里整页会往上跳四五十 px，「滚动就收起」把刚滑开的卡又收回去（原因没查明，iPhone 上会不会这样也不确定，先从结构上绕开） */
+    lsw.el.classList.remove("sr-hit");
     var ps = document.querySelectorAll(".stack.is-pressed");
     for(var i = 0; i < ps.length; i++) ps[i].classList.remove("is-pressed");
     if(lsw.fromOpen){
@@ -6536,7 +6549,7 @@ window.addEventListener("popstate", function(){       /* 注册在主 popstate �
 });
 /* 按分组名找主页上的那一节（有日程的认 .stack，空分组认「＋ 添加日程」那行） */
 function groupSecByName(name){
-  var esc = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/["\\]/g, "\\$&");
+  var esc = cssStr(name);
   var a = board.querySelector('.stack[data-group="' + esc + '"], .g-empty[data-group="' + esc + '"]');
   return a ? a.closest(".group") : null;
 }
@@ -6563,7 +6576,7 @@ function srJump(d){
     var off = (bar ? bar.offsetHeight : 56) + 10;       /* 停在顶部小栏下面 */
     var y = Math.max(0, (head || el).getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
     try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-    flashEl(head || el, head ? "sr-flash" : "lsw-flash");
+    flashEl(head || el, head ? "sr-flash" : "sr-hit", head ? 1500 : 1700);   /* 卡片用点结果那种闪法（lsw-flash 改 box-shadow，会吃掉列表行的灰框） */
   });
 }
 /* 点搜索结果里的一条日程：回到它所在的界面（主页 / 归档区），收着的分组先展开，滚到屏幕中间、闪两下 */
@@ -6590,12 +6603,6 @@ function srShowCard(id){
   /* 放屏幕中间；卡片太高放不下就让顶边停在小栏下面 */
   var y = Math.max(0, Math.round(r.top + window.scrollY - Math.max(head, (window.innerHeight - r.height) / 2)));
   try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-  var item = el.parentElement && el.parentElement.classList.contains("stack-item") ? el.parentElement : null;
-  if(item){
-    var z0 = item.style.zIndex;
-    item.style.zIndex = "99";                         /* 闪的这会儿压在同一摞的上一张上面 */
-    setTimeout(function(){ if(item.style.zIndex === "99") item.style.zIndex = z0; }, 1700);
-  }
   flashEl(el, "sr-hit", 1700);
 }
 
@@ -6620,7 +6627,7 @@ function selKeepPlace(fn){
   }
   fn();
   if(!mark) return;
-  var el = board.querySelector('[data-id="' + mark + '"]');
+  var el = board.querySelector('[data-id="' + cssStr(mark) + '"]');
   if(el) window.scrollBy(0, el.getBoundingClientRect().top - top);
 }
 function selEnter(groupName){
@@ -6672,7 +6679,7 @@ function selGroupIds(name){
 }
 function selToggle(id){
   if(selIds[id]) delete selIds[id]; else selIds[id] = true;
-  var el = board.querySelector('[data-id="' + id + '"]');
+  var el = board.querySelector('[data-id="' + cssStr(id) + '"]');
   if(el) el.classList.toggle("is-sel", !!selIds[id]);
   selPaint();
 }
