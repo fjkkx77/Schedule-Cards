@@ -216,7 +216,6 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 /* 全部展开 / 收起：同排序框一样的白底圆角块，跟「卡片 / 列表」挨着——都是「怎么显示」这一类 */
 .xa-btn{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;padding:0 12px 0 10px;border:0;border-radius:12px;
   background:var(--surface);color:var(--text-2);box-shadow:var(--shadow-sm);font-size:14px;font-weight:600;white-space:nowrap}
-.xa-btn[hidden]{display:none}
 /* 一行放不下（320/360 这类窄屏，排序框会被挤成「自…」）就只留图标，同顶栏按钮的 44×44；放不放得下由 xaFit() 现量 */
 .xa-btn.xa-compact{width:44px;padding:0;justify-content:center}
 .xa-btn.xa-compact .xa-t{display:none}
@@ -1157,17 +1156,17 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .group-head.sr-flash{animation:sr-flash 1.4s ease-out 1;border-radius:14px}
 @media (prefers-reduced-motion: reduce){ .group-head.sr-flash{animation:none} }
 /* 点搜索结果跳到主页上的那张卡：滚到屏幕中间，闪两下（照课表站「下一节课」点过去的效果：描边 + 外光 + 轻微放大）。
-   描边外面先垫 2px 页面底色再画蓝圈：蓝色的卡片也看得出圈；--hs 是卡片原来的阴影，动画里一起写上，不然闪的时候阴影没了 */
-.card.sr-hit{--hs:var(--shadow)}
-.row.sr-hit{--hs:var(--shadow-sm)}
+   · 圈用 outline（离卡片 2px，蓝色卡片也看得出），外光用 drop-shadow：都不碰 box-shadow——卡片在不同位置阴影不一样
+     （列表视图没分组的行还带一圈 10px 灰框），动画改 box-shadow 会让它们闪的时候消失（代码审查指出）
+   · 放大用独立的 scale 属性、不用 transform：左右滑动写的是卡片的 transform，动画占着它的话刚跳过来就滑不动（代码审查指出）
+   · 在一摞里时，srShowCard 临时把它那层 .stack-item 提到最上面，不然上一张会盖住圈的上沿 */
 @keyframes sr-hit{
-  0%,100%{box-shadow:0 0 0 0 transparent,0 0 0 0 transparent,var(--hs);transform:scale(1)}
-  20%,55%{box-shadow:0 0 0 2px var(--bg),0 0 0 5px #2f86f6,0 10px 26px -6px color-mix(in srgb,#2f86f6 55%,transparent);transform:scale(1.03)}
-  38%{box-shadow:0 0 0 2px var(--bg),0 0 0 3px #2f86f6,0 4px 12px -6px color-mix(in srgb,#2f86f6 45%,transparent);transform:scale(1.01)}
+  0%,100%{outline-color:transparent;outline-offset:2px;filter:none;scale:1}
+  20%,55%{outline-color:#2f86f6;outline-offset:2px;filter:drop-shadow(0 8px 16px color-mix(in srgb,#2f86f6 45%,transparent));scale:1.03}
+  38%{outline-color:color-mix(in srgb,#2f86f6 55%,transparent);outline-offset:1px;filter:drop-shadow(0 3px 8px color-mix(in srgb,#2f86f6 30%,transparent));scale:1.01}
 }
-.sr-hit{animation:sr-hit 1.6s ease-in-out 1;position:relative;z-index:4}
-/* .card 自带 overflow:hidden，但阴影画在盒子外面，不受影响 */
-@media (prefers-reduced-motion: reduce){ .sr-hit{animation:none;box-shadow:0 0 0 2px var(--bg),0 0 0 5px #2f86f6,var(--hs)} }
+.sr-hit{outline:3px solid transparent;animation:sr-hit 1.6s ease-in-out 1}
+@media (prefers-reduced-motion: reduce){ .sr-hit{animation:none;outline-color:#2f86f6;outline-offset:2px} }
 
 /* ============ 批量整理（2026-10-18） ============
    右上角 ⋯ →「批量整理」或分组 ⋯ →「选择本组日程」进入。顶上一条「全选 / 已选择 N 项 / 取消」，底下一排「移到分组 / 置顶 / 归档 / 删除」。
@@ -2408,7 +2407,7 @@ function render(){
     if(window.scrollY !== keepY) window.scrollTo(0, keepY);
   }
   try{ xaPaint(); }catch(e){}              /* 「全部展开 / 收起」跟着分组的变化走；出错只停它自己 */
-  /* 搜索层开着时数据变了（在结果里点开编辑、保存了；或同步下来新东西）：结果跟着刷新。出错只停搜索自己 */
+  /* 搜索层开着时数据变了（同步下来新东西）：结果跟着刷新。出错只停搜索自己 */
   if(srOpen) try{ srRender(); }catch(e){}
 }
 function renderNow(){
@@ -2710,6 +2709,8 @@ function toggleGroup(name){
     var st = heads[k].nextElementSibling;
     if(st && st.getAttribute("data-group") === name){
       heads[k].setAttribute("aria-expanded", isExpanded(name) ? "true" : "false");
+      var gm = heads[k].querySelector(".g-main");    /* 读屏读的是这个按钮的状态，原来漏了（代码审查指出） */
+      if(gm) gm.setAttribute("aria-expanded", isExpanded(name) ? "true" : "false");
     }
   }
   layoutStacks(true);
@@ -2743,10 +2744,15 @@ function xaPaint(){
 }
 /* 带文字放得下吗：卡片/列表 + 这个按钮（带字）+ 排序框原本的宽度 + 两道间隙，跟工具条宽度比。
    不写死断点：字体（iPhone 苹方 vs 电脑雅黑）、排序选项文字一变，宽度就变 */
-function xaFit(){
+var xaFitKey = "";
+function xaFit(force){
   if(xaBtn.hidden) return;
   var tb = xaBtn.parentElement, sel = document.getElementById("sortSel");
   if(!tb.clientWidth) return;                       /* 工具条藏着（归档区等）：量不了，回来时 render 会再量 */
+  /* render() 很频繁（30 秒一次、每次同步 / 保存）：工具条宽度、排序选项、按钮文字都没变就不再量（代码审查指出） */
+  var key = tb.clientWidth + "|" + sel.value + "|" + document.getElementById("xaTxt").textContent;
+  if(!force && key === xaFitKey) return;
+  xaFitKey = key;
   xaBtn.classList.remove("xa-compact");
   var mw = sel.style.maxWidth;
   sel.style.maxWidth = "none";                      /* 排序框平时会被压窄，量它本来要多宽 */
@@ -2756,7 +2762,7 @@ function xaFit(){
   xaBtn.classList.toggle("xa-compact", need > tb.clientWidth);
 }
 window.addEventListener("resize", function(){ try{ xaFit(); }catch(e){} });
-if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ try{ xaFit(); }catch(e){} });
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ try{ xaFit(true); }catch(e){} });   /* 字体换了宽度就变，key 看不出来 */
 xaBtn.addEventListener("click", function(){
   var gs = xaGroups();
   if(!gs.length) return;
@@ -5272,8 +5278,7 @@ document.addEventListener("touchstart", function(e){
   var vw = document.documentElement.clientWidth;
   var fromOpen = !!(lswOpen && lswOpen.el === el);
   if(!fromOpen && (x < LSW_EDGE || x > vw - LSW_EDGE)) return;
-  /* startOpen：这一下是从「已经滑开」开始的。fromOpen 换边后会被清掉，这个不会 */
-  lsw = {el:el, x0:x, y0:e.touches[0].clientY, fromOpen:fromOpen, startOpen:fromOpen, locked:false, pos:0, w:0, acts:null};
+  lsw = {el:el, x0:x, y0:e.touches[0].clientY, fromOpen:fromOpen, locked:false, pos:0, w:0, acts:null};
 }, {passive:true});
 
 document.addEventListener("touchmove", function(e){
@@ -5306,7 +5311,7 @@ document.addEventListener("touchmove", function(e){
   /* 从滑开的状态往回推＝只是想收起来：推到零点就停住，不换到另一边。
      2026-10-18 用户：露着「置顶」时往左推想收起，常常推过头直接露出「归档 / 删除」（反过来也一样）。
      要另一边的操作，松手再滑一次；从关着起手的那种「一路拉到另一边」照旧 */
-  if(q < 0 && lsw.startOpen) q = 0;
+  if(q < 0 && lsw.fromOpen) q = 0;
   if(q < 0){
     /* 往回拉过了零点：另一边有操作就换过去（照 iPhone 邮件，一次手势里能从「置顶」一路拉到「归档 / 删除」）。
        换边后以这一刻为新起点：新的 q＝已经拉过零点的那段 */
@@ -6536,11 +6541,13 @@ function groupSecByName(name){
   return a ? a.closest(".group") : null;
 }
 /* 让一个元素亮一下（重复触发时先摘掉再挂上，动画才会重播） */
-function flashEl(el, cls){
+function flashEl(el, cls, ms){
   if(!el) return;
   el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
-  setTimeout(function(){ el.classList.remove(cls); }, 1500);
+  setTimeout(function(){ el.classList.remove(cls); }, ms || 1500);
 }
+/* 拼进属性选择器的值要转义：同步下来的 id 没校验过，带引号会让 querySelector 直接抛错（代码审查指出） */
+function cssStr(s){ return window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function srJump(d){
   srClose();
   srToMain(function(){
@@ -6549,7 +6556,7 @@ function srJump(d){
       if(!isExpanded(d.name) && groupCount(d.name) > 1){ state.expanded.push(d.name); save(); render(); }
       el = groupSecByName(d.name);
     }else if(d.kind === "pin") el = board.querySelector(".pinned-sec");
-    else el = board.querySelector('[data-id="' + d.first + '"]');
+    else el = board.querySelector('[data-id="' + cssStr(d.first) + '"]');
     if(!el) return;
     head = el.querySelector(".group-head");
     var bar = document.getElementById("cbar");
@@ -6574,7 +6581,7 @@ function srJumpEv(id, archived){
   srToMain(function(){ enterAr(); show(); });   /* 先回主页再进：从「只看已过期 / 短期倒计时」过来也走同一条路 */
 }
 function srShowCard(id){
-  var esc = window.CSS && CSS.escape ? CSS.escape(id) : String(id).replace(/["\\]/g, "\\$&");
+  var esc = cssStr(id);
   var el = board.querySelector('.card[data-id="' + esc + '"], .row[data-id="' + esc + '"]');
   if(!el) return;
   var bar = document.getElementById("cbar");
@@ -6583,8 +6590,13 @@ function srShowCard(id){
   /* 放屏幕中间；卡片太高放不下就让顶边停在小栏下面 */
   var y = Math.max(0, Math.round(r.top + window.scrollY - Math.max(head, (window.innerHeight - r.height) / 2)));
   try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-  el.classList.remove("sr-hit"); void el.offsetWidth; el.classList.add("sr-hit");
-  setTimeout(function(){ el.classList.remove("sr-hit"); }, 1700);
+  var item = el.parentElement && el.parentElement.classList.contains("stack-item") ? el.parentElement : null;
+  if(item){
+    var z0 = item.style.zIndex;
+    item.style.zIndex = "99";                         /* 闪的这会儿压在同一摞的上一张上面 */
+    setTimeout(function(){ if(item.style.zIndex === "99") item.style.zIndex = z0; }, 1700);
+  }
+  flashEl(el, "sr-hit", 1700);
 }
 
 /* ================= 批量整理（2026-10-18） =================
