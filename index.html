@@ -11,7 +11,7 @@
 <meta name="description" content="日程卡片 · 倒数与正数天数统计">
 <title>日程卡片</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ffffff'/%3E%3Cpath d='M0 14a14 14 0 0 1 14-14h36a14 14 0 0 1 14 14v8H0z' fill='%232f86f6'/%3E%3Ctext x='32' y='52' font-size='30' font-weight='700' text-anchor='middle' fill='%2314181d' font-family='Arial,sans-serif'%3E12%3C/text%3E%3C/svg%3E">
-<style>
+<style id="appStyle">
 /* ============ 主题变量 ============ */
 :root{
   --bg:#e9eef4;
@@ -1683,7 +1683,7 @@ body.sel-mode .row .row-main{padding-left:48px}
 
 <!-- 通用调手感面板（存档 references/组件_调手感面板 的逐字节副本，登记在那里的 copies.json）；不带 ?tune=1 时不画界面，只提供参数 -->
 <script src="tune-panel.js"></script>
-<script>
+<script id="appMain">
 (function(){
 "use strict";
 
@@ -4223,7 +4223,7 @@ var SYNC_KEY = "schedule-cards-sync-v1";
 var sync = { on:false, code:"", lastAt:0, version:0 };
 var syncStatus = "off";      /* off | ok | syncing | error | unsupported */
 var syncMsg = "";
-var syncTimer = null, syncBusy = false, syncAgain = false;
+var syncTimer = null, syncBusy = false, syncAgain = false, syncAgainTimer = null;
 
 function loadSync(){
   try{
@@ -4316,36 +4316,91 @@ function flushSync(){
   if(!sync.on || !sync.code || !pendingChange || flushing) return;
   clearTimeout(syncTimer);
   flushing = true;
-  pushDoc(state.events.filter(function(e){ return !e.demo; }), sync.version).then(function(r){
+  pushDoc(state.events.filter(function(e){ return !e.demo; }), sync.version, "", true).then(function(r){
     if(r.conflict){ syncNow(); return; }        /* 页面其实还活着（只是切到别的标签）：正常走一遍合并 */
     sync.version = r.version; sync.lastAt = Date.now(); pendingChange = false;
     saveSync(); setSync("ok");
   }).catch(function(){}).then(function(){ flushing = false; });
   /* 短期倒计时那份同理；还没成功同步过一次（不知道版本号）就不冒险 */
   if(typeof sync.scVersion === "number"){
-    pushDoc(sc.items, sync.scVersion, "short").then(function(r){
+    pushDoc(sc.items, sync.scVersion, "short", true).then(function(r){
       if(!r.conflict){ sync.scVersion = r.version; saveSync(); }
     }).catch(function(){});
   }
   /* 分组名册那份：有没传上去的改动才发 */
   if(gsDirty && !gsBroken && typeof sync.gsVersion === "number"){
-    pushDoc(gs.items, sync.gsVersion, "groups").then(function(r){
+    pushDoc(gs.items, sync.gsVersion, "groups", true).then(function(r){
       if(!r.conflict){ sync.gsVersion = r.version; gsDirty = false; saveSync(); }
     }).catch(function(){});
   }
 }
 
+/* 同步请求一律限时（2026-10-19）：网络卡住时请求可能一直不回，syncBusy 就一直是 true，后面的同步全排在它后面，
+   标题下永远是「同步中…」（用户截图）。超时就放弃、报错，30 秒定时 / 切回页面 / 下拉刷新时再来。
+   10 秒是我定的：正常一次同步不到 1 秒，Vercel 冷启动也就几秒，没在用户手机网络上量过。
+   正文也要在时限内读完（响应头先到、正文卡住也算卡住），所以这里把正文读成文本再交回去，用法跟 Response 一样：r.status / r.json()。
+   keepalive 的请求（页面要关了才发的）超时只是不等了，不掐断——页面关掉之后它还得接着发完 */
+var SYNC_TIMEOUT = 10000;
+var netLive = [];       /* 还在路上、可以叫停的请求，每个是一个「叫停」函数（syncKick 用）。keepalive 的（离开页面那次上传）不登记：它跟同步不是一路的，叫停它只会白白丢掉它的结果 */
+/* own=true：不是同步的请求（下拉刷新查新版本 / 预下载），不登记，syncKick 不碰它 */
+function timedFetch(url, opts, ms, own){
+  opts = opts || {};
+  var ac = (typeof AbortController === "function" && !opts.keepalive) ? new AbortController() : null;
+  if(ac) opts.signal = ac.signal;
+  var timer = null, giveUp = null;
+  /* 超时、被叫停都走这里：不再等它。普通请求顺手掐断；keepalive 的不掐，让它在后台发完 */
+  var stop = new Promise(function(_, rej){ giveUp = function(err){ if(ac) ac.abort(); rej(err); }; });
+  var limit = ms || SYNC_TIMEOUT, t0 = Date.now();
+  function fire(){
+    /* 晚了 3 秒以上才到点＝页面在后台被冻过（iOS 锁屏 / 切走）：冻住的那段不算，重新计时，免得一回来就误报「网络太慢」。
+       回到前台时 visibilitychange 那边会把挂着的同步叫停重来，不靠这里 */
+    if(Date.now() - t0 > limit + 3000){ t0 = Date.now(); timer = setTimeout(fire, limit); return; }
+    giveUp(new Error("网络太慢，稍后自动重试"));
+  }
+  timer = setTimeout(fire, limit);
+  function kick(){ var k = new Error("重新同步"); k.kicked = true; giveUp(k); }
+  if(ac && !own) netLive.push(kick);
+  var work = fetch(url, opts).then(function(r){
+    return r.text().then(function(t){ return { status: r.status, etag: r.headers.get("etag") || "", text: t, json: function(){ return JSON.parse(t); } }; });
+  });
+  work.catch(function(){});              /* 掐断后它会再报一次 AbortError，没人等了，吞掉 */
+  function done(){ clearTimeout(timer); var i = netLive.indexOf(kick); if(i >= 0) netLive.splice(i, 1); }
+  /* giveUp 里先掐断、再同步地 rej：stop 一定比因掐断而失败的 work 先落定，race 认的是「重新同步 / 网络太慢」这个错 */
+  return Promise.race([stop, work]).then(function(r){ done(); return r; },
+                                         function(e){ done(); throw e; });
+}
+/* 叫停路上所有同步请求（下拉刷新用：网络刚恢复时，上一次同步可能还挂在一个早就不通的连接上，
+   不叫停的话新的同步要排在它后面、白等到它 10 秒超时——测试里量到下拉后 7.4 秒才开始同步）。
+   叫停一半的上传不会写坏数据：服务端写入要核对版本号，最坏下一轮多合并一次 */
+function syncKick(){
+  netLive.slice().forEach(function(kick){ kick(); });
+}
+
+/* 等「同步彻底停下来」的人（下拉刷新用）：正在跑的和排着队的都做完、或者同步被关掉了，才通知。
+   比数「第几次开始 / 结束」稳：排着的那次要是因为同步被关掉而没跑，计数永远对不上，转圈会白等到 12 秒 */
+var syncIdleWaiters = [];
+function whenSyncIdle(){
+  if(!syncBusy && !syncAgain) return Promise.resolve();
+  return new Promise(function(res){ syncIdleWaiters.push(res); });
+}
+function syncIdle(){
+  if(syncBusy || syncAgain) return;
+  var w = syncIdleWaiters; syncIdleWaiters = [];
+  w.forEach(function(res){ res(); });
+}
 async function syncNow(){
-  if(!sync.on || !sync.code) return;
+  if(!sync.on || !sync.code){ syncIdle(); return; }
   if(syncBusy){ syncAgain = true; return; }      /* 正在同步就排队，避免并发写 */
   syncBusy = true;
+  clearTimeout(syncAgainTimer); syncAgain = false;   /* 排着的那次还没到点、这一次先开始了：这一次就是它，别再跑一遍 */
+  var kicked = false;
   setSync("syncing");
   try{
     /* 分组名册那份和日程**同时**去读（不排队，不给日程同步加等待时间）。它怎么失败都不抛错，只是这一轮拿不到 */
     var gsWait = gsBroken ? Promise.resolve(null)
       : gsFetch().then(function(d){ return {doc: d}; }, function(e){ return {err: e}; });
 
-    var r = await fetch("/api/sync?code=" + encodeURIComponent(sync.code), {cache:"no-store"});
+    var r = await timedFetch("/api/sync?code=" + encodeURIComponent(sync.code), {cache:"no-store"});
     if(r.status === 404){ setSync("unsupported"); return; }
     var data = await r.json();
     if(!data.ok) throw new Error(data.error || ("读取失败 " + r.status));
@@ -4401,27 +4456,36 @@ async function syncNow(){
     /* 短期倒计时那一份（服务端 space=short）排在日程**完全同步完之后**，而且自己兜错：
        它失败只在短期界面里提示，日程的「已同步」状态和待上传标记都不受影响 */
     try{ await syncShort(); scSyncErr(""); }
-    catch(e2){ scSyncErr((e2 && e2.message) || "网络异常"); }
+    catch(e2){ if(e2 && e2.kicked) throw e2; scSyncErr((e2 && e2.message) || "网络异常"); }   /* 被下拉刷新叫停：整次同步到此为止，排着的那次马上重来 */
     /* 分组名册那一份（space=groups）同样排在日程之后、自己兜错：上面已经读回来的直接用，没读到就在这里重读一次 */
+    if(gsPre && gsPre.err && gsPre.err.kicked) throw gsPre.err;   /* 名册那个请求被叫停了：别在这里重读一次，整次结束 */
     try{ await syncGroups(gsPre); gsSyncMsg = ""; }
-    catch(e3){ gsSyncMsg = (e3 && e3.message) || "网络异常"; }
+    catch(e3){ if(e3 && e3.kicked) throw e3; gsSyncMsg = (e3 && e3.message) || "网络异常"; }
     paintSync();
   }catch(e){
-    setSync("error", (e && e.message) || "网络异常");
+    if(e && e.kicked) kicked = true;          /* 被叫停的：还是「同步中…」，排着的那次马上接上 */
+    else setSync("error", (e && e.message) || "网络异常");
   }finally{
     syncBusy = false;
-    if(syncAgain){ syncAgain = false; setTimeout(function(){ syncNow(); }, 400); }
+    /* 排着的那次 400ms 后才开始（被下拉叫停的立刻开始）：这段空当里 syncAgain 要一直亮着，不然等的人会以为已经停了 */
+    if(kicked) syncAgain = true;              /* 被叫停的一律马上重跑，不指望刚好有人排着队 */
+    if(syncAgain){ syncAgainTimer = setTimeout(function(){ syncAgain = false; syncNow(); }, kicked ? 0 : 400); }
+    else syncIdle();
   }
 }
 
-async function pushDoc(events, baseVersion, space){
+async function pushDoc(events, baseVersion, space, leaving){
   var payload = { code: sync.code, baseVersion: baseVersion, doc: { events: events } };
   if(space) payload.space = space;
   var body = JSON.stringify(payload);
-  /* keepalive 让请求在页面被关掉之后也能发完（浏览器限制 64KB，超了就走普通请求） */
+  /* keepalive 让请求在页面被关掉之后也能发完（浏览器限制 64KB，超了就走普通请求）。
+     只给离开页面时那次（flushSync，leaving=true）用（2026-10-19）：平时的上传要能被超时 / 下拉叫停真正掐断——
+     keepalive 的掐不断，会在后台接着发，跟重来的那次同步撞车（白报「另一台设备正在写入」），几个一起挂着还会把 64KB 的总额度占满。
+     平时上传途中页面被关掉也不怕：改动还没算传完（pendingChange 还在），pagehide 时 flushSync 会用 keepalive 再发一次 */
   var opts = { method: "POST", headers: {"Content-Type": "application/json"}, body: body };
-  if(body.length < 60000) opts.keepalive = true;
-  var r = await fetch("/api/sync", opts);
+  if(leaving && body.length < 60000) opts.keepalive = true;
+  /* 上传按数据量放宽时限：每 4KB 多给 1 秒（按上行至少 4KB/s 估的，没实测）——数据多、信号差时 10 秒传不完，不能每次都被掐断 */
+  var r = await timedFetch("/api/sync", opts, SYNC_TIMEOUT + Math.ceil(body.length / 4096) * 1000);
   var d = await r.json();
   if(space && d.space !== space) throw new Error("服务端不认识这份数据的分区");   /* 旧服务端会把它写进日程那一份 */
   if(r.status === 409) return { conflict: true, version: d.version, doc: d.doc };
@@ -4432,7 +4496,7 @@ async function pushDoc(events, baseVersion, space){
 /* ---- 分组名册的同步：同一个同步码，服务端 space=groups 那一份。合并规则和日程一样（按 id + updatedAt） ---- */
 /* 读回云端那份。null = 这个地址 / 这版服务端没有这个分区（安静跳过）；真出错才抛 */
 async function gsFetch(){
-  var r = await fetch("/api/sync?space=groups&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
+  var r = await timedFetch("/api/sync?space=groups&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
   if(r.status === 404 || r.status === 400) return null;   /* 400：旧版服务端不认识 groups 这个分区（部署有先后） */
   var data = await r.json();
   if(!data.ok) throw new Error(data.error || ("分组名单读取失败 " + r.status));
@@ -4475,7 +4539,11 @@ function startSyncLoops(){
   setInterval(function(){ if(!document.hidden) syncNow(); }, 30000);
   document.addEventListener("visibilitychange", function(){
     if(document.hidden) flushSync();     /* 要走了：把待上传的发出去 */
-    else syncNow();                      /* 回来了：拉一次最新的 */
+    else{                                /* 回来了：拉一次最新的。还有一次挂着（锁屏前发出去的、多半早就断了）就叫停重来，不排在它后面等 */
+      var was = syncBusy;
+      syncNow();
+      if(was) syncKick();
+    }
   });
   window.addEventListener("pagehide", flushSync);
   window.addEventListener("focus", function(){ syncNow(); });
@@ -5534,11 +5602,15 @@ function ptrThreshold(){
 
 var ptrEl = document.getElementById("ptr");
 var ptrStartX = 0, ptrStartY = 0, ptrDist = 0;
-var ptrPulling = false, ptrLocked = false, ptrBusy = false, ptrUnlockTimer = null;
+var ptrPulling = false, ptrLocked = false, ptrBusy = false, ptrReloading = false, ptrUnlockTimer = null;
 
 /* 有浮层打开时不接管手势——弹窗自己要能滚 */
 function ptrBlocked(){
-  return ptrBusy || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden;
+  return ptrBusy || ptrOverlayOpen();
+}
+/* 有浮层 / 正在拖 / 批量模式：这时候也不许因为「有新版本」把页面重新加载掉（填了一半的表单会丢） */
+function ptrOverlayOpen(){
+  return dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -5553,28 +5625,127 @@ function ptrReset(animate){
   ptrEl.style.opacity = "0";
   ptrDist = 0;
 }
+/* 下拉刷新＝原地刷新（2026-10-19 改）：重读本机数据重画 + 马上同步一次 + 看看有没有新版本，**有新版本才整页重新加载**。
+   以前每拉一次都整页 reload：网络一卡，iOS 把旧页面冻住（转圈停在半路、再拉没反应），新页面又只下载到一半、
+   脚本没跑起来，主页一片空白只剩「今天」（用户 2026-10-19 截图；本地拿「故意不回数据」的服务器复现出一模一样的画面）。
+   数据本来就在本机，没理由让它等网络。同步本身还是原来那个 syncNow()，请求一个不少。 */
+var PTR_MIN_SPIN = 500;      /* 转圈至少转这么久：太快一闪而过，像没刷新 */
+var PTR_MAX_SPIN = 12000;    /* 最多转这么久就收：同步还没完也不拦着人，标题下「同步中…」会接着说。
+                                一次完整同步是好几个请求先后走（每个最多 10 秒），可能比这长；到点时已经查到的新版本这次不用，下次下拉 / 打开 App 再拿 */
+/* 这一版页面的「指纹」：页面自己的样式（#appStyle）+ 主脚本（#appMain）+ 本站外链脚本的地址，算成一个短哈希。
+   只认带 id 的这两块：浏览器插件（比如深色模式插件）往页面里塞的样式 / 脚本不算，不然每次都会误判成有新版。
+   这句在脚本第一次执行时就算，存的是哈希不是全文（全文 30 多万字，不用多存一份） */
+function ptrHash(str){
+  var h1 = 2166136261, h2 = 5381;
+  for(var i=0;i<str.length;i++){
+    var c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = (Math.imul(h2, 33) + c) | 0;
+  }
+  return str.length + "-" + (h1 >>> 0).toString(36) + "-" + (h2 >>> 0).toString(36);
+}
+/* 本站外链（脚本 + 样式表）的相对地址；插件塞的 chrome-extension:// 之类不算 */
+function ptrSrcs(doc){
+  var out = [], ss = doc.querySelectorAll('script[src], link[rel="stylesheet"][href]');
+  for(var i=0;i<ss.length;i++){
+    var src = ss[i].getAttribute("src") || ss[i].getAttribute("href");
+    if(src.indexOf(":") < 0 && src.indexOf("//") !== 0) out.push(src);
+  }
+  return out.join("|");
+}
+function ptrSig(doc, srcs){
+  var st = doc.getElementById("appStyle"), main = doc.getElementById("appMain");
+  if(!st || !main) return "";
+  return ptrHash(st.textContent + "|" + main.textContent + "|" + srcs);
+}
+/* 外链地址启动时就记（只有两三个元素，不费事）：之后按需加载的 qrcode.js 也是本站相对地址，晚了再数就会多出它、误判成有新版。
+   费时的那部分（30 多万字逐字算哈希）第一次下拉时才算，别压在启动的路上；#appStyle / #appMain 的内容运行中不会变 */
+var PTR_BOOT_SRCS = ptrSrcs(document);
+var ptrBootSig = null;
+function ptrMySig(){
+  if(ptrBootSig === null) ptrBootSig = ptrSig(document, PTR_BOOT_SRCS);
+  return ptrBootSig;
+}
+var ptrSameTag = "";         /* 服务器上「跟我同一版」的那个 ETag：下次查回来还是它，就不用再解析整页 */
+/* 查新版本 / 预下载各自最多等这么久：查不到就算了，下次打开 App 照样拿到新版，犯不着让转圈陪着等满同步那 10 秒 */
+var PTR_UPDATE_TIMEOUT = 6000;
+/* 服务器上有没有新版本：有就返回解析好的新页面；连上了、跟这版一样返回 "same"；网络不行 / 拿回来的不像本站返回 null。
+   页面没变时服务器回 304（不下载正文），浏览器把缓存那份交回来；ETag 跟上次确认过的一样就直接算「没新版」。
+   只改了 tune-panel.js 这类外链文件内容、HTML 没动的版本，这里看不出来——下次打开 App 时照样会拿到 */
+function ptrCheckUpdate(){
+  return timedFetch(location.pathname + location.search, {cache:"no-cache"}, PTR_UPDATE_TIMEOUT, true).then(function(r){
+    if(r.status !== 200) return null;
+    if(r.etag && r.etag === ptrSameTag) return "same";
+    var doc = new DOMParser().parseFromString(r.text, "text/html");
+    if(!doc.getElementById("ptr") || !doc.getElementById("todayLine")) return null;   /* 错误页 / 被劫持的页面：不能往那儿跳 */
+    var mine = ptrMySig();
+    if(!mine) return null;                                /* 自己这版都认不出来：宁可不跳 */
+    if(ptrSig(doc, ptrSrcs(doc)) === mine){ ptrSameTag = r.etag; return "same"; }
+    return doc;
+  }).catch(function(){ return null; });
+}
+/* 新页面要用的同源脚本 / 样式先下载好，全部到手才 reload：下到一半网断了就不跳，免得又跳进一个跑不起来的页面 */
+function ptrPrewarm(doc){
+  var urls = [], els = doc.querySelectorAll('script[src], link[rel="stylesheet"][href]');
+  for(var i=0;i<els.length;i++){
+    var u = null;
+    try{ u = new URL(els[i].getAttribute("src") || els[i].getAttribute("href"), location.href); }catch(e){ return Promise.resolve(false); }   /* 地址写坏了：当作下载不全，不跳 */
+    if(u.origin === location.origin) urls.push(u.href);
+  }
+  return Promise.all(urls.map(function(u){
+    return timedFetch(u, {cache:"no-cache"}, PTR_UPDATE_TIMEOUT, true).then(function(r){ return r.status === 200; }, function(){ return false; });
+  })).then(function(oks){ return oks.every(Boolean); });
+}
 function ptrDoRefresh(){
   ptrBusy = true;
   ptrEl.classList.add("anim", "spin");
   ptrEl.style.transform = "translate3d(0," + (ptrThreshold() - 64 + 12) + "px,0)";
   ptrEl.style.opacity = "1";
-  /* 留一眼转圈，直接跳转会像卡死；标记写进 sessionStorage，
-     用来区分"我的下拉刷新"和"浏览器手势导致的重载" */
-  setTimeout(function(){
-    try{ sessionStorage.setItem("ptr-fired", String(Date.now())); }catch(e){}
-    if(navigator.onLine === false){
-      /* 断网时整页 reload 会变成浏览器的错误页，这时候只做"重读本地数据 + 重绘" */
-      gsSafe(gsLoad); load(); loadSync(); render(); ptrBusy = false; ptrReset(true);
-      setSync(sync.on ? "error" : "off", "当前没有网络");
-      return;
-    }
-    location.reload();
-  }, 260);
-  /* 兜底：重新加载被取消或一直卡着时，10 秒后解锁，别让页面永远滑不动 */
-  clearTimeout(ptrUnlockTimer);
-  ptrUnlockTimer = setTimeout(function(){
-    if(ptrBusy){ ptrBusy = false; ptrReset(true); }
-  }, 10000);
+  var done = false;
+  function finish(){
+    if(done) return;
+    done = true; clearTimeout(cap);
+    ptrBusy = false; ptrReset(true);
+  }
+  var cap = setTimeout(finish, PTR_MAX_SPIN);
+  var minSpin = new Promise(function(res){ setTimeout(res, PTR_MIN_SPIN); });
+
+  /* 先把本机数据重读一遍重画：别的标签页改过的、跨了天的，这一下就跟上了（不用等网络）。短期倒计时那份也要（它的界面里也能下拉）。
+     有同步在路上时只重画、不重读：它正拿着内存里这几份数据在合并 / 上传，中途整块换掉会跟它打架；它做完自己会存、会重画 */
+  if(!syncBusy){ gsSafe(gsLoad); load(); loadSync(); }
+  render();
+  scSafe(function(){ if(!syncBusy) scLoad(); scRender(); });
+
+  if(navigator.onLine === false){
+    setSync(sync.on ? "error" : "off", "当前没有网络");
+    minSpin.then(finish);
+    return;
+  }
+  /* 同步：正在同步的话，syncNow 只是排个队；等到正在跑的、排着的都做完（或者同步被关掉）才算这一拉的同步完了 */
+  var wasBusy = syncBusy;
+  syncNow();
+  /* 路上还有一次没完：叫停它，排着的这次马上开始。不按「走了多久」分：刚发出 1 秒的也可能挂在不通的连接上，
+     等它就是白等 9 秒；叫停一次正常的请求，代价只是重发一次 */
+  if(wasBusy) syncKick();
+  Promise.all([whenSyncIdle(), ptrCheckUpdate(), minSpin]).then(function(r){
+    var doc = r[1];
+    if(done) return;
+    /* 短期倒计时 / 分组名册出过错、已经停用（scBroken / gsBroken）：原地刷新救不回来，以前整页 reload 能。
+       这时候照旧整页重新加载——刚才那次查新版本连上了服务器、确认是同一版，网络是通的，页面资源也都在缓存里 */
+    if(doc === "same") doc = (scBroken || gsBroken) ? document : null;
+    if(!doc || ptrOverlayOpen()) return finish();
+    return ptrPrewarm(doc).then(function(ok){
+      if(done) return;
+      if(!ok || ptrOverlayOpen()) return finish();
+      /* 真有新版本、而且都下载好了：这时才整页重新加载 */
+      clearTimeout(cap);
+      ptrReloading = true;
+      /* 兜底：重新加载被取消或一直卡着时，10 秒后解锁，别让页面永远滑不动 */
+      clearTimeout(ptrUnlockTimer);
+      ptrUnlockTimer = setTimeout(function(){ ptrReloading = false; finish(); }, 10000);
+      location.reload();
+    });
+  }).catch(function(){ finish(); });      /* 哪一步意外抛错：收转圈，别白转到 12 秒 */
 }
 
 document.addEventListener("touchstart", function(e){
@@ -5591,9 +5762,9 @@ document.addEventListener("touchmove", function(e){
     dragTouchMove(e);
     return;
   }
-  /* 刷新中锁住滚动：iOS Safari 发起重新加载后、新页面画出来之前会冻结绘制，
-     这时还能滑，滑出来的区域是一片空白（下拉刷新配方 v1.8） */
-  if(ptrBusy){ e.preventDefault(); return; }
+  /* 整页重新加载中锁住滚动：iOS Safari 发起重新加载后、新页面画出来之前会冻结绘制，
+     这时还能滑，滑出来的区域是一片空白（下拉刷新配方 v1.8）。原地刷新时页面是活的，照常能滑 */
+  if(ptrReloading){ e.preventDefault(); return; }
   if(!ptrPulling || ptrBlocked()) return;
   var dx = e.touches[0].clientX - ptrStartX;
   var dy = e.touches[0].clientY - ptrStartY;
@@ -6307,7 +6478,7 @@ SHEETS.push({mask: askMask, sheet: document.getElementById("askSheet"), close: f
 
 /* ---- 同步：同一个同步码，服务端 space=short 那一份。合并规则和日程完全一样（按 id + updatedAt） ---- */
 async function syncShort(){
-  var r = await fetch("/api/sync?space=short&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
+  var r = await timedFetch("/api/sync?space=short&code=" + encodeURIComponent(sync.code), {cache:"no-store"});
   if(r.status === 404) return;
   var data = await r.json();
   if(!data.ok) throw new Error(data.error || ("短期倒计时读取失败 " + r.status));
