@@ -270,7 +270,7 @@ select.sort{
   overflow-wrap:anywhere;   /* 中文标题一律完整换行显示，不用省略号截断 */
 }
 .card-sub{margin:6px 0 0;font-size:clamp(12px,3.5vw,15px);color:var(--text-2);font-weight:500}
-.card-ymd{font-weight:800}
+.card-ymd{font-weight:800;color:var(--text)}   /* 跟标题同色：只加粗、颜色仍是说明文字的灰，手机上看着发暗（2026-10-19 用户真机反馈） */
 .card-sub2{margin:2px 0 0;font-size:clamp(11px,3.2vw,13px);color:var(--text-3);font-weight:600}
 .tag{
   display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;
@@ -308,7 +308,7 @@ select.sort{
   background:repeating-linear-gradient(135deg, var(--over) 0 9px, var(--over-2) 9px 18px);
   color:var(--over-fg);
 }
-.card.is-over .card-title{color:var(--text-2)}
+.card.is-over .card-title,.card.is-over .card-ymd{color:var(--text-2)}   /* 过期卡整张调暗，日期不能比标题亮 */
 .card.is-over .card-num .n,.card.is-over .card-num .u{color:var(--text-3)}
 /* 过期卡上只有「已过期」这一枚是红的；分组名、「原属 X」这类说明性标签退成中性灰——
    卡片本色已经褪掉了，它们再跟着变红，一行里就是两三个"警告"（2026-09-26 加分组标签时改） */
