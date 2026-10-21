@@ -221,6 +221,8 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 .xa-btn{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;padding:0 12px 0 10px;border:0;border-radius:12px;
   background:var(--surface);color:var(--text-2);box-shadow:var(--shadow-sm);font-size:14px;font-weight:600;white-space:nowrap}
 /* 一行放不下（320/360 这类窄屏，排序框会被挤成「自…」）就只留图标，同顶栏按钮的 44×44；放不放得下由 xaFit() 现量 */
+/* 筛选按钮收窄 4px（内边距 7/8、图标和字间距 3）：390 宽「筛选带字 + 全部展开图标」（用户 2026-10-21 选的丙）原来差 2px */
+.fv-btn{padding:0 8px 0 7px;gap:3px}
 .xa-btn.xa-compact{width:44px;padding:0;justify-content:center}
 .xa-btn.xa-compact .xa-t{display:none}
 select.sort{
