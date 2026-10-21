@@ -4352,9 +4352,11 @@ function timedFetch(url, opts, ms, own){
   var stop = new Promise(function(_, rej){ giveUp = function(err){ if(ac) ac.abort(); rej(err); }; });
   var limit = ms || SYNC_TIMEOUT, t0 = Date.now();
   function fire(){
-    /* 晚了 3 秒以上才到点＝页面在后台被冻过（iOS 锁屏 / 切走）：冻住的那段不算，重新计时，免得一回来就误报「网络太慢」。
-       回到前台时 visibilitychange 那边会把挂着的同步叫停重来，不靠这里 */
-    if(Date.now() - t0 > limit + 3000){ t0 = Date.now(); timer = setTimeout(fire, limit); return; }
+    /* 晚了 3 秒以上才到点、而且这会儿页面看得见＝页面在后台被冻过（iOS 锁屏 / 切走又回来）：冻住的那段不算，重新计时，免得一回来就误报「网络太慢」。
+       回到前台时 visibilitychange 那边会把挂着的同步叫停重来，不靠这里。
+       页面还在后台时不重新计时：电脑上后台标签页的计时器被放慢到约 1 分钟一次，每次都「晚到」，
+       一直重新计时的话挂住的请求永远不会超时、一直「同步中」（同步组件审查指出，同一种写法） */
+    if(Date.now() - t0 > limit + 3000 && !document.hidden){ t0 = Date.now(); timer = setTimeout(fire, limit); return; }
     giveUp(new Error("网络太慢，稍后自动重试"));
   }
   timer = setTimeout(fire, limit);
