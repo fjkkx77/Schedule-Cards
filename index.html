@@ -217,6 +217,8 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
    放不放得下由 xaFit() 现量，不写死断点 */
 .toolbar.tb-wrap{flex-wrap:wrap;row-gap:10px}
 .toolbar.tb-wrap .sort-wrap{flex:1 0 100%;justify-content:space-between}
+/* 再窄（比 320 还窄、或系统字调大）连「筛选图标 + 排序」都放不下：排序框自己再换一行，也不压窄它（代码审查指出） */
+.toolbar.tb-wrap .sort-wrap{flex-wrap:wrap;row-gap:10px}
 /* 全部展开 / 收起：同排序框一样的白底圆角块，跟「卡片 / 列表」挨着——都是「怎么显示」这一类 */
 .xa-btn{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;padding:0 12px 0 10px;border:0;border-radius:12px;
   background:var(--surface);color:var(--text-2);box-shadow:var(--shadow-sm);font-size:14px;font-weight:600;white-space:nowrap}
@@ -2526,8 +2528,19 @@ function enterFv(){
 function leaveFv(){
   if(!fvView) return;
   var st = null; try{ st = history.state; }catch(e){}
-  if(st && st.fv){ history.back(); return; }      /* 交给 popstate 统一收尾 */
-  fvView = false; render(); window.scrollTo(0, fvScrollY);
+  var direct = function(){ fvView = false; render(); window.scrollTo(0, fvScrollY); };
+  if(st && st.fv){
+    history.back();                                 /* 交给 popstate 统一收尾 */
+    /* 这一格前面没有历史（比如停在筛选里的页面被系统收走后重新打开）就不会有 popstate，「完成」会像按不动：
+       400ms 还在筛选里就直接回主页，并把这一格的标记抹掉（同 srToMain 的兜底，代码审查指出） */
+    setTimeout(function(){
+      if(!fvView) return;
+      try{ history.replaceState(null, ""); }catch(e){}
+      direct();
+    }, 400);
+    return;
+  }
+  direct();
 }
 document.getElementById("fvBtn").addEventListener("click", enterFv);
 document.getElementById("fvDone").addEventListener("click", leaveFv);
@@ -2545,12 +2558,17 @@ var fvDays = document.getElementById("fvDays");
     if(fv.range === "c"){ try{ fvDays.focus(); fvDays.select(); }catch(e){} }
   });
 });
-fvDays.addEventListener("input", function(){
-  var v = fvDays.value.replace(/\D/g, "").slice(0, 4);
+/* 只认数字：全角数字（电脑中文输入法全角模式打出来的 ７）先换成半角；输入法还在拼写时不动它（改值会打断输入法）。
+   开头的 0 去掉（007 → 7），框里写的和格子上算的一致（代码审查指出） */
+function fvReadDays(){
+  var raw = fvDays.value.replace(/[０-９]/g, function(ch){ return String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 48); });
+  var v = raw.replace(/\D/g, "").slice(0, 4).replace(/^0+(?=\d)/, "");
   if(v !== fvDays.value) fvDays.value = v;
   fv.custom = v === "" ? null : +v;
   fvSave(); render();
-});
+}
+fvDays.addEventListener("input", function(e){ if(!e.isComposing) fvReadDays(); });
+fvDays.addEventListener("compositionend", fvReadDays);
 fvDays.addEventListener("keydown", function(e){
   if(e.key === "Enter" && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); fvDays.blur(); }
 });
