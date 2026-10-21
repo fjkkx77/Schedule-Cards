@@ -212,7 +212,11 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
   min-height:44px;padding:0 14px;border-radius:10px;font-size:14px;font-weight:600;
 }
 .seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
-.sort-wrap{flex:1 1 auto;min-width:0;display:flex;justify-content:flex-end}
+.sort-wrap{flex:1 1 auto;min-width:0;display:flex;justify-content:flex-end;align-items:center;gap:8px}
+/* 一行实在放不下（320/360 宽：按钮全换成图标也不够）时，「筛选 + 排序」整体换到第二行，筛选靠左、排序靠右。
+   放不放得下由 xaFit() 现量，不写死断点 */
+.toolbar.tb-wrap{flex-wrap:wrap;row-gap:10px}
+.toolbar.tb-wrap .sort-wrap{flex:1 0 100%;justify-content:space-between}
 /* 全部展开 / 收起：同排序框一样的白底圆角块，跟「卡片 / 列表」挨着——都是「怎么显示」这一类 */
 .xa-btn{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;padding:0 12px 0 10px;border:0;border-radius:12px;
   background:var(--surface);color:var(--text-2);box-shadow:var(--shadow-sm);font-size:14px;font-weight:600;white-space:nowrap}
@@ -327,11 +331,11 @@ select.sort{
    原先除置顶外全挤在一个大框里，没分组的那条紧跟在某组后面，看着就像那组的。
    框用 box-shadow 的 10px 扩展画，**不改任何布局**：堆叠卡片的位置是 JS 按 transform 算的，拖拽排序也按 DOM 同级项算，
    动结构会牵连这两套逻辑。置顶区（.pinned）和「只看已过期」里的列表保持原样一个框 */
-body:not(.od-mode) #board > .list:not(.pinned){background:transparent;box-shadow:none;gap:24px}
-body:not(.od-mode) #board > .list:not(.pinned) > .row{box-shadow:var(--shadow-sm), 0 0 0 10px var(--surface-2), var(--lbox-shadow)}
-body:not(.od-mode) #board > .list:not(.pinned) > .group > .stack{border-radius:var(--radius-row);box-shadow:0 0 0 10px var(--surface-2), var(--lbox-shadow)}
-body:not(.od-mode) #board > .list:not(.pinned) > .group{padding-top:0}
-body:not(.od-mode) #board > .list:not(.pinned) > .group > .group-head{margin-bottom:12px}   /* 框往上扩 10px，标题留出 2px 缝 */
+body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned){background:transparent;box-shadow:none;gap:24px}
+body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .row{box-shadow:var(--shadow-sm), 0 0 0 10px var(--surface-2), var(--lbox-shadow)}
+body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .stack{border-radius:var(--radius-row);box-shadow:0 0 0 10px var(--surface-2), var(--lbox-shadow)}
+body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group{padding-top:0}
+body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-head{margin-bottom:12px}   /* 框往上扩 10px，标题留出 2px 缝 */
 .row{
   --c:#f5a13c;--cd:#ef7d20;
   display:flex;align-items:stretch;
@@ -424,6 +428,31 @@ body.ar-mode .toolbar, body.ar-mode .fab, body.ar-mode #odBar{display:none}
 .ar-cap{margin:-6px 6px 12px;font-size:13px;color:var(--text-2);font-weight:600}
 .ar-sec + .ar-sec{margin-top:14px}
 .ar-sec > .group-head{margin-bottom:10px}
+/* ---- 筛选（2026-10-21） ----
+   标题行同归档区（不要色条、标题 20px、「完成」钉在小栏下）；下面两层条件：
+   ① 倒数到期 / 正数 两段；② 倒数时再选几天内：五格等宽排满一行，上面是名字、下面是数量
+   （同一日轨道「全部 N / 一级 N」的意思；名字和数量竖着排，是为了 320 宽也放得下五格） */
+body.fv-mode .toolbar, body.fv-mode .fab, body.fv-mode #odBar{display:none}
+.fv-ctl{margin:0 2px 12px}
+.seg.fv-tabs{margin-bottom:10px}
+.fv-tabs button{flex:1 1 0;min-width:0}
+.fv-tabs em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--text-3);margin-left:2px}
+.fv-tabs button[aria-pressed="true"] em{color:var(--text-2)}
+.fv-chips{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.fv-chips button{min-height:56px;min-width:0;padding:6px 2px;border:0;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-sm);
+  color:var(--text-2);font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:manipulation}
+.fv-chips b{font-size:13px;font-weight:600;white-space:nowrap}
+.fv-chips em{font-style:normal;font-size:18px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--text)}
+.fv-chips em.zero{color:var(--text-3)}
+/* 选中：实心蓝白字。#2272dc 比站里常用的 #2f86f6 深一档——白字 13px 要 4.5:1，#2f86f6 只有 3.7 */
+.fv-chips button[aria-pressed="true"]{background:#2272dc;color:#fff;box-shadow:none}
+.fv-chips button[aria-pressed="true"] em{color:#fff}
+.fv-custom{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin-top:10px;font-size:14px;font-weight:600;color:var(--text-2)}
+/* 字号 17：iOS 上输入框字号小于 16，聚焦时会把整页放大 */
+.fv-custom input{width:76px;min-height:44px;padding:0 8px;border:0;border-radius:12px;background:var(--surface);
+  box-shadow:var(--shadow-sm), inset 0 0 0 1px var(--line);color:var(--text);font:inherit;font-size:17px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.fv-custom input:focus{outline:none;box-shadow:var(--shadow-sm), inset 0 0 0 2px #2f86f6}
+.fv-cap{margin:10px 4px 0}
 .ask-pre{white-space:pre-line;text-align:left}
 /* 编辑页打开的是归档的日程：顶上一条紫色说明，时间停在归档那一刻 */
 .ar-freeze{margin:-4px 2px 14px;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;font-weight:600;
@@ -1262,7 +1291,12 @@ body.sel-mode .row .row-main{padding-left:48px}
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path id="xaIco" d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>
       <span class="xa-t" id="xaTxt">全部展开</span>
     </button>
+    <!-- 筛选（2026-10-21 用户选的「工具条按钮」）：挨着排序框，都是「看哪些、按什么顺序」这一类。点进去是「筛选」视图（同「只看已过期」那种主页换筛选） -->
     <div class="sort-wrap">
+      <button type="button" class="xa-btn fv-btn" id="fvBtn" aria-label="筛选：按到期天数、只看正数">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.4V18l-3.6 2v-7.6z"/></svg>
+        <span class="xa-t">筛选</span>
+      </button>
       <select class="sort" id="sortSel" aria-label="排序方式">
         <option value="manual">自定义顺序</option>
         <option value="days">按天数临近</option>
@@ -1288,6 +1322,31 @@ body.sel-mode .row .row-main{padding-left:48px}
   <div class="group-head pinned-head od-head ar-head" id="arHead" hidden>
     <span class="g-name">归档区</span><span class="g-count" id="arCount">0</span>
     <button type="button" class="od-done" id="arDone">完成</button>
+  </div>
+
+  <!-- 筛选视图的标题行 + 筛选条件（2026-10-21）。标题行同归档区写法；条件在标题行下面、跟着页面滚 -->
+  <div class="group-head pinned-head od-head ar-head fv-head" id="fvHead" hidden>
+    <span class="g-name">筛选</span><span class="g-count" id="fvCount">0</span>
+    <button type="button" class="od-done" id="fvDone">完成</button>
+  </div>
+  <div class="fv-ctl" id="fvCtl" hidden>
+    <div class="seg fv-tabs" role="group" aria-label="筛选哪一类">
+      <button type="button" id="fvTabDue" data-tab="due" aria-pressed="true">倒数到期 <em id="fvNDue">0</em></button>
+      <button type="button" id="fvTabUp" data-tab="up" aria-pressed="false">正数 <em id="fvNUp">0</em></button>
+    </div>
+    <div class="fv-chips" id="fvChips" role="group" aria-label="多少天内到期">
+      <button type="button" data-r="0" aria-pressed="false"><b>今天</b><em>0</em></button>
+      <button type="button" data-r="3" aria-pressed="false"><b>3 天内</b><em>0</em></button>
+      <button type="button" data-r="7" aria-pressed="false"><b>7 天内</b><em>0</em></button>
+      <button type="button" data-r="30" aria-pressed="false"><b>30 天内</b><em>0</em></button>
+      <button type="button" data-r="c" aria-pressed="false"><b>自定义</b><em>—</em></button>
+    </div>
+    <label class="fv-custom" id="fvCustom" hidden>
+      <span>到期天数在</span>
+      <input id="fvDays" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" enterkeyhint="done" placeholder="天数" aria-label="自定义天数">
+      <span>天以内（含今天）</span>
+    </label>
+    <p class="ar-cap fv-cap" id="fvCap"></p>
   </div>
 
   <main id="board"></main>
@@ -2230,14 +2289,14 @@ function leaveOd(){
 /* 「只看已过期」「短期倒计时」「归档区」共用这一个出口：历史记录里记着当前该是哪个界面 */
 window.addEventListener("popstate", function(){
   var st = history.state || {};
-  var wantOd = !!st.od, wantSc = !!st.sc, wantAr = !!st.ar;
-  if(wantOd === odView && wantSc === scView && wantAr === arView) return;
-  var backY = scView && !wantSc ? scScrollY : arView && !wantAr ? arScrollY : odScrollY;
-  odView = wantOd; scView = wantSc; arView = wantAr;
+  var wantOd = !!st.od, wantSc = !!st.sc, wantAr = !!st.ar, wantFv = !!st.fv;
+  if(wantOd === odView && wantSc === scView && wantAr === arView && wantFv === fvView) return;
+  var backY = scView && !wantSc ? scScrollY : arView && !wantAr ? arScrollY : fvView && !wantFv ? fvScrollY : odScrollY;
+  odView = wantOd; scView = wantSc; arView = wantAr; fvView = wantFv;
   lswClose(false);
   render();
   scSafe(function(){ scRender(); scWakeSync(); });
-  window.scrollTo(0, (wantOd || wantSc || wantAr) ? 0 : backY);
+  window.scrollTo(0, (wantOd || wantSc || wantAr || wantFv) ? 0 : backY);
 });
 document.getElementById("odBar").addEventListener("click", enterOd);
 document.getElementById("odDone").addEventListener("click", leaveOd);
@@ -2336,10 +2395,10 @@ function arDetail(ev){
 function enterAr(){
   if(arView) return;
   var st = null; try{ st = history.state; }catch(e){}
-  if((odView && st && st.od) || (scView && st && st.sc)){
-    arScrollY = odView ? odScrollY : scScrollY;
+  if((odView && st && st.od) || (scView && st && st.sc) || (fvView && st && st.fv)){
+    arScrollY = odView ? odScrollY : fvView ? fvScrollY : scScrollY;
     try{ history.replaceState({ar:1}, ""); }catch(e){}
-    odView = false; scView = false;
+    odView = false; scView = false; fvView = false;
   }else{
     arScrollY = window.scrollY;
     try{ history.pushState({ar:1}, ""); }catch(e){}
@@ -2405,6 +2464,147 @@ function renderArchive(isCard){
   secs.forEach(function(s){ board.appendChild(arSection(s.title, "var(--lsw-arc-fg)", s.items, make, isCard)); });
 }
 
+/* ---- 筛选（2026-10-21） ----
+   工具条「筛选」进来，主页换成筛选结果（同「只看已过期」：不是弹窗，卡片照常点开编辑、左滑归档 / 删除，不能拖）。两类：
+   · 倒数到期：今天 / 3 天内 / 7 天内 / 30 天内 / 自定义 N 天内。**按卡片上显示的那个数算**——卡片写「3 天」就在「3 天内」里，
+     「不含到期当天」的卡也一样（它显示的数本来就少 1）；「就是今天 / 今天到期 / 最后一天」算 0 天。都含今天。
+     只算倒数中的（numInfo 的 left / dueToday），自动模式还没到日子的也算；已过期的不算（有「只看已过期」管）
+   · 正数：卡片上是正数的（numInfo 的 mode 为 up，含自动模式过了日子转正数的、还没开始的），累计最久的在上面
+   这些都是用户 2026-10-21 定的。看的是 boardEvents：归档的、短期倒计时不算。
+   选了哪一格记在本机（单独一个键，不进导出、不同步），下次进来还是它 */
+var fvView = false;       /* 是否处于筛选视图 */
+var fvScrollY = 0;        /* 进来前主页滚到哪 */
+var FV_KEY = "schedule-cards-filter-v1";
+var FV_RANGES = ["0", "3", "7", "30", "c"];
+var fv = {tab: "due", range: "7", custom: null};
+function fvLoad(){
+  try{
+    var d = JSON.parse(localStorage.getItem(FV_KEY) || "null");
+    if(!d) return;
+    if(d.tab === "due" || d.tab === "up") fv.tab = d.tab;
+    if(FV_RANGES.indexOf(d.range) > -1) fv.range = d.range;
+    if(typeof d.custom === "number" && d.custom >= 0 && d.custom <= 9999 && d.custom === Math.floor(d.custom)) fv.custom = d.custom;
+  }catch(e){}
+}
+function fvSave(){ try{ localStorage.setItem(FV_KEY, JSON.stringify(fv)); }catch(e){} }
+/* 还剩几天到期（按卡片上显示的数）；不是「倒数中」的返回 -1 */
+function fvLeft(ev, t){
+  var i = numInfo(ev, t);
+  if(i.bad || i.mode !== "down") return -1;
+  if(i.state === "dueToday") return 0;
+  return i.state === "left" ? i.diff : -1;
+}
+function fvIsUp(ev, t){ var i = numInfo(ev, t); return !i.bad && i.mode === "up"; }
+function fvLimit(){ return fv.range === "c" ? fv.custom : +fv.range; }    /* 自定义还没填＝null */
+function fvTie(a, b){                    /* 并列时按自定义顺序（同主页的兜底写法） */
+  return (a.order || 0) - (b.order || 0) || (a.createdAt || 0) - (b.createdAt || 0) ||
+         (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+function fvList(t){
+  var evs = boardEvents();
+  if(fv.tab === "up"){
+    return evs.filter(function(e){ return fvIsUp(e, t); }).sort(function(a, b){
+      return resolve(a, t).date - resolve(b, t).date || fvTie(a, b);     /* 起算日越早＝累计越久，排上面；没开始的自然在最后 */
+    });
+  }
+  var n = fvLimit();
+  if(n === null) return [];
+  return evs.filter(function(e){ var d = fvLeft(e, t); return d >= 0 && d <= n; })
+    .sort(function(a, b){ return rank(a, t) - rank(b, t) || fvTie(a, b); });   /* rank：剩得最少的在上，「今天到期」排「最后一天」前面 */
+}
+function enterFv(){
+  if(fvView) return;
+  fvScrollY = window.scrollY;
+  try{ history.pushState({fv:1}, ""); }catch(e){}
+  fvView = true;
+  lswClose(false);
+  render();
+  window.scrollTo(0, 0);
+}
+function leaveFv(){
+  if(!fvView) return;
+  var st = null; try{ st = history.state; }catch(e){}
+  if(st && st.fv){ history.back(); return; }      /* 交给 popstate 统一收尾 */
+  fvView = false; render(); window.scrollTo(0, fvScrollY);
+}
+document.getElementById("fvBtn").addEventListener("click", enterFv);
+document.getElementById("fvDone").addEventListener("click", leaveFv);
+[].forEach.call(document.querySelectorAll(".fv-tabs button"), function(b){
+  b.addEventListener("click", function(){
+    if(fv.tab === b.getAttribute("data-tab")) return;
+    fv.tab = b.getAttribute("data-tab"); fvSave(); render();
+  });
+});
+var fvDays = document.getElementById("fvDays");
+[].forEach.call(document.querySelectorAll("#fvChips button"), function(b){
+  b.addEventListener("click", function(){
+    fv.range = b.getAttribute("data-r"); fvSave(); render();
+    /* 点「自定义」当下就聚焦，iOS 才会弹出键盘（focus 要在手势里同步调） */
+    if(fv.range === "c"){ try{ fvDays.focus(); fvDays.select(); }catch(e){} }
+  });
+});
+fvDays.addEventListener("input", function(){
+  var v = fvDays.value.replace(/\D/g, "").slice(0, 4);
+  if(v !== fvDays.value) fvDays.value = v;
+  fv.custom = v === "" ? null : +v;
+  fvSave(); render();
+});
+fvDays.addEventListener("keydown", function(e){
+  if(e.key === "Enter" && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); fvDays.blur(); }
+});
+/* 标题行下面的条件区：数量、选中哪格、自定义那行。每次 render 都跟着数据重算 */
+function fvPaint(t){
+  var evs = boardEvents(), lefts = [], nUp = 0;
+  evs.forEach(function(e){ var d = fvLeft(e, t); if(d >= 0) lefts.push(d); if(fvIsUp(e, t)) nUp++; });
+  var countIn = function(n){ return n === null ? null : lefts.filter(function(d){ return d <= n; }).length; };
+  var due = fv.tab === "due";
+  document.getElementById("fvTabDue").setAttribute("aria-pressed", due ? "true" : "false");
+  document.getElementById("fvTabUp").setAttribute("aria-pressed", due ? "false" : "true");
+  document.getElementById("fvNDue").textContent = lefts.length;
+  document.getElementById("fvNUp").textContent = nUp;
+  var chips = document.getElementById("fvChips");
+  chips.hidden = !due;
+  [].forEach.call(chips.querySelectorAll("button"), function(b){
+    var r = b.getAttribute("data-r");
+    var n = countIn(r === "c" ? fv.custom : +r);
+    var em = b.querySelector("em");
+    em.textContent = n === null ? "—" : n;
+    em.classList.toggle("zero", !n);
+    var on = r === fv.range;
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.setAttribute("aria-label", (r === "c" ? (fv.custom === null ? "自定义天数" : fv.custom + " 天内") : b.querySelector("b").textContent) +
+      (n === null ? "" : "到期，" + n + " 个"));
+  });
+  var cus = document.getElementById("fvCustom");
+  cus.hidden = !(due && fv.range === "c");
+  /* 正在输入时别去改它（会把光标挪走）；别处改了值（比如刚读进来）才写回去 */
+  if(document.activeElement !== fvDays) fvDays.value = fv.custom === null ? "" : String(fv.custom);
+  var cap = document.getElementById("fvCap"), n = fvLimit();
+  cap.textContent = !due ? "卡片上是正数的日程，累计最久的在上面。"
+    : n === null ? "填一个天数：卡片上剩余天数不超过它的都会列出来。"
+    : (n === 0 ? "今天到期的日程。" : "卡片上剩余天数在 " + n + " 天以内的日程（含今天到期），快到期的在上面。");
+}
+function renderFilter(t, isCard){
+  fvPaint(t);
+  var list = fvList(t);
+  document.getElementById("fvCount").textContent = list.length;
+  if(!list.length){
+    var n = fvLimit(), e = document.createElement("div");
+    e.className = "empty";
+    var msg = fv.tab === "up" ? "还没有正数的日程"
+      : n === null ? "在上面填一个天数"
+      : n === 0 ? "今天没有到期的日程" : n + " 天内没有要到期的日程";
+    e.innerHTML = '<div class="big">✓</div><p></p><p style="color:var(--text-3);font-size:13px">点右上角「完成」回到全部日程</p>';
+    e.querySelector("p").textContent = msg;
+    board.appendChild(e);
+    return;
+  }
+  var box = document.createElement("div");
+  box.className = isCard ? "cards" : "list";
+  list.forEach(function(ev){ box.appendChild(isCard ? cardEl(ev, t) : rowEl(ev, t)); });   /* 平铺、不分组、不叠放 */
+  board.appendChild(box);
+}
+
 /* 整块重画时保住页面滚动位置（2026-10-08 用户 iPhone 截图：长按拖动松手后整页往上翻一大段）。
    原因：renderNow() 先清空列表再重建，分组的高度要等 layoutStacks() 量完才写回去，中间有一瞬页面变短；
    Safari 这时把滚动位置截短，高度回来了也不还回去（Chrome 有滚动锚定所以看不出来，Playwright WebKit 实测翻 67px）。
@@ -2450,12 +2650,16 @@ function renderNow(){
   document.body.classList.toggle("sel-mode", !!selMode);
   document.getElementById("arHead").hidden = !arView;
   document.getElementById("arBtn").setAttribute("aria-pressed", arView ? "true" : "false");
-  var odN = (odView || arView) ? 0 : overdueEvents(t).length;
+  document.body.classList.toggle("fv-mode", fvView);
+  document.getElementById("fvHead").hidden = !fvView;
+  document.getElementById("fvCtl").hidden = !fvView;
+  var odN = (odView || arView || fvView) ? 0 : overdueEvents(t).length;
   var odBar = document.getElementById("odBar");
-  odBar.hidden = odView || arView || odN === 0;
+  odBar.hidden = odView || arView || fvView || odN === 0;
   document.getElementById("odNum").textContent = odN;
   odBar.setAttribute("aria-label", odN + " 个日程已过期，点击查看");
   if(arView){ renderArchive(state.view === "card"); return; }
+  if(fvView){ renderFilter(t, state.view === "card"); return; }
   if(odView){
     renderOverdue(t, function(ev){ return state.view === "card" ? cardEl(ev, t) : rowEl(ev, t); }, state.view === "card");
     return;
@@ -2760,24 +2964,42 @@ function xaPaint(){
   xaBtn.setAttribute("aria-label", open ? "所有分组全部收起" : "所有分组全部展开");
   xaFit();
 }
-/* 带文字放得下吗：卡片/列表 + 这个按钮（带字）+ 排序框原本的宽度 + 两道间隙，跟工具条宽度比。
+/* 工具条放不放得下：卡片/列表、全部展开、筛选、排序框各自原本多宽，跟工具条宽度比，挑第一个放得下的摆法——
+   ① 都带字 ② 全部展开只留图标 ③ 筛选也只留图标 ④ 都不行（320/360 宽）：「筛选 + 排序」换到第二行，两行各自再按 ①② 挑。
+   先缩「全部展开」：筛选是新入口，带着字才看得出来是什么（一日轨道的「只看」藏在菜单里，用户一直没发现）。
+   排序框永远不压窄（压窄会变成「自…」，2026-10-18 就是为这个做的缩图标）。
    不写死断点：字体（iPhone 苹方 vs 电脑雅黑）、排序选项文字一变，宽度就变 */
 var xaFitKey = "";
+var fvBtn = document.getElementById("fvBtn");
 function xaFit(force){
   var tb = xaBtn.parentElement, sel = document.getElementById("sortSel");
-  /* 按钮或工具条藏着（归档区等）：量不了。要是字体刚换（force），清掉缓存，回主页时 render 一定重量（代码审查指出） */
-  if(xaBtn.hidden || !tb.clientWidth){ if(force) xaFitKey = ""; return; }
+  /* 工具条藏着（归档区等）：量不了。要是字体刚换（force），清掉缓存，回主页时 render 一定重量（代码审查指出） */
+  if(!tb.clientWidth){ if(force) xaFitKey = ""; return; }
   /* render() 很频繁（30 秒一次、每次同步 / 保存）：工具条宽度、排序选项、按钮文字都没变就不再量（代码审查指出） */
-  var key = tb.clientWidth + "|" + sel.value + "|" + document.getElementById("xaTxt").textContent;
+  var key = tb.clientWidth + "|" + sel.value + "|" + xaBtn.hidden + "|" + document.getElementById("xaTxt").textContent;
   if(!force && key === xaFitKey) return;
   xaFitKey = key;
-  xaBtn.classList.remove("xa-compact");
+  var hasXa = !xaBtn.hidden;
+  tb.classList.remove("tb-wrap");
+  xaBtn.classList.remove("xa-compact"); fvBtn.classList.remove("xa-compact");
   var mw = sel.style.maxWidth;
   sel.style.maxWidth = "none";                      /* 排序框平时会被压窄，量它本来要多宽 */
-  var gap = parseFloat(getComputedStyle(tb).columnGap) || 0;
-  var need = tb.querySelector(".seg").offsetWidth + xaBtn.offsetWidth + sel.offsetWidth + gap * 2;
+  var xaFull = hasXa ? xaBtn.offsetWidth : 0, fFull = fvBtn.offsetWidth;
+  xaBtn.classList.add("xa-compact"); fvBtn.classList.add("xa-compact");
+  var xaIc = hasXa ? xaBtn.offsetWidth : 0, fIc = fvBtn.offsetWidth;
+  var seg = tb.querySelector(".seg").offsetWidth, sw = sel.offsetWidth;
   sel.style.maxWidth = mw;
-  xaBtn.classList.toggle("xa-compact", need > tb.clientWidth);
+  var gap = parseFloat(getComputedStyle(tb).columnGap) || 0;
+  var gIn = parseFloat(getComputedStyle(sel.parentElement).columnGap) || 0;
+  var W = tb.clientWidth;
+  var row1 = function(xa){ return seg + (hasXa ? gap + xa : 0); };      /* 卡片/列表 + 全部展开 */
+  var row2 = function(f){ return f + gIn + sw; };                         /* 筛选 + 排序（同在 .sort-wrap 里） */
+  var plan = [[xaFull, fFull], [xaIc, fFull], [xaIc, fIc]].filter(function(p){ return row1(p[0]) + gap + row2(p[1]) <= W; })[0];
+  var wrap = !plan;
+  if(wrap) plan = [row1(xaFull) <= W ? xaFull : xaIc, row2(fFull) <= W ? fFull : fIc];
+  tb.classList.toggle("tb-wrap", wrap);
+  xaBtn.classList.toggle("xa-compact", hasXa && plan[0] !== xaFull);
+  fvBtn.classList.toggle("xa-compact", plan[1] !== fFull);
 }
 window.addEventListener("resize", function(){ try{ xaFit(); }catch(e){} });
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ try{ xaFit(true); }catch(e){} });   /* 字体换了宽度就变，key 看不出来 */
@@ -2866,7 +3088,7 @@ function activate(ev){
   var g = (ev.group || "").trim();
   if(arView && isArchived(ev)){ arDetail(ev); return; }   /* 归档区里定格了，不进编辑，看详情 / 移回主页 */
   /* 「只看已过期」里是平铺的，不存在"先展开那一摞"，点了就是编辑 */
-  if(!odView && !isPinned(ev) && g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
+  if(!odView && !fvView && !isPinned(ev) && g && !isExpanded(g) && groupCount(g) > 1){ toggleGroup(g); return; }
   openForm(ev.id);
 }
 
@@ -2939,8 +3161,8 @@ function cardEl(ev, t){
     if(info.state === "notStarted") tags.push(tagEl("未开始"));
     /* 置顶的卡片离开了原分组，把它原来属于哪组标出来，免得找不着 */
     if(isPinned(ev) && (ev.group || "").trim()) tags.push(tagEl("原属 " + ev.group.trim()));
-    /* 「只看已过期」是打散分组平铺的，标出它原来在哪组 */
-    else if((odView || arView) && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
+    /* 「只看已过期」「筛选」是打散分组平铺的，标出它原来在哪组 */
+    else if((odView || arView || fvView) && (ev.group || "").trim()) tags.push(tagEl(ev.group.trim()));
   }
   left.appendChild(h); left.appendChild(sub);
   /* 目标日下面单独一行显示农历 */
@@ -3626,7 +3848,7 @@ function createGroup(now){
   }
   queueSync(); closeGroupSheet(); render();
   /* 滚到新分组那里亮一下，让人知道它出现在哪（只看已过期 / 短期倒计时 / 归档区里主页是藏着的，不滚） */
-  if(odView || scView || arView) return;
+  if(odView || scView || arView || fvView) return;
   var esc = cssStr(name);
   var add = board.querySelector('.g-empty[data-group="' + esc + '"]');
   var sec = add && add.closest(".group");
@@ -4599,7 +4821,7 @@ function deTick(now){
 }
 
 /* 「只看已过期」只是筛出来的一部分，在里面拖动重排会把 order 改乱，不开放 */
-function dragEnabled(){ return state.sort === "manual" && !odView && !arView && !selMode; }
+function dragEnabled(){ return state.sort === "manual" && !odView && !arView && !fvView && !selMode; }
 
 /* 从被按住的元素往上找：它属于哪个容器、容器里的同级项有哪些 */
 function dragScope(target){
@@ -6053,10 +6275,10 @@ document.addEventListener("visibilitychange", function(){ if(!document.hidden) s
 function enterSc(){
   if(scView) return;
   var st = null; try{ st = history.state; }catch(e){}
-  if((odView && st && st.od) || (arView && st && st.ar)){   /* 从「只看已过期」/ 归档区直接跳过来：替换那一格，返回时回主页 */
-    scScrollY = odView ? odScrollY : arScrollY;
+  if((odView && st && st.od) || (arView && st && st.ar) || (fvView && st && st.fv)){   /* 从「只看已过期」/ 归档区 / 筛选直接跳过来：替换那一格，返回时回主页 */
+    scScrollY = odView ? odScrollY : arView ? arScrollY : fvScrollY;
     try{ history.replaceState({sc:1}, ""); }catch(e){}
-    odView = false; arView = false;
+    odView = false; arView = false; fvView = false;
   }else{
     scScrollY = window.scrollY;
     try{ history.pushState({sc:1}, ""); }catch(e){}
@@ -6708,15 +6930,15 @@ function srRender(){
 }
 /* 回到主页（从「只看已过期 / 短期倒计时 / 归档区」里搜的）再做事：那三个界面记在浏览器历史里，退回去交给 popstate 收尾 */
 function srToMain(cb){
-  if(!odView && !scView && !arView){ cb(); return; }
+  if(!odView && !scView && !arView && !fvView){ cb(); return; }
   var st = null; try{ st = history.state; }catch(e){}
   var direct = function(){
-    odView = scView = arView = false;
+    odView = scView = arView = fvView = false;
     try{ history.replaceState(null, ""); }catch(e){}
     render(); scSafe(function(){ scRender(); });
     cb();
   };
-  if(st && (st.od || st.sc || st.ar)){
+  if(st && (st.od || st.sc || st.ar || st.fv)){
     srPending = cb;
     history.back();
     /* 退不回去（这一格前面没有历史，比如刷新后直接停在归档区）就不会有 popstate：
@@ -6727,7 +6949,7 @@ function srToMain(cb){
   direct();
 }
 window.addEventListener("popstate", function(){       /* 注册在主 popstate 之后：那边先切回主页、重画完，这里再滚 */
-  if(!srPending || odView || scView || arView) return;
+  if(!srPending || odView || scView || arView || fvView) return;
   var cb = srPending; srPending = null;
   setTimeout(cb, 0);
 });
@@ -7020,6 +7242,8 @@ sortSel.value = state.sort;
 try{ odView = !!(history.state && history.state.od); }catch(e){}   /* 在「只看已过期」里刷新，还留在里面 */
 try{ scView = !!(history.state && history.state.sc); }catch(e){}   /* 短期倒计时同理 */
 try{ arView = !!(history.state && history.state.ar); }catch(e){}   /* 归档区同理 */
+try{ fvView = !!(history.state && history.state.fv); }catch(e){}   /* 筛选同理 */
+fvLoad();
 scSafe(function(){ scLoad(); scPurge(); });
 render();
 scSafe(function(){ scRender(); scWakeSync(); });
