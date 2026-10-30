@@ -1058,6 +1058,11 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   html.tp-side .mask{right:var(--tp-side-w, 0px)}
   html.tp-side .fab{right:max(calc(16px + var(--safe-r) + var(--tp-side-w, 0px)), calc(50vw - 374px + var(--tp-side-w, 0px) / 2))}   /* 内容列中心左移半个侧栏宽，＋ 跟着列走 */
 }
+/* 日历顶上的「今天」。2026-10-15 换调手感面板（31e9c2e）时被误删、按钮退回浏览器原生灰框，10-30 按原样恢复 */
+.dp-today{
+  margin-left:auto;min-height:44px;padding:0 14px;border:0;border-radius:10px;
+  background:rgba(47,134,246,.12);color:#2f86f6;font-size:14px;font-weight:700;
+}
 /* 按下反馈统一由「按下反馈」那段 JS（pressStart）做，见 CSS「按下反馈」 */
 .dp-week,.dp-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
 .dp-week span{font-size:12px;color:var(--text-3);font-weight:600;padding-bottom:6px}
@@ -1073,6 +1078,13 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   background:#2f86f6;color:#fff;font-weight:800;
   box-shadow:0 4px 12px rgba(47,134,246,.35);
 }
+/* 选中日期详情（2026-10-30 用户要的，照日期推算站 / 一日轨道）。右边「今天/N 天后」故意不加底色：加了就跟顶上的「今天」按钮一个样，会被当按钮点。
+   日历格子里不放农历小字（日期推算站试过说太乱），不放传统节日（用户不要）；本站没有「周」的概念，不放周数 */
+.dp-info{margin-top:8px;padding:10px 4px 2px;border-top:1px solid var(--line)}
+.dp-i1{display:flex;align-items:baseline;gap:10px}
+.dp-i1 b{font-size:16px;font-weight:700;color:var(--text);white-space:nowrap}
+.dp-i1 span{margin-left:auto;font-size:13.5px;font-weight:700;color:#2f86f6;white-space:nowrap}
+.dp-i2{margin-top:3px;font-size:13.5px;font-weight:500;color:var(--text-3);line-height:1.5}
 .dp-actions{display:flex;gap:12px;margin-top:14px}
 
 /* 6 个色块永远排成一行（320 宽时原来第 6 个单独掉到第二行）：每格 44~52，多出的空间均分成间距。
@@ -1428,6 +1440,11 @@ body.sel-mode .row .row-main{padding-left:48px}
     </div>
     <div class="dp-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
     <div class="dp-days" id="dpDays"></div>
+    <!-- 选中那天的详情：选完日子不用再去别处查星期、农历 -->
+    <div class="dp-info" id="dpInfo" aria-live="polite">
+      <div class="dp-i1"><b id="dpI1"></b><span id="dpRel"></span></div>
+      <div class="dp-i2" id="dpI2"></div>
+    </div>
     <div class="dp-actions">
       <button type="button" class="btn" id="dpCancel">取消</button>
       <button type="button" class="btn primary" id="dpDone">完成</button>
@@ -4032,6 +4049,18 @@ function dpRender(){
       dpDays.appendChild(b);
     })(i);
   }
+  dpPaintInfo();    /* 点日子 / 翻年月 / 今天 / 打开都经过这里，只在这一处更新 */
+}
+/* 日历底下两行：「10月30日 星期五 · 今天」+「农历九月廿一 · 丙午马年」；超出农历表（1901 前 / 2100 后）第二行留空，不外推 */
+var GAN = "甲乙丙丁戊己庚辛壬癸", ZHI = "子丑寅卯辰巳午未申酉戌亥", SHENG = "鼠牛虎兔龙蛇马羊猴鸡狗猪";
+function dpPaintInfo(){
+  var d = new Date(dpY, dpM - 1, dpD), t = formToday();   /* 归档的日程：「N 天前」也从归档那天算，和日历上标的「今天」一致 */
+  var n = dayDiff(d, t);
+  document.getElementById("dpI1").textContent = dpM + "月" + dpD + "日 " + WEEK[d.getDay()];
+  document.getElementById("dpRel").textContent = n === 0 ? "今天" : n === 1 ? "明天" : n === -1 ? "昨天" : n > 0 ? n + " 天后" : (-n) + " 天前";
+  var s = "", l = solarToLunar(dpY, dpM, dpD);
+  if(l){ var k = l.year - 4; s = lunarLabel(d) + " · " + GAN.charAt(k % 10) + ZHI.charAt(k % 12) + SHENG.charAt(k % 12) + "年"; }
+  document.getElementById("dpI2").textContent = s;
 }
 
 function dpOpen(){
