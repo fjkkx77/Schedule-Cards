@@ -4079,7 +4079,7 @@ function dpPane(y, m, selD, t){
       if(day === selD) cls.push("sel");
       if(y === t.getFullYear() && m === t.getMonth() + 1 && day === t.getDate()) cls.push("today");
       b.className = cls.join(" ");
-      /* 拖到一半时旁边那个月也点得到：点哪个月的格子就选哪个月 */
+      /* 写明是哪年哪月：两侧那两块是 inert 的点不到，但翻页落定前后同一个格子可能属于不同的块，按格子自己的年月选最稳 */
       b.addEventListener("click", function(){ dpY = y; dpM = m; dpD = day; dpRender(); });
       g.appendChild(b);
     })(i);
