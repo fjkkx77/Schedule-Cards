@@ -4089,14 +4089,15 @@ function dpPane(y, m, selD, t){
   return g;
 }
 /* 按当前 dpD 重标一块里的选中格（那块月份没那么多天就收到最后一天） */
-function dpMarkSel(g){
-  var d = dpClampD(g.__y, g.__m, dpD);
+function dpMarkSel(g, dd){
+  var d = dpClampD(g.__y, g.__m, dd || dpD);
   [].forEach.call(g.children, function(b){ if(b.className !== "dp-empty") b.classList.toggle("sel", +b.textContent === d); });
 }
 /* rot = ±1：滑动翻页落定时用。只拿掉远端那块、补一块新的，中间和手指按着的那块原样留着。
    整块重画（innerHTML）会把手指下的格子移出页面，之后的 touchmove / touchend 发到它身上、不再冒泡到卡片，
    日历就卡在两个月中间（10-30 代码审查指出，探针实测 isConnected=false） */
 function dpRender(rot){
+  if(!rot) dpc.back = null;
   dpcStop();     /* 调用方（点格子 / 菜单 / 今天 / 翻月落定）都已写好确定的年月：动画直接停，不能再补翻一次 */
   var t = formToday();             /* 归档的日程：日历上标的「今天」是归档那天 */
   dpHead(dpY, dpM);
@@ -4205,7 +4206,7 @@ function dpcSpring(distance, velocity){
   pts[pts.length - 1] = 1;                /* 最后一点钉死，保证精确落位 */
   return {ms: Math.round(Math.max(120, (pts.length - 1) * dt * 1000)), pts: pts};
 }
-var dpc = {track:false, lock:false, pos:0, base:0, W:1, x0:0, y0:0, t0:0, lx:0, lt:0, v:0, anim:null, dir:0, guard:0, gx:0, gy:0};
+var dpc = {track:false, lock:false, pos:0, base:0, W:1, x0:0, y0:0, t0:0, lx:0, lt:0, v:0, anim:null, dir:0, guard:0, gx:0, gy:0, back:null};
 function dpcSet(x){ dpc.pos = x; dpTrk.style.transform = x ? "translate3d(" + (x - dpc.W) + "px,0,0)" : ""; }
 function dpcLiveX(){
   if(!dpc.anim) return dpc.pos;
@@ -4230,15 +4231,21 @@ function dpcRun(from, to, v, done){
   a.onfinish = function(){ if(dpc.anim !== a) return; dpc.anim = null; a.cancel(); dpTrk.style.willChange = ""; done(); };
 }
 /* 逻辑上翻 dir 个月、重画三块（画面位置由调用方再摆） */
+/* 翻到 y 年 m 月时选中哪天。半路按住时已先落到新月（1/31 收成 2/28），又回到旧月的话要还原成用户选的 31 号 */
+function dpcDayFor(y, m){
+  var b = dpc.back;
+  return b && b.y === y && b.m === m ? b.d : dpClampD(y, m, dpD);
+}
 function dpcCommit(dir){
   var ym = dpShiftYM(dpY, dpM, dir);
-  dpY = ym[0]; dpM = ym[1]; dpc.dir = 0; dpc.pos = 0; dpTrk.style.transform = "";
+  dpY = ym[0]; dpM = ym[1]; dpD = dpcDayFor(dpY, dpM); dpc.back = null;
+  dpc.dir = 0; dpc.pos = 0; dpTrk.style.transform = "";
   dpRender(dir);
 }
 /* 翻过去：年月标题马上换，轨道带着速度滑过去，落位后再真正重画 */
 function dpcGo(dir, v){
   var ym = dpShiftYM(dpY, dpM, dir);
-  dpc.dir = dir; dpHead(ym[0], ym[1]); dpPaintInfo(ym[0], ym[1], dpClampD(ym[0], ym[1], dpD));
+  dpc.dir = dir; dpHead(ym[0], ym[1]); dpPaintInfo(ym[0], ym[1], dpcDayFor(ym[0], ym[1]));
   dpcRun(dpc.pos, -dir * dpc.W, v, function(){ dpcCommit(dir); });
 }
 function dpcSettle(v){
@@ -4255,15 +4262,19 @@ function dpcFinish(){
   if(!dpc.anim && !dpc.pos) return;
   var c = dpc.dir;
   dpcStop();
-  if(c){ var ym = dpShiftYM(dpY, dpM, c); dpY = ym[0]; dpM = ym[1]; dpD = dpClampD(dpY, dpM, dpD); }
+  if(c){ var ym = dpShiftYM(dpY, dpM, c); dpY = ym[0]; dpM = ym[1]; dpD = dpcDayFor(dpY, dpM); dpc.back = null; }
 }
 /* 动画半路按住：停在原处；要去的那个月已经露出来了，就逻辑上先翻过去、画面不动 */
 function dpcCatch(){
-  if(!dpc.anim) return;
+  if(!dpc.anim){ dpc.back = null; return; }
   var x = dpcLiveX(), c = dpc.dir, a = dpc.anim;
   dpc.anim = null; dpc.dir = 0; a.cancel();
   dpcSet(x);
-  if(c && c * x < 0){ var p = x + c * dpc.W; dpcCommit(c); dpcSet(p); dpTrk.style.willChange = "transform"; }
+  if(c && c * x < 0){
+    var p = x + c * dpc.W, b = {y:dpY, m:dpM, d:dpD}, nb = dpc.back;
+    dpcCommit(c); dpcSet(p); dpTrk.style.willChange = "transform";
+    if(!nb || nb.y !== dpY || nb.m !== dpM){ dpc.back = b; dpMarkSel(dpTrk.children[c > 0 ? 0 : 2], b.d); }   /* 旧月那块还露着，选中圈别跳 */
+  }
   else if(c){ dpHead(dpY, dpM); dpPaintInfo(); }      /* 没翻：松手时先换掉的标题、详情换回来 */
 }
 function dpcAbandon(){ dpc.track = false; dpc.lock = false; dpcSettle(0); }
@@ -4334,6 +4345,7 @@ dpCardEl.addEventListener("click", function(ev){
 function dpStep(dir){
   if(dpc.track) return;
   if(dpc.anim){ dpcFinish(); dpRender(); }
+  dpc.back = null;
   if(!dpcCanGo(dir)) return;
   if(!dpcCanAnimate()){ dpcCommit(dir); return; }
   dpc.W = dpTrk.offsetWidth + DPC_GAP;
