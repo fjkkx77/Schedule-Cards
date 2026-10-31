@@ -4046,6 +4046,7 @@ function dpBuildMenus(){
 }
 function dpCloseMenus(){ dpYearMenu.hidden = true; dpMonthMenu.hidden = true; }
 function dpToggleMenu(menu){
+  if(dpc.anim || dpc.pos){ dpcFinish(); dpRender(); }   /* 翻页动画还在跑：先落定，不然选的年 / 月会套在旧月份上（10-30 代码审查） */
   var openIt = menu.hidden;
   dpCloseMenus();
   if(!openIt) return;
@@ -4065,7 +4066,7 @@ function dpHead(y, m){
 /* 画一个月的格子。固定 6 行 42 格：高度恒定，左右滑时才不用每帧重排 */
 function dpPane(y, m, selD, t){
   var g = document.createElement("div"), i;
-  g.className = "dp-days";
+  g.className = "dp-days"; g.__y = y; g.__m = m;
   var lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;   /* 周一开头 */
   var total = new Date(y, m, 0).getDate();
   function blank(){ var e = document.createElement("button"); e.type = "button"; e.className = "dp-empty"; e.tabIndex = -1; g.appendChild(e); }
@@ -4087,7 +4088,15 @@ function dpPane(y, m, selD, t){
   for(i = lead + total; i < 42; i++) blank();
   return g;
 }
-function dpRender(){
+/* 按当前 dpD 重标一块里的选中格（那块月份没那么多天就收到最后一天） */
+function dpMarkSel(g){
+  var d = dpClampD(g.__y, g.__m, dpD);
+  [].forEach.call(g.children, function(b){ if(b.className !== "dp-empty") b.classList.toggle("sel", +b.textContent === d); });
+}
+/* rot = ±1：滑动翻页落定时用。只拿掉远端那块、补一块新的，中间和手指按着的那块原样留着。
+   整块重画（innerHTML）会把手指下的格子移出页面，之后的 touchmove / touchend 发到它身上、不再冒泡到卡片，
+   日历就卡在两个月中间（10-30 代码审查指出，探针实测 isConnected=false） */
+function dpRender(rot){
   dpcStop();     /* 调用方（点格子 / 菜单 / 今天 / 翻月落定）都已写好确定的年月：动画直接停，不能再补翻一次 */
   var t = formToday();             /* 归档的日程：日历上标的「今天」是归档那天 */
   dpHead(dpY, dpM);
@@ -4096,24 +4105,37 @@ function dpRender(){
   bs = dpMonthMenu.children;
   for(i = 0; i < bs.length; i++) bs[i].className = (+bs[i].getAttribute("data-m") === dpM) ? "on" : "";
   dpD = dpClampD(dpY, dpM, dpD);                     /* 1月31日切到2月，日号要收回来 */
-  dpTrk.innerHTML = "";
-  /* 上月 / 本月 / 下月。两侧的选中格按「翻过去之后」的样子画，落位那一下才不会变 */
-  [-1, 0, 1].forEach(function(n){
-    var ym = dpShiftYM(dpY, dpM, n), p = dpPane(ym[0], ym[1], dpClampD(ym[0], ym[1], dpD), t);
-    if(n){ p.inert = true; p.setAttribute("aria-hidden", "true"); }
-    else p.id = "dpDays";
-    dpTrk.appendChild(p);
+  var k = dpTrk.children, ym;
+  if(rot && k.length === 3){
+    ym = dpShiftYM(dpY, dpM, rot);
+    var fresh = dpPane(ym[0], ym[1], dpClampD(ym[0], ym[1], dpD), t);
+    if(rot > 0){ dpTrk.removeChild(k[0]); dpTrk.appendChild(fresh); }
+    else { dpTrk.removeChild(k[2]); dpTrk.insertBefore(fresh, dpTrk.firstChild); }
+  } else {
+    dpTrk.innerHTML = "";
+    /* 上月 / 本月 / 下月。两侧的选中格按「翻过去之后」的样子画，落位那一下才不会变 */
+    [-1, 0, 1].forEach(function(n){
+      ym = dpShiftYM(dpY, dpM, n);
+      dpTrk.appendChild(dpPane(ym[0], ym[1], dpClampD(ym[0], ym[1], dpD), t));
+    });
+  }
+  [].forEach.call(dpTrk.children, function(g, i){
+    g.inert = i !== 1;
+    if(i === 1){ g.id = "dpDays"; g.removeAttribute("aria-hidden"); }
+    else { g.removeAttribute("id"); g.setAttribute("aria-hidden", "true"); }
+    dpMarkSel(g);
   });
   dpPaintInfo();    /* 点日子 / 翻年月 / 今天 / 打开都经过这里，只在这一处更新 */
 }
 /* 日历底下两行：「10月30日 星期五 · 今天」+「农历九月廿一 · 丙午马年」；超出农历表（1901 前 / 2100 后）第二行留空，不外推 */
 var GAN = "甲乙丙丁戊己庚辛壬癸", ZHI = "子丑寅卯辰巳午未申酉戌亥", SHENG = "鼠牛虎兔龙蛇马羊猴鸡狗猪";
-function dpPaintInfo(){
-  var d = new Date(dpY, dpM - 1, dpD), t = formToday();   /* 归档的日程：「N 天前」也从归档那天算，和日历上标的「今天」一致 */
+function dpPaintInfo(y, m, dd){       /* 不传＝当前选中；翻页动画开始时传「将要翻到的那一天」，详情条跟顶上的年月一起换 */
+  if(y === undefined){ y = dpY; m = dpM; dd = dpD; }
+  var d = new Date(y, m - 1, dd), t = formToday();   /* 归档的日程：「N 天前」也从归档那天算，和日历上标的「今天」一致 */
   var n = dayDiff(d, t);
-  document.getElementById("dpI1").textContent = dpM + "月" + dpD + "日 " + WEEK[d.getDay()];
+  document.getElementById("dpI1").textContent = m + "月" + dd + "日 " + WEEK[d.getDay()];
   document.getElementById("dpRel").textContent = n === 0 ? "今天" : n === 1 ? "明天" : n === -1 ? "昨天" : n > 0 ? n + " 天后" : (-n) + " 天前";
-  var s = "", l = solarToLunar(dpY, dpM, dpD);
+  var s = "", l = solarToLunar(y, m, dd);
   if(l){ var k = l.year - 4; s = lunarLabel(d) + " · " + GAN.charAt(k % 10) + ZHI.charAt(k % 12) + SHENG.charAt(k % 12) + "年"; }
   document.getElementById("dpI2").textContent = s;
 }
@@ -4190,6 +4212,11 @@ function dpcLiveX(){
   var t = getComputedStyle(dpTrk).transform;
   return (t && t !== "none" ? new DOMMatrixReadOnly(t).m41 : -dpc.W) + dpc.W;
 }
+/* 往 dir 翻一个月还在年份菜单的范围里吗（菜单前后各 100 年；滑出去了菜单里就找不到这一年） */
+function dpcCanGo(dir){
+  var y = dpShiftYM(dpY, dpM, dir)[0], k = dpYearMenu.children;
+  return !k.length || (y >= +k[0].getAttribute("data-y") && y <= +k[k.length - 1].getAttribute("data-y"));
+}
 function dpcCanAnimate(){ return !(dpcRM && dpcRM.matches) && !!dpTrk.animate; }
 function dpcRun(from, to, v, done){
   var sp = dpcSpring(from - to, v), W = dpc.W;
@@ -4206,12 +4233,12 @@ function dpcRun(from, to, v, done){
 function dpcCommit(dir){
   var ym = dpShiftYM(dpY, dpM, dir);
   dpY = ym[0]; dpM = ym[1]; dpc.dir = 0; dpc.pos = 0; dpTrk.style.transform = "";
-  dpRender();
+  dpRender(dir);
 }
 /* 翻过去：年月标题马上换，轨道带着速度滑过去，落位后再真正重画 */
 function dpcGo(dir, v){
   var ym = dpShiftYM(dpY, dpM, dir);
-  dpc.dir = dir; dpHead(ym[0], ym[1]);
+  dpc.dir = dir; dpHead(ym[0], ym[1]); dpPaintInfo(ym[0], ym[1], dpClampD(ym[0], ym[1], dpD));
   dpcRun(dpc.pos, -dir * dpc.W, v, function(){ dpcCommit(dir); });
 }
 function dpcSettle(v){
@@ -4226,9 +4253,8 @@ function dpcStop(){
 /* 立刻收尾、并把正在翻的那个月落定（按「完成」、关掉日历前用） */
 function dpcFinish(){
   if(!dpc.anim && !dpc.pos) return;
-  var c = dpc.dir, a = dpc.anim; dpc.anim = null; dpc.dir = 0;
-  if(a) a.cancel();
-  dpTrk.style.willChange = ""; dpc.pos = 0; dpTrk.style.transform = "";
+  var c = dpc.dir;
+  dpcStop();
   if(c){ var ym = dpShiftYM(dpY, dpM, c); dpY = ym[0]; dpM = ym[1]; dpD = dpClampD(dpY, dpM, dpD); }
 }
 /* 动画半路按住：停在原处；要去的那个月已经露出来了，就逻辑上先翻过去、画面不动 */
@@ -4238,12 +4264,12 @@ function dpcCatch(){
   dpc.anim = null; dpc.dir = 0; a.cancel();
   dpcSet(x);
   if(c && c * x < 0){ var p = x + c * dpc.W; dpcCommit(c); dpcSet(p); dpTrk.style.willChange = "transform"; }
-  else if(c) dpHead(dpY, dpM);                        /* 没翻：松手时先换掉的标题换回来 */
+  else if(c){ dpHead(dpY, dpM); dpPaintInfo(); }      /* 没翻：松手时先换掉的标题、详情换回来 */
 }
 function dpcAbandon(){ dpc.track = false; dpc.lock = false; dpcSettle(0); }
 var dpCardEl = document.getElementById("dpCard");
 dpCardEl.addEventListener("touchstart", function(ev){
-  if(dpc.track){ if(dpc.lock) dpcAbandon(); else dpc.track = false; return; }
+  if(dpc.track){ dpcAbandon(); return; }        /* 第二根手指，或上一次丢了 touchend：先归位，别停在半路 */
   if(ev.touches.length !== 1 || !dpYearMenu.hidden || !dpMonthMenu.hidden) return;   /* 下拉菜单开着：那是在滚菜单 */
   if(!ev.target.closest(".dp-vp, .dp-week")) return;
   var t = ev.touches[0];
@@ -4270,6 +4296,8 @@ dpCardEl.addEventListener("touchmove", function(ev){
   var now = ev.timeStamp || Date.now(), dt = now - dpc.lt;
   if(dt > 0){ dpc.v = dpc.v * 0.4 + ((t.clientX - dpc.lx) / dt) * 0.6; dpc.lx = t.clientX; dpc.lt = now; }
   var p = dpc.base + mx;
+  if(p < 0 && !dpcCanGo(1)) p = Math.max(p, -dpc.W / 3);   /* 到年份范围的头了：只能拉开一点 */
+  if(p > 0 && !dpcCanGo(-1)) p = Math.min(p, dpc.W / 3);
   if(p <= -dpc.W){ dpcCommit(1); dpc.base += dpc.W; p += dpc.W; }        /* 拖过一整个月：逻辑上先翻，画面接着跟手 */
   else if(p >= dpc.W){ dpcCommit(-1); dpc.base -= dpc.W; p -= dpc.W; }
   dpcSet(p);                                                  /* 同步写，不排队到下一帧 */
@@ -4277,7 +4305,11 @@ dpCardEl.addEventListener("touchmove", function(ev){
 function dpcEnd(ev){
   if(!dpc.track) return;
   dpc.track = false;
-  if(!dpc.lock){ dpcSettle(0); return; }                      /* 半路按住后只是点了一下：回到最近那一格 */
+  if(!dpc.lock){                                             /* 半路按住后只是点了一下：回到近的那一个月 */
+    if(Math.abs(dpc.pos) > dpc.W / 2 && dpcCanAnimate() && dpcCanGo(dpc.pos > 0 ? -1 : 1)) dpcGo(dpc.pos > 0 ? -1 : 1, 0);
+    else dpcSettle(0);
+    return;
+  }
   dpc.lock = false;
   var ct = ev && ev.changedTouches && ev.changedTouches[0];
   dpc.guard = Date.now() + 350; dpc.gx = ct ? ct.clientX : dpc.lx; dpc.gy = ct ? ct.clientY : dpc.y0;
@@ -4285,7 +4317,7 @@ function dpcEnd(ev){
   if(now - dpc.lt > 100) dpc.v = 0;                           /* 停住再松手不算甩 */
   if(ev && ev.type === "touchcancel"){ dpcSettle(0); return; }
   var proj = dpc.pos + dpc.v * DPC_PROJECT;
-  if(Math.abs(proj) > dpc.W / 2){
+  if(Math.abs(proj) > dpc.W / 2 && dpcCanGo(proj < 0 ? 1 : -1)){
     if(dpcCanAnimate()) dpcGo(proj < 0 ? 1 : -1, dpc.v);
     else { dpcSet(0); dpcCommit(proj < 0 ? 1 : -1); }
   } else dpcSettle(dpc.v);
@@ -4302,6 +4334,7 @@ dpCardEl.addEventListener("click", function(ev){
 function dpStep(dir){
   if(dpc.track) return;
   if(dpc.anim){ dpcFinish(); dpRender(); }
+  if(!dpcCanGo(dir)) return;
   if(!dpcCanAnimate()){ dpcCommit(dir); return; }
   dpc.W = dpTrk.offsetWidth + DPC_GAP;
   dpcGo(dir, 0);
