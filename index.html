@@ -4660,8 +4660,27 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
   /* 新增时直接把光标放进事件名称并弹出键盘。
      ⚠️ focus() 必须在这次点击的同一拍里同步调用：放进 setTimeout 就脱离了用户手势，
      iOS 只会放一个光标、不弹键盘（原来写的 60ms 延迟就是这么坏的）。openForm 只从 click 里调用 */
-  if(!ev){ try{ fTitle.focus(); }catch(e){} }
+  if(!ev) focusNewTitle();
   formOrig = formSnap();      /* 下滑关闭时拿它判断"有没有改过" */
+}
+/* 2026-11-01 用户真机截图：点 ＋ 后有时停在「记录」、事件名称被键盘盖住，有时才正好。
+   事件名称在第二小节，弹窗从顶部开始时它正好落在键盘要盖住的位置。iOS 的处理（WebKit 源码）是两步、都救不了它：
+   ① focus 时页面内只滚到主框架为止（Element::findTargetAndUpdateFocusAppearance 的 RevealUpToMainFrame），这时键盘还没出来，
+      输入框算「看得见」，弹窗不动；② 键盘动画时 UIKit 再按键盘高度滚整页（_zoomToFocusRect），滚的是页面不是弹窗，
+      最后停在哪取决于当时的页面状态，所以时好时坏。
+   现在不让 iOS 猜：focus 之前把弹窗滚到「日程」小节（量真实位置，贴着弹窗内容起点），事件名称已在键盘上方；
+   再用 preventScroll 跳过第 ② 步（_zoomToRevealFocusedElement 开头就判它）。
+   只对触屏：鼠标设备没有软键盘，事件名称本来就看得见，「记录」不用滚走。别改成 setTimeout 后再滚：iOS 的滚动还会跟它抢 */
+function focusNewTitle(){
+  var opt;
+  if(window.matchMedia && matchMedia("(pointer:coarse)").matches){
+    var sec = fTitle.closest(".fsec");
+    if(sec){
+      form.scrollTop += sec.getBoundingClientRect().top - form.getBoundingClientRect().top - parseFloat(getComputedStyle(form).paddingTop);
+      opt = {preventScroll:true};
+    }
+  }
+  try{ fTitle.focus(opt); }catch(e){}
 }
 function closeForm(){
   stopCountdown();
