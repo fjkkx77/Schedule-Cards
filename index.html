@@ -801,7 +801,6 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .menu .danger{color:#e0483d}
 .menu .m-accent{color:var(--lsw-pin-fg)}   /* 「新建分组」是动作不是设置，蓝字区分；借左滑「置顶」的蓝字变量，深浅主题对比度都已达标 */
 #gmMenu .m-accent{color:var(--lsw-pin-fg)}  /* 分组 ⋯ 里的「新建日程」同理 */
-#gmMenu .m-danger{color:var(--lsw-del-fg)}  /* 电脑右键菜单的「删除」：和左滑删除按钮同一个红字变量（深浅主题对比度已达标） */
 .menu hr{border:0;border-top:1px solid var(--line);margin:5px 8px}
 .switch{margin-left:auto;font-size:13px;color:var(--text-2);font-weight:700}
 
@@ -1187,6 +1186,38 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 @keyframes alert-pop{from{opacity:0;transform:scale(1.12)}to{opacity:1;transform:none}}
 @keyframes alert-fade{from{background-color:rgba(12,16,22,0)}}
 @media (prefers-reduced-motion: reduce){ .mask.alert-mask,.sheet.alert{animation:none} }
+/* 电脑右键卡片的操作面板（2026-11-11 用户指定照刷题站首页那个面板）：
+   面板底用 --surface-2、选项组和「取消」用 --surface，层次和刷题站一样（灰底托白组），深色主题跟着变量走 */
+.sheet.cm-sheet{
+  width:min(460px,100%);max-width:none;background:var(--surface-2);border-radius:20px;
+  padding:20px 14px 14px;box-shadow:0 18px 50px rgba(0,0,0,.28);
+  animation:cm-pop .2s cubic-bezier(.2,.9,.3,1);
+}
+.sheet.cm-sheet::before{display:none}
+@keyframes cm-pop{from{opacity:0;transform:scale(.94)}}
+.sheet .cm-title{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 8px;font-size:17px;font-weight:800;color:var(--text);text-align:center}
+.cm-title .cm-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cm-dot{flex:0 0 auto;width:10px;height:10px;border-radius:50%}
+.cm-sub{margin:4px 8px 0;font-size:13px;font-weight:600;color:var(--text-2);text-align:center}
+.cm-opts{margin-top:14px;background:var(--surface);border-radius:12px;overflow:hidden}
+.cm-opt{
+  position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:0 16px;
+  border:0;background:transparent;color:var(--text);font:inherit;font-size:16px;font-weight:600;text-align:left;cursor:pointer;
+  transition:background-color .25s ease;
+}
+.cm-opt + .cm-opt::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
+.cm-opt .cm-lb{flex:1;min-width:0}
+.cm-opt .cm-ic{flex:0 0 auto;display:flex;color:var(--text-3)}
+.cm-opt .cm-ic .lsw-ico{width:20px;height:20px}
+.cm-opt.danger, .cm-opt.danger .cm-ic{color:var(--lsw-del-fg)}
+.cm-cancel{
+  display:block;width:100%;min-height:52px;margin-top:10px;border:0;border-radius:12px;background:var(--surface);
+  color:var(--lsw-pin-fg);font:inherit;font-size:16px;font-weight:800;cursor:pointer;transition:background-color .25s ease;
+}
+.cm-opt:active, .cm-opt.is-press, .cm-cancel:active, .cm-cancel.is-press{background:var(--press-bg);transition:none}
+@media (hover:hover){ .cm-opt:hover, .cm-cancel:hover{background:var(--surface-2)} }
+.cm-opt:focus-visible, .cm-cancel:focus-visible{outline:2px solid #2f86f6;outline-offset:-2px}
+@media (prefers-reduced-motion: reduce){ .sheet.cm-sheet{animation:none} }
 .extra-row{display:flex;gap:10px;margin-top:6px}
 .extra-row .btn{min-height:44px;font-size:14px}
 
@@ -1702,6 +1733,16 @@ body.sel-mode .row .row-main{padding-left:48px}
     <p class="hint" id="mvHint" style="margin-top:-8px"></p>
     <div class="mv-list" id="mvList"></div>
     <div class="actions"><button type="button" class="btn" id="mvCancel" style="flex:1">取消</button></div>
+  </div>
+</div>
+
+<!-- 电脑右键卡片的操作面板（照刷题站首页的操作面板；排在删除确认前面，点「删除」后确认框叠在上面也不会被它盖住） -->
+<div class="mask alert-mask" id="cmMask" hidden>
+  <div class="sheet cm-sheet" id="cmSheet" role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+    <h2 class="cm-title" id="cmTitle"><span class="cm-dot" id="cmDot"></span><span class="cm-t" id="cmTitleTxt"></span></h2>
+    <p class="cm-sub" id="cmSub" hidden></p>
+    <div class="cm-opts" id="cmOpts"></div>
+    <button type="button" class="cm-cancel" id="cmCancel">取消</button>
   </div>
 </div>
 
@@ -3794,7 +3835,7 @@ var gpMask = document.getElementById("gpMask");
 var gpTarget = "";        /* 正在管理的分组名 */
 var gpMode = "rename";    /* rename | delete */
 
-function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; cmId = null; }
+function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; }
 
 function openGroupMenu(name, anchor){
   gpTarget = name;
@@ -3836,20 +3877,22 @@ var gmAnchor = null;
 
 /* ---- 电脑上右键日程卡片：置顶 / 归档 / 删除（2026-11-10 用户要的） ----
    只是左滑三个按钮的另一个入口：调的是同一组函数（lswTogglePin / arArchive / arRestore / cfOpen），数据和同步一行没动。
-   借用分组 ⋯ 的 #gmMenu + #gmMask：左滑 touchstart、ptrOverlayOpen（下拉刷新）、Esc 这几处守卫本来就认 gmMenu，
-   拖拽 pointerdown 被全屏的 gmMask 挡住（落点不在卡片上）——不用再往四处守卫里各加一条。
+   外观＝刷题站首页的操作面板（2026-11-11 用户看过第一版「鼠标处的小菜单」后指定）：暗底 + 屏幕正中，
+   标题（色点 + 日程名）→ 一组白底选项（字在左、图标在右、中间细线）→ 单独的「取消」。颜色用本站变量，深色主题自动跟。
+   #cmMask 是独立浮层：已登记进左滑 touchstart、拖拽 pointerdown、ptrOverlayOpen、Esc 四处守卫 + SHEETS（noDrag）。
    · 只认鼠标：安卓长按也会发 contextmenu，会和长按拖动抢，所以看最近一次 pointerdown 的 pointerType
-   · 收起的一摞不弹（看不清点的是哪张，照左滑「收起的一摞不参与」）；短期倒计时不在 #board 里，不受影响
-   · 位置在鼠标处；页面滚动时跟着卡片走（同站内其它菜单，2026-10-14 用户要的「跟着走」） */
-var cmId = null;          /* 右键菜单开着时＝那条日程的 id；分组 ⋯ 开着时是 null */
+   · 收起的一摞不弹（看不清点的是哪张，照左滑「收起的一摞不参与」）；短期倒计时不在 #board 里，不受影响 */
+var cmMask = document.getElementById("cmMask");
+var cmId = null;
 var cmLastPtr = "";
 document.addEventListener("pointerdown", function(e){ cmLastPtr = e.pointerType || ""; }, true);
 function cmBlocked(){
   return dragOn || lswActive() || srOpen || selMode || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden ||
-         !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || !mvMask.hidden ||
+         !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || !mvMask.hidden || !cmMask.hidden ||
          (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden);
 }
 document.addEventListener("contextmenu", function(e){
+  if(!cmMask.hidden){ e.preventDefault(); cmClose(); return; }   /* 面板开着时在遮罩上右键：只关面板，不出浏览器菜单 */
   if(cmLastPtr && cmLastPtr !== "mouse") return;            /* 触屏长按 / 手写笔：保持浏览器原样 */
   var el = e.target.closest && e.target.closest("#board .card[data-id], #board .row[data-id]");
   if(!el || cmBlocked()) return;
@@ -3858,47 +3901,45 @@ document.addEventListener("contextmenu", function(e){
   var ev = lswEvent(el.getAttribute("data-id"));
   if(!ev || ev.deletedAt) return;
   e.preventDefault();
-  openCardMenu(ev, e.clientX, e.clientY);
+  cmOpen(ev);
 });
-function openCardMenu(ev, x, y){
+function cmOpen(ev){
   if(lswOpen) lswClose(false);
   var id = ev.id;
-  cmId = id; gmAnchor = null;
-  gmMenu.innerHTML = "";
+  cmId = id;
+  var dot = document.getElementById("cmDot");
+  dot.style.background = ev.color || "#2f86f6";
+  document.getElementById("cmTitleTxt").textContent = ev.title || "未命名";
+  var g = (ev.group || "").trim(), sub = document.getElementById("cmSub");
+  sub.textContent = isArchived(ev) ? "已归档" : isPinned(ev) ? "已置顶" : g ? "在「" + g + "」分组里" : "";
+  sub.hidden = !sub.textContent;
   var items = isArchived(ev)
-    ? [["移回主页", arRestore]]                                    /* 归档区：同左滑，没有置顶 */
-    : [[isPinned(ev) ? "取消置顶" : "置顶", lswTogglePin], ["归档", arArchive]];
-  items.push(["删除", cfOpen, "m-danger"]);                        /* 照旧弹正中的确认框 */
+    ? [["移回主页", LSW_ICO_OUT, arRestore, "restore"]]                                  /* 归档区：同左滑，没有置顶 */
+    : [[isPinned(ev) ? "取消置顶" : "置顶", LSW_ICO_PIN, lswTogglePin, "pin"], ["归档", LSW_ICO_ARC, arArchive, "arc"]];
+  items.push(["删除", LSW_ICO_DEL, cfOpen, "del", true]);                                /* 照旧弹正中的确认框 */
+  var box = document.getElementById("cmOpts");
+  box.innerHTML = "";
   items.forEach(function(it){
     var b = document.createElement("button");
     b.type = "button";
-    b.textContent = it[0];
-    if(it[2]) b.className = it[2];
-    b.addEventListener("click", function(){ closeGroupMenu(); it[1](id); });
-    gmMenu.appendChild(b);
+    b.className = "cm-opt" + (it[4] ? " danger" : "");
+    b.setAttribute("data-act", it[3]);
+    b.innerHTML = '<span class="cm-lb"></span><span class="cm-ic">' + it[1] + '</span>';
+    b.querySelector(".cm-lb").textContent = it[0];
+    b.addEventListener("click", function(){ cmClose(); it[2](id); });
+    box.appendChild(b);
   });
-  gmMenu.hidden = false;
-  gmMask.hidden = false;
-  gmMenu.style.position = "absolute";
-  /* 菜单左上角放在鼠标处；右边 / 下边放不下就往回收（下边放不下翻到鼠标上方），四周留 12px */
-  var dw = document.documentElement.clientWidth, vh = window.innerHeight || document.documentElement.clientHeight;
-  var w = gmMenu.offsetWidth, h = gmMenu.offsetHeight;
-  var left = Math.max(12, Math.min(x, dw - w - 12));
-  var top = y;
-  if(top + h > vh - 12) top = y - h;
-  top = Math.max(12, Math.min(top, vh - h - 12));
-  gmMenu.style.left = Math.round(left + (window.pageXOffset || 0)) + "px";
-  gmMenu.style.top = Math.round(top + (window.pageYOffset || 0)) + "px";
-  var first = gmMenu.querySelector("button");
+  cmMask.hidden = false;
+  var first = box.querySelector("button");
   if(first) try{ first.focus({preventScroll: true}); }catch(_){}
 }
-/* 菜单开着时又在遮罩上右键：关掉它，不弹浏览器自己的菜单 */
-gmMask.addEventListener("contextmenu", function(e){ if(cmId){ e.preventDefault(); closeGroupMenu(); } });
+function cmClose(){ cmMask.hidden = true; cmId = null; }
+document.getElementById("cmCancel").addEventListener("click", cmClose);
+cmMask.addEventListener("click", function(e){ if(e.target === cmMask) cmClose(); });
 
 /* 转屏/改窗口大小时内容列会挪（宽屏居中），菜单跟上；按钮已经被重画掉了就直接关 */
 window.addEventListener("resize", function(){
   if(gmMenu.hidden) return;
-  if(cmId){ closeGroupMenu(); return; }     /* 右键菜单没有锚点按钮，窗口一变就关 */
   if(!gmAnchor || !gmAnchor.isConnected){ closeGroupMenu(); return; }
   openGroupMenu(gpTarget, gmAnchor);
 });
@@ -4762,6 +4803,7 @@ document.addEventListener("keydown", function(e){
     if(!askMask.hidden){ askClose(false); return; }         /* 通用确认框永远在最上面 */
     if(!dcMask.hidden){ dcMask.hidden = true; return; }     /* Esc = 继续编辑，不是放弃 */
     if(!cfMask.hidden){ cfClose(); return; }
+    if(!cmMask.hidden){ cmClose(); return; }           /* 右键操作面板 */
     if(scCfMask && !scCfMask.hidden){ scCfClose(); return; }   /* 短期倒计时的两层也认 Esc */
     if(scMask && !scMask.hidden){ scCloseAdd(); return; }
     if(!gmMenu.hidden){ closeGroupMenu(); return; }
@@ -5477,7 +5519,7 @@ document.addEventListener("pointerdown", function(e){
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的长按不起拖动 */
   if(e.pointerType === "mouse" && e.button !== 0) return;
   if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden || !askMask.hidden) return;
-  if(srOpen || !mvMask.hidden) return;
+  if(srOpen || !mvMask.hidden || !cmMask.hidden) return;
   if(lswOpen) return;       /* 有卡片正滑开着：这一下是去收回它/点按钮的，不起拖拽 */
   var scope = dragScope(e.target);
   if(!scope) return;
@@ -5665,7 +5707,7 @@ var pressTP = TunePanel({
 });
 var PRESS_CFG = pressTP.values();
 var PRESS_TIERS = [
-  {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button", flat: true},
+  {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button, .cm-opt, .cm-cancel", flat: true},
   {sel: ".g-main", flat: true},
   {sel: ".card, .row, .sc-card", card: true, k: 1},
   {sel: ".g-empty, .od-bar", card: true, k: .75},     /* 整块但不是内容卡片：缩得比卡片少一点（按卡片缩的幅度乘 0.75） */
@@ -5969,7 +6011,7 @@ document.addEventListener("touchstart", function(e){
   if(e.touches.length !== 1 || dragOn) return;
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的触摸不起左滑 */
   if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden) return;
-  if(srOpen || selMode || !mvMask.hidden) return;   /* 搜索层、批量整理里不起左滑 */
+  if(srOpen || selMode || !mvMask.hidden || !cmMask.hidden) return;   /* 搜索层、批量整理、右键面板里不起左滑 */
   var t = e.target;
   if(lswOpen && t.closest(".lsw-acts")) return;              /* 点的是露出来的按钮，交给它的 click */
   var el = t.closest("#board .card[data-id], #board .row[data-id]");
@@ -6086,6 +6128,7 @@ var SHEETS = [
   {mask: syncMask, sheet: document.getElementById("syncSheet"), close: closeSyncSheet},
   {mask: mask,     sheet: form,                                 close: closeForm,
    dirty: function(){ return formSnap() !== formOrig; }},
+  {mask: cmMask,   sheet: document.getElementById("cmSheet"),   close: cmClose, noDrag: true},
   {mask: cfMask,   sheet: document.getElementById("cfSheet"),   close: cfClose, noDrag: true},
   {mask: dcMask,   sheet: document.getElementById("dcSheet"),   close: function(){ dcMask.hidden = true; }, noDrag: true}
 ];
@@ -6229,7 +6272,7 @@ function ptrBlocked(){
 }
 /* 有浮层 / 正在拖 / 批量模式：这时候也不许因为「有新版本」把页面重新加载掉（填了一半的表单会丢） */
 function ptrOverlayOpen(){
-  return dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden;
+  return dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden || !cmMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
