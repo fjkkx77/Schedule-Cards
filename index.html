@@ -801,6 +801,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .menu .danger{color:#e0483d}
 .menu .m-accent{color:var(--lsw-pin-fg)}   /* 「新建分组」是动作不是设置，蓝字区分；借左滑「置顶」的蓝字变量，深浅主题对比度都已达标 */
 #gmMenu .m-accent{color:var(--lsw-pin-fg)}  /* 分组 ⋯ 里的「新建日程」同理 */
+#gmMenu .m-danger{color:var(--lsw-del-fg)}  /* 电脑右键菜单的「删除」：和左滑删除按钮同一个红字变量（深浅主题对比度已达标） */
 .menu hr{border:0;border-top:1px solid var(--line);margin:5px 8px}
 .switch{margin-left:auto;font-size:13px;color:var(--text-2);font-weight:700}
 
@@ -3793,7 +3794,7 @@ var gpMask = document.getElementById("gpMask");
 var gpTarget = "";        /* 正在管理的分组名 */
 var gpMode = "rename";    /* rename | delete */
 
-function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; }
+function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; cmId = null; }
 
 function openGroupMenu(name, anchor){
   gpTarget = name;
@@ -3832,9 +3833,72 @@ function openGroupMenu(name, anchor){
   placePopup(gmMenu, r, Math.max(12, left), 6);
 }
 var gmAnchor = null;
+
+/* ---- 电脑上右键日程卡片：置顶 / 归档 / 删除（2026-11-10 用户要的） ----
+   只是左滑三个按钮的另一个入口：调的是同一组函数（lswTogglePin / arArchive / arRestore / cfOpen），数据和同步一行没动。
+   借用分组 ⋯ 的 #gmMenu + #gmMask：左滑 touchstart、ptrOverlayOpen（下拉刷新）、Esc 这几处守卫本来就认 gmMenu，
+   拖拽 pointerdown 被全屏的 gmMask 挡住（落点不在卡片上）——不用再往四处守卫里各加一条。
+   · 只认鼠标：安卓长按也会发 contextmenu，会和长按拖动抢，所以看最近一次 pointerdown 的 pointerType
+   · 收起的一摞不弹（看不清点的是哪张，照左滑「收起的一摞不参与」）；短期倒计时不在 #board 里，不受影响
+   · 位置在鼠标处；页面滚动时跟着卡片走（同站内其它菜单，2026-10-14 用户要的「跟着走」） */
+var cmId = null;          /* 右键菜单开着时＝那条日程的 id；分组 ⋯ 开着时是 null */
+var cmLastPtr = "";
+document.addEventListener("pointerdown", function(e){ cmLastPtr = e.pointerType || ""; }, true);
+function cmBlocked(){
+  return dragOn || lswActive() || srOpen || selMode || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden ||
+         !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || !mvMask.hidden ||
+         (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden);
+}
+document.addEventListener("contextmenu", function(e){
+  if(cmLastPtr && cmLastPtr !== "mouse") return;            /* 触屏长按 / 手写笔：保持浏览器原样 */
+  var el = e.target.closest && e.target.closest("#board .card[data-id], #board .row[data-id]");
+  if(!el || cmBlocked()) return;
+  var st = el.parentElement && el.parentElement.closest(".stack");
+  if(st && !st.classList.contains("is-open")) return;      /* 收起的一摞不弹 */
+  var ev = lswEvent(el.getAttribute("data-id"));
+  if(!ev || ev.deletedAt) return;
+  e.preventDefault();
+  openCardMenu(ev, e.clientX, e.clientY);
+});
+function openCardMenu(ev, x, y){
+  if(lswOpen) lswClose(false);
+  var id = ev.id;
+  cmId = id; gmAnchor = null;
+  gmMenu.innerHTML = "";
+  var items = isArchived(ev)
+    ? [["移回主页", arRestore]]                                    /* 归档区：同左滑，没有置顶 */
+    : [[isPinned(ev) ? "取消置顶" : "置顶", lswTogglePin], ["归档", arArchive]];
+  items.push(["删除", cfOpen, "m-danger"]);                        /* 照旧弹正中的确认框 */
+  items.forEach(function(it){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = it[0];
+    if(it[2]) b.className = it[2];
+    b.addEventListener("click", function(){ closeGroupMenu(); it[1](id); });
+    gmMenu.appendChild(b);
+  });
+  gmMenu.hidden = false;
+  gmMask.hidden = false;
+  gmMenu.style.position = "absolute";
+  /* 菜单左上角放在鼠标处；右边 / 下边放不下就往回收（下边放不下翻到鼠标上方），四周留 12px */
+  var dw = document.documentElement.clientWidth, vh = window.innerHeight || document.documentElement.clientHeight;
+  var w = gmMenu.offsetWidth, h = gmMenu.offsetHeight;
+  var left = Math.max(12, Math.min(x, dw - w - 12));
+  var top = y;
+  if(top + h > vh - 12) top = y - h;
+  top = Math.max(12, Math.min(top, vh - h - 12));
+  gmMenu.style.left = Math.round(left + (window.pageXOffset || 0)) + "px";
+  gmMenu.style.top = Math.round(top + (window.pageYOffset || 0)) + "px";
+  var first = gmMenu.querySelector("button");
+  if(first) try{ first.focus({preventScroll: true}); }catch(_){}
+}
+/* 菜单开着时又在遮罩上右键：关掉它，不弹浏览器自己的菜单 */
+gmMask.addEventListener("contextmenu", function(e){ if(cmId){ e.preventDefault(); closeGroupMenu(); } });
+
 /* 转屏/改窗口大小时内容列会挪（宽屏居中），菜单跟上；按钮已经被重画掉了就直接关 */
 window.addEventListener("resize", function(){
   if(gmMenu.hidden) return;
+  if(cmId){ closeGroupMenu(); return; }     /* 右键菜单没有锚点按钮，窗口一变就关 */
   if(!gmAnchor || !gmAnchor.isConnected){ closeGroupMenu(); return; }
   openGroupMenu(gpTarget, gmAnchor);
 });
