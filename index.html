@@ -381,13 +381,14 @@ body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-h
   shape-outside:inset(50% 0 0 0);
 }
 .title-read{
-  position:absolute;right:0;bottom:0;z-index:1;
+  position:absolute;right:var(--title-read-offset,0px);bottom:0;z-index:1;
   display:grid;place-items:center start;width:var(--title-read-width);height:1lh;
   padding:0;border:0;border-radius:0;background:none;font:inherit;letter-spacing:inherit;
-  color:var(--lsw-pin-fg);color:color-mix(in srgb, currentColor 55%, var(--lsw-pin-fg));cursor:pointer;
+  color:var(--c);cursor:pointer;
 }
-.title-read.is-press,.title-read:active{color:var(--lsw-pin-fg)}
-.title-read:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-1px}
+.card.is-over .title-read,.row.is-over .title-read{color:var(--over-fg)}
+.title-read.is-press,.title-read:active{opacity:.72}
+.title-read:focus-visible{outline:2px solid currentColor;outline-offset:-1px}
 @media (pointer:coarse){
   .title-read::after{content:"";position:absolute;right:0;bottom:0;width:44px;height:44px}
 }
@@ -3351,6 +3352,31 @@ titleReader.addEventListener("touchmove", function(e){
   e.preventDefault();
 }, {passive:false});
 
+/* 按浏览器实际排出的第二行末尾定位，不把省略号钉在标题框右边。 */
+function measureTitleReadOffset(button){
+  var box = button.getBoundingClientRect();
+  if(!box.width) return 0;
+  var text = button.parentElement.firstChild;
+  var range = document.createRange();
+  range.setStart(text, 0);
+  var edge = -Infinity;
+  /* 只量前几行；遇到大量折叠空白时再扩大取样范围。 */
+  for(var end = Math.min(256, text.length); ; end = Math.min(end * 2, text.length)){
+    range.setEnd(text, end);
+    var rects = range.getClientRects();
+    var pastSecond = false;
+    for(var i = 0; i < rects.length; i++){
+      var rect = rects[i];
+      var middle = (rect.top + rect.bottom) / 2;
+      if(middle >= box.bottom){ pastSecond = true; break; }
+      if(middle >= box.top && rect.width) edge = Math.max(edge, rect.right);
+    }
+    if(pastSecond || end === text.length) break;
+  }
+  if(!isFinite(edge)) return 0;
+  return Math.max(0, (box.left - edge) * button.offsetWidth / box.width);
+}
+
 function refreshTitleReaders(){
   var buttons = board.querySelectorAll(".title-read");
   /* 先按原两行版式判断溢出，再给实际需要的标题加阅读入口。 */
@@ -3366,6 +3392,13 @@ function refreshTitleReaders(){
   for(var j = 0; j < buttons.length; j++){
     buttons[j].parentElement.classList.toggle("title-reader-preview", !hidden[j]);
     buttons[j].hidden = !!hidden[j];
+    buttons[j].style.removeProperty("--title-read-offset");
+  }
+  var offsets = Array.prototype.map.call(buttons, function(button, i){
+    return hidden[i] ? 0 : measureTitleReadOffset(button);
+  });
+  for(var k = 0; k < buttons.length; k++){
+    if(offsets[k]) buttons[k].style.setProperty("--title-read-offset", offsets[k] + "px");
   }
 }
 
