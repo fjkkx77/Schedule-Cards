@@ -275,7 +275,7 @@ select.sort{
   font-weight:800;
   line-height:1.25;
   letter-spacing:.5px;
-  overflow-wrap:anywhere;   /* 中文标题一律完整换行显示，不用省略号截断 */
+  overflow-wrap:anywhere;
 }
 .card-sub{margin:6px 0 0;font-size:clamp(12px,3.5vw,15px);color:var(--text-2);font-weight:500}
 .card-ymd{font-weight:800;color:var(--text)}   /* 跟标题同色：只加粗、颜色仍是说明文字的灰，手机上看着发暗（2026-10-19 用户真机反馈） */
@@ -361,6 +361,22 @@ body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-h
   overflow-wrap:anywhere;
 }
 .row-sub{font-size:12px;color:var(--text-3);margin-top:2px}
+/* 长名称只裁显示区域，编辑和阅读面板继续用原文。 */
+.card-title,.row-title{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+}
+.card,.row{position:relative;cursor:pointer;touch-action:manipulation}
+.card-main-action{
+  position:absolute;inset:0;z-index:1;width:100%;padding:0;border:0;
+  border-radius:inherit;background:none;pointer-events:none;
+}
+.card-main-action:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-3px}
+.title-read{
+  display:block;align-self:flex-start;min-height:44px;padding:0 10px 0 0;border:0;border-radius:10px;
+  background:transparent;color:var(--lsw-pin-fg);font-size:14px;font-weight:700;
+}
+.title-read.is-press,.title-read:active{background:var(--press-bg)}
+.title-read:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:1px}
 .row-badge{flex:0 0 auto;display:flex;align-items:stretch}
 .row-badge .n{
   background:var(--c);color:#fff;
@@ -1229,6 +1245,27 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .extra-row .btn{min-height:44px;font-size:14px}
 
 .foot{margin:22px 4px 0;text-align:center;font-size:12px;color:var(--text-3);line-height:1.7}
+/* 阅读面板的正文单独滚动，标题栏与关闭按钮留在上方。 */
+body.title-reader-open{overflow:hidden}
+#titleReader{
+  position:fixed;inset:0;margin:auto;width:min(460px,calc(100% - 32px));max-height:82vh;max-height:82dvh;
+  padding:0;border:0;border-radius:20px;background:var(--surface);color:var(--text);overflow:hidden;
+  box-shadow:0 18px 50px rgba(0,0,0,.28);
+}
+#titleReader[open]{display:flex;flex-direction:column}
+#titleReader::before{display:none}
+#titleReader::backdrop{background:rgba(12,16,22,.42)}
+.title-reader-head{display:flex;align-items:center;gap:12px;flex:none;padding:12px 18px 8px}
+#titleReaderHeading{margin:0;font-size:19px}
+#titleReaderHeading:focus{outline:none}
+#titleReaderClose{background:var(--lsw-pin-bg);color:var(--lsw-pin-fg);box-shadow:none}
+#titleReaderClose:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:2px}
+#titleReaderText{
+  min-height:0;margin:0;padding:0 18px 18px;overflow-y:auto;overscroll-behavior:contain;
+  font-size:16px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;
+  cursor:text;-webkit-user-select:text;user-select:text;
+}
+
 /* ============ 搜索 + 跳到分组（2026-10-18） ============
    右上角放大镜（用户选的「丙」）→ 整屏一层：没打字时是「跳到分组」目录，打了字分「分组 / 日程 / 归档区」三段。
    搜索框在最上面、「跳到分组」之上（2026-10-18 用户要的；第一版放在底下贴着键盘上沿）。
@@ -1742,6 +1779,14 @@ body.sel-mode .row .row-main{padding-left:48px}
     <div class="actions"><button type="button" class="btn" id="mvCancel" style="flex:1">取消</button></div>
   </div>
 </div>
+
+<dialog class="sheet" id="titleReader" aria-labelledby="titleReaderHeading">
+  <div class="title-reader-head">
+    <h2 id="titleReaderHeading" tabindex="-1" autofocus>事件名称</h2>
+    <button type="button" class="od-done" id="titleReaderClose">关闭</button>
+  </div>
+  <p id="titleReaderText"></p>
+</dialog>
 
 <!-- 电脑右键卡片的操作面板（照刷题站首页的操作面板；排在删除确认前面，点「删除」后确认框叠在上面也不会被它盖住） -->
 <div class="mask alert-mask" id="cmMask" hidden>
@@ -2737,7 +2782,7 @@ function renderFilter(t, isCard){
 function render(){
   var keepY = window.scrollY;
   board.style.minHeight = board.offsetHeight + "px";
-  try{ renderNow(); }
+  try{ renderNow(); layoutStacks(false); }
   finally{
     board.style.minHeight = "";
     if(window.scrollY !== keepY) window.scrollTo(0, keepY);
@@ -2900,7 +2945,6 @@ function renderNow(){
 
   board.appendChild(box);
   if(selMode) selDecorate();      /* 勾选圈要在排版之前放好：列表视图里它会让行变宽的左边距生效 */
-  layoutStacks(false);
 }
 
 /* 空分组：标题照旧（色条、名字、数量 0、⋯），下面不是一摞卡片，而是一行「＋ 添加日程」，点了直接带着这个分组进新增。
@@ -2961,11 +3005,12 @@ function stackPeek(){ return state.view === "card" ? 26 : 12; }
 function stackGap(){ return state.view === "card" ? 14 : 10; }
 
 function layoutStacks(animate){
-  var stacks = board.querySelectorAll(".stack");
-  if(!stacks.length) return;
   /* 卡片区没显示出来（在短期倒计时界面里）时量不到真实高度，量了只会写进一堆 0。
      这时不排，回到日程时 render() 会重新排 */
   if(!board.getClientRects().length) return;
+  refreshTitleReaders();          /* 先决定阅读入口的显隐，再量堆叠里各卡的高度 */
+  var stacks = board.querySelectorAll(".stack");
+  if(!stacks.length) return;
   if(!animate) board.classList.add("no-anim");
 
   for(var s = 0; s < stacks.length; s++){
@@ -3244,14 +3289,90 @@ function frozenInfo(ev, t){
   }
   return info;
 }
+var titleReader = document.getElementById("titleReader");
+var titleReaderText = document.getElementById("titleReaderText");
+var titleReadFrom = null, titleReadId = null, titleReadY = 0;
+
+function openTitleReader(ev, opener){
+  if(titleReader.open || selMode || dragOn || document.body.classList.contains("just-dragged")) return;
+  if(lswOpen){ lswClose(true); return; }
+  titleReadFrom = opener;
+  titleReadId = ev.id;
+  titleReaderText.textContent = ev.title || "未命名";
+  titleReader.showModal();
+  document.body.classList.add("title-reader-open");
+  titleReaderText.scrollTop = 0;
+}
+document.getElementById("titleReaderClose").addEventListener("click", function(){ titleReader.close(); });
+titleReader.addEventListener("close", function(){
+  if(titleReader.open) return;    /* 关闭事件晚到时，保留已经重新打开的面板 */
+  document.body.classList.remove("title-reader-open");
+  var trigger = titleReadFrom;
+  if(trigger && !trigger.isConnected){
+    trigger = board.querySelector('[data-id="' + cssStr(titleReadId) + '"] .title-read:not([hidden])');
+  }
+  if(trigger) trigger.focus({preventScroll:true});
+  titleReadFrom = null;
+  titleReadId = null;
+});
+titleReader.addEventListener("click", function(e){
+  if(e.target !== titleReader) return;
+  var r = titleReader.getBoundingClientRect();
+  if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) titleReader.close();
+});
+titleReader.addEventListener("touchstart", function(e){
+  if(e.touches.length === 1) titleReadY = e.touches[0].clientY;
+}, {passive:true});
+titleReader.addEventListener("touchmove", function(e){
+  if(e.touches.length !== 1 || !e.cancelable) return;
+  var t = e.touches[0], dy = t.clientY - titleReadY;
+  var n = document.elementFromPoint(t.clientX, t.clientY);
+  var canScroll = n && titleReaderText.contains(n) && titleReaderText.scrollHeight > titleReaderText.clientHeight + 1;
+  if(canScroll){
+    if(Math.abs(dy) < 4) return;
+    titleReadY = t.clientY;
+    if(dy > 0 && titleReaderText.scrollTop > 0) return;
+    if(dy < 0 && titleReaderText.scrollTop + titleReaderText.clientHeight < titleReaderText.scrollHeight - 1) return;
+  }
+  e.preventDefault();
+}, {passive:false});
+
+function refreshTitleReaders(){
+  var buttons = board.querySelectorAll(".title-read");
+  var hidden = Array.prototype.map.call(buttons, function(button){
+    var title = button.parentElement.firstElementChild;
+    var stack = button.closest(".stack");
+    var folded = stack && stack.children.length > 1 && !isExpanded(stack.getAttribute("data-group"));
+    return selMode || folded || title.scrollHeight <= title.clientHeight + 1;
+  });
+  for(var i = 0; i < buttons.length; i++){ buttons[i].hidden = !!hidden[i]; }
+}
+
+function eventCardControls(el, column, ev){
+  /* 编辑与阅读全文是两个原生按钮。鼠标和触屏仍由整张卡接收；透明按钮负责键盘与辅助技术操作。 */
+  var main = document.createElement("button");
+  main.type = "button";
+  main.className = "card-main-action";
+  main.setAttribute("aria-label", (ev.title || "未命名") + (frozen(ev) ? "，已归档，点击查看详情" : "，点击编辑"));
+  el.insertBefore(main, el.firstChild);
+  el.addEventListener("click", function(){ activate(ev); });
+
+  var read = document.createElement("button");
+  read.type = "button";
+  read.className = "title-read";
+  read.textContent = "查看全文";
+  read.setAttribute("aria-haspopup", "dialog");
+  read.hidden = true;
+  read.addEventListener("click", function(e){ e.stopPropagation(); openTitleReader(ev, read); });
+  column.appendChild(read);
+}
+
 function cardEl(ev, t){
   var info = frozenInfo(ev, t);
-  var el = document.createElement("button");
-  el.type = "button";
+  var el = document.createElement("div");
   el.className = "card" + (info.state === "overdue" ? " is-over" : "");
   el.style.setProperty("--c", ev.color || COLORS[0]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[0], -0.16));
-  el.setAttribute("aria-label", (ev.title || "未命名") + (frozen(ev) ? "，已归档，点击查看详情" : "，点击编辑"));
   el.setAttribute("data-id", ev.id);      /* 拖拽重排时靠它把 DOM 顺序写回数据 */
 
   var top = document.createElement("div");
@@ -3327,18 +3448,16 @@ function cardEl(ev, t){
 
   body.appendChild(left); body.appendChild(num);
   el.appendChild(top); el.appendChild(body);
-  el.addEventListener("click", function(){ activate(ev); });
+  eventCardControls(el, left, ev);
   return el;
 }
 
 function rowEl(ev, t){
   var info = frozenInfo(ev, t);
-  var el = document.createElement("button");
-  el.type = "button";
+  var el = document.createElement("div");
   el.className = "row" + (info.state === "overdue" ? " is-over" : "");
   el.style.setProperty("--c", ev.color || COLORS[1]);
   el.style.setProperty("--cd", shade(ev.color || COLORS[1], -0.16));
-  el.setAttribute("aria-label", (ev.title || "未命名") + (frozen(ev) ? "，已归档，点击查看详情" : "，点击编辑"));
   el.setAttribute("data-id", ev.id);      /* 拖拽重排时靠它把 DOM 顺序写回数据 */
 
   var main = document.createElement("div");
@@ -3390,7 +3509,7 @@ function rowEl(ev, t){
   badge.appendChild(n); badge.appendChild(u);
 
   el.appendChild(main); el.appendChild(badge);
-  el.addEventListener("click", function(){ activate(ev); });
+  eventCardControls(el, main, ev);
   return el;
 }
 
@@ -3893,6 +4012,7 @@ var cmId = null;
 var cmLastPtr = "";
 document.addEventListener("pointerdown", function(e){ cmLastPtr = e.pointerType || ""; }, true);
 function cmBlocked(){
+  if(titleReader.open) return true;
   return dragOn || lswActive() || srOpen || selMode || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden ||
          !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || !mvMask.hidden || !cmMask.hidden ||
          (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden);
@@ -4820,6 +4940,7 @@ document.addEventListener("keydown", function(e){
     if(!askMask.hidden){ askClose(false); return; }         /* 通用确认框永远在最上面 */
     if(!dcMask.hidden){ dcMask.hidden = true; return; }     /* Esc = 继续编辑，不是放弃 */
     if(!cfMask.hidden){ cfClose(); return; }
+    if(titleReader.open) return;                    /* 阅读面板的 Esc 交给原生 dialog */
     if(!cmMask.hidden){ cmClose(); return; }           /* 右键操作面板 */
     if(scCfMask && !scCfMask.hidden){ scCfClose(); return; }   /* 短期倒计时的两层也认 Esc */
     if(scMask && !scMask.hidden){ scCloseAdd(); return; }
@@ -5536,7 +5657,7 @@ document.addEventListener("pointerdown", function(e){
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的长按不起拖动 */
   if(e.pointerType === "mouse" && e.button !== 0) return;
   if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden || !askMask.hidden) return;
-  if(srOpen || !mvMask.hidden || !cmMask.hidden) return;
+  if(titleReader.open || srOpen || !mvMask.hidden || !cmMask.hidden || e.target.closest(".title-read")) return;
   if(lswOpen) return;       /* 有卡片正滑开着：这一下是去收回它/点按钮的，不起拖拽 */
   var scope = dragScope(e.target);
   if(!scope) return;
@@ -5724,7 +5845,7 @@ var pressTP = TunePanel({
 });
 var PRESS_CFG = pressTP.values();
 var PRESS_TIERS = [
-  {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button, .cm-opt, .cm-cancel", flat: true},
+  {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button, .cm-opt, .cm-cancel, .title-read", flat: true},
   {sel: ".g-main", flat: true},
   {sel: ".card, .row, .sc-card", card: true, k: 1},
   {sel: ".g-empty, .od-bar", card: true, k: .75},     /* 整块但不是内容卡片：缩得比卡片少一点（按卡片缩的幅度乘 0.75） */
@@ -6028,7 +6149,7 @@ document.addEventListener("touchstart", function(e){
   if(e.touches.length !== 1 || dragOn) return;
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的触摸不起左滑 */
   if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden) return;
-  if(srOpen || selMode || !mvMask.hidden || !cmMask.hidden) return;   /* 搜索层、批量整理、右键面板里不起左滑 */
+  if(titleReader.open || srOpen || selMode || !mvMask.hidden || !cmMask.hidden) return;
   var t = e.target;
   if(lswOpen && t.closest(".lsw-acts")) return;              /* 点的是露出来的按钮，交给它的 click */
   var el = t.closest("#board .card[data-id], #board .row[data-id]");
@@ -6173,7 +6294,7 @@ dcMask.addEventListener("click", function(e){ if(e.target === dcMask){ dcMask.hi
 
 document.addEventListener("touchstart", function(e){
   sd = null;
-  if(sdBusy || e.touches.length !== 1 || !dpMask.hidden) return;
+  if(titleReader.open || sdBusy || e.touches.length !== 1 || !dpMask.hidden) return;
   var S = null;
   for(var i = SHEETS.length - 1; i >= 0; i--){ if(!SHEETS[i].mask.hidden){ S = SHEETS[i]; break; } }
   if(!S || S.noDrag) return;                    /* 正中的警告框不能拉掉；仍登记在 SHEETS 里，免得拉到下面那层表单 */
@@ -6289,7 +6410,7 @@ function ptrBlocked(){
 }
 /* 有浮层 / 正在拖 / 批量模式：这时候也不许因为「有新版本」把页面重新加载掉（填了一半的表单会丢） */
 function ptrOverlayOpen(){
-  return dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden || !cmMask.hidden;
+  return titleReader.open || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden || !cmMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
