@@ -363,7 +363,8 @@ body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-h
 .row-sub{font-size:12px;color:var(--text-3);margin-top:2px}
 /* 长名称只裁显示区域，编辑和阅读面板继续用原文。 */
 .card-title,.row-title{
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+  --title-read-width:1.12em;
+  position:relative;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
 }
 .card,.row{position:relative;cursor:pointer;touch-action:manipulation}
 .card-main-action{
@@ -371,12 +372,25 @@ body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-h
   border-radius:inherit;background:none;pointer-events:none;
 }
 .card-main-action:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-3px}
+.title-reader-preview{
+  display:block;-webkit-line-clamp:unset;max-height:2lh;
+}
+/* 只在第二行右侧给省略号留位，第一行仍用足标题宽度。 */
+.title-reader-preview::before{
+  content:"";float:right;width:var(--title-read-width);height:2lh;
+  shape-outside:inset(50% 0 0 0);
+}
 .title-read{
-  display:block;align-self:flex-start;min-height:44px;padding:0 10px 0 0;border:0;border-radius:10px;
-  background:transparent;color:var(--lsw-pin-fg);font-size:14px;font-weight:700;
+  position:absolute;right:0;bottom:calc((1lh - 1em) / 2);z-index:1;
+  display:grid;place-items:center;width:var(--title-read-width);height:1em;
+  padding:0;border:0;border-radius:.28em;font:inherit;line-height:inherit;
+  background:var(--lsw-pin-bg);color:var(--lsw-pin-fg);cursor:pointer;
 }
 .title-read.is-press,.title-read:active{background:var(--press-bg)}
-.title-read:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:1px}
+.title-read:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-1px}
+@media (pointer:coarse){
+  .title-read::after{content:"";position:absolute;right:0;bottom:-.12em;width:44px;height:44px}
+}
 .row-badge{flex:0 0 auto;display:flex;align-items:stretch}
 .row-badge .n{
   background:var(--c);color:#fff;
@@ -3339,13 +3353,20 @@ titleReader.addEventListener("touchmove", function(e){
 
 function refreshTitleReaders(){
   var buttons = board.querySelectorAll(".title-read");
+  /* 先按原两行版式判断溢出，再给实际需要的标题加阅读入口。 */
+  for(var i = 0; i < buttons.length; i++){
+    buttons[i].parentElement.classList.remove("title-reader-preview");
+  }
   var hidden = Array.prototype.map.call(buttons, function(button){
-    var title = button.parentElement.firstElementChild;
+    var title = button.parentElement;
     var stack = button.closest(".stack");
     var folded = stack && stack.children.length > 1 && !isExpanded(stack.getAttribute("data-group"));
     return selMode || folded || title.scrollHeight <= title.clientHeight + 1;
   });
-  for(var i = 0; i < buttons.length; i++){ buttons[i].hidden = !!hidden[i]; }
+  for(var j = 0; j < buttons.length; j++){
+    buttons[j].parentElement.classList.toggle("title-reader-preview", !hidden[j]);
+    buttons[j].hidden = !!hidden[j];
+  }
 }
 
 function eventCardControls(el, column, ev){
@@ -3360,11 +3381,12 @@ function eventCardControls(el, column, ev){
   var read = document.createElement("button");
   read.type = "button";
   read.className = "title-read";
-  read.textContent = "查看全文";
+  read.textContent = "…";
+  read.setAttribute("aria-label", "查看全文");
   read.setAttribute("aria-haspopup", "dialog");
   read.hidden = true;
   read.addEventListener("click", function(e){ e.stopPropagation(); openTitleReader(ev, read); });
-  column.appendChild(read);
+  column.firstElementChild.appendChild(read);
 }
 
 function cardEl(ev, t){
