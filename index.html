@@ -848,7 +848,13 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 .fsec-b .field{margin-bottom:16px}
 #form .fsec-b .field > label{font-size:12.5px;font-weight:600;letter-spacing:.2px}
 #form .hint{font-size:12px;line-height:1.5}
-#fTitle{font-size:20px;font-weight:800;min-height:52px}
+/* 名称很长时自然换行，短标题仍保持原输入框的高度。 */
+#fTitle{
+  display:block;width:100%;min-height:52px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface-2);
+  padding:12px;font-size:20px;font-weight:800;line-height:26px;
+  resize:none;overflow:hidden;overflow-wrap:anywhere;
+}
 .field input[type="text"],.field input[type="date"],.field select{
   width:100%;min-height:48px;
   border:1px solid var(--line);border-radius:12px;
@@ -856,7 +862,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
   padding:0 12px;font-size:16px;
 }
 .field input[type="date"]{-webkit-appearance:none;appearance:none}
-.field input:focus,.field select:focus{outline:2px solid #2f86f6;outline-offset:1px;border-color:transparent}
+.field input:focus,.field select:focus,#fTitle:focus{outline:2px solid #2f86f6;outline-offset:1px;border-color:transparent}
 .modes{display:flex;gap:8px}
 .modes input{position:absolute;opacity:0;width:0;height:0}
 .modes label{
@@ -1174,6 +1180,7 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .sheet.alert::before{display:none}
 .sheet.alert h2{font-size:17px;margin:0 0 6px}
+#cfTitle,#askTitle{overflow-wrap:anywhere}
 .sheet.alert .hint{font-size:13px;line-height:1.45}
 .sheet.alert .actions{margin-top:18px}
 /* 三个按钮时竖着排、「取消」在最下面（苹果警告框按钮多于两个时就是竖排） */
@@ -1593,7 +1600,7 @@ body.sel-mode .row .row-main{padding-left:48px}
     <div class="fsec-b">
     <div class="field">
       <label for="fTitle">事件名称</label>
-      <input type="text" id="fTitle" maxlength="30" placeholder="例如：回家过年啦" autocomplete="off">
+      <textarea id="fTitle" rows="1" placeholder="例如：回家过年啦" autocomplete="off" enterkeyhint="done"></textarea>
     </div>
 
     <div class="field">
@@ -3581,7 +3588,7 @@ fileInput.addEventListener("change", function(){
         if(!x || !parseYMD(x.date)) return;
         clean.push({
           id: x.id || uid(),
-          title: String(x.title || "未命名").slice(0,30),
+          title: String(x.title || "未命名"),
           date: x.date,
           mode: (x.mode === "down" || x.mode === "up") ? x.mode : "auto",
           group: typeof x.group === "string" ? x.group.trim().slice(0,12) : "",
@@ -3809,13 +3816,12 @@ function paintCreated(){
   lun.textContent = lunarTime(ms);
   sub.textContent = (ev && typeof ev.createdAt === "number") ? "" : "点「保存」的那一刻记为创建时间";
 }
-/* 备注框跟着内容长高（到 40vh 为止，再多就框里滚） */
-function fitNote(){
-  var t = document.getElementById("fNote");
-  t.style.height = "auto";
-  t.style.height = (t.scrollHeight + 2) + "px";   /* +2：上下两条 1px 边框，scrollHeight 不含 */
+/* 名称和备注都按内容高度展开；备注的最大高度由 CSS 控制。 */
+function fitTextarea(field){
+  field.style.height = "auto";
+  field.style.height = (field.scrollHeight + 2) + "px";   /* scrollHeight 不含上下两条 1px 边框 */
 }
-document.getElementById("fNote").addEventListener("input", fitNote);
+document.getElementById("fNote").addEventListener("input", function(){ fitTextarea(this); });
 function startCountdown(){
   stopCountdown();
   paintCountdown(); paintCreated();
@@ -4532,6 +4538,16 @@ document.getElementById("sNow").addEventListener("click", function(){
 var mask = document.getElementById("mask");
 var form = document.getElementById("form");
 var fTitle = document.getElementById("fTitle");
+fTitle.addEventListener("input", function(){ fitTextarea(fTitle); });
+window.addEventListener("resize", function(){
+  if(!mask.hidden) fitTextarea(fTitle);
+});
+fTitle.addEventListener("keydown", function(e){
+  /* 保留原先按回车保存的入口。拼音选字时的回车交给输入法。 */
+  if(e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  form.requestSubmit();
+});
 var fDate = document.getElementById("fDate");
 var fModes = document.getElementById("fModes");
 var modeHint = document.getElementById("modeHint");
@@ -4760,7 +4776,8 @@ function openForm(id, presetGroup){     /* presetGroup：从空分组的「＋ �
      不复位的话下一次打开别的日程会直接显示在最底下 */
   form.scrollTop = 0;
   document.body.style.overflow = "hidden";
-  fitNote();                  /* 弹窗显示出来之后才量得到高度 */
+  fitTextarea(fTitle);        /* 弹窗显示出来之后才量得到高度 */
+  fitTextarea(fNote);
   startCountdown();
   /* 新增时直接把光标放进事件名称并弹出键盘。
      ⚠️ focus() 必须在这次点击的同一拍里同步调用：放进 setTimeout 就脱离了用户手势，
@@ -4820,7 +4837,7 @@ document.addEventListener("keydown", function(e){
 
 form.addEventListener("submit", function(e){
   e.preventDefault();
-  var title = fTitle.value.trim() || "未命名";
+  var title = fTitle.value.replace(/\n+/g, " ").trim() || "未命名";
   var date = fDate.value;
   if(!parseYMD(date)){ notify("请选择一个有效日期"); return; }
   var mode = pickedMode();
