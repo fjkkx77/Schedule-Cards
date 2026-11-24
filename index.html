@@ -1263,21 +1263,34 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 /* 阅读面板的正文单独滚动，标题栏与关闭按钮留在上方。 */
 body.title-reader-open{overflow:hidden}
 #titleReader{
-  position:fixed;inset:0;margin:auto;width:min(460px,calc(100% - 32px));max-height:82vh;max-height:82dvh;
+  --reader-gutter:clamp(16px,5vw,24px);
+  position:fixed;inset:0;margin:auto;width:min(520px,calc(100% - 32px));max-height:82vh;max-height:82dvh;
   padding:0;border:0;border-radius:20px;background:var(--surface);color:var(--text);overflow:hidden;
   box-shadow:0 18px 50px rgba(0,0,0,.28);
+  opacity:0;transform:translate(var(--reader-x,0px),var(--reader-y,0px)) scale(.95);
+  transition:transform .2s cubic-bezier(.2,.9,.3,1),opacity .2s ease;
 }
 #titleReader[open]{display:flex;flex-direction:column}
 #titleReader::before{display:none}
-#titleReader::backdrop{background:rgba(12,16,22,.42)}
-.title-reader-head{display:flex;align-items:center;gap:12px;flex:none;padding:12px 18px 8px}
-#titleReaderHeading{margin:0;font-size:19px}
+#titleReader::backdrop{background:rgba(12,16,22,.42);opacity:0;transition:opacity .2s ease}
+#titleReader.title-reader-shown{opacity:1;transform:none}
+#titleReader.title-reader-shown::backdrop{opacity:1}
+@media (prefers-reduced-motion: reduce){
+  #titleReader,#titleReader.title-reader-shown{transform:none;transition:opacity .1s ease}
+  #titleReader::backdrop{transition-duration:.1s}
+}
+.title-reader-head{
+  display:flex;align-items:center;gap:12px;flex:none;
+  margin:0 var(--reader-gutter);padding:14px 0 10px;border-bottom:1px solid var(--line);
+}
+#titleReaderHeading{margin:0;font-size:clamp(18px,4.8vw,21px);line-height:1.25}
 #titleReaderHeading:focus{outline:none}
 #titleReaderClose{background:var(--lsw-pin-bg);color:var(--lsw-pin-fg);box-shadow:none}
 #titleReaderClose:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:2px}
 #titleReaderText{
-  min-height:0;margin:0;padding:0 18px 18px;overflow-y:auto;overscroll-behavior:contain;
-  font-size:16px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;
+  min-height:0;margin:0;padding:12px var(--reader-gutter) 20px;overflow-y:auto;overscroll-behavior:contain;
+  font-size:clamp(16px,2.25vw,17px);line-height:1.7;
+  white-space:pre-wrap;overflow-wrap:anywhere;text-wrap:pretty;
   cursor:text;-webkit-user-select:text;user-select:text;
 }
 
@@ -3306,19 +3319,45 @@ function frozenInfo(ev, t){
 }
 var titleReader = document.getElementById("titleReader");
 var titleReaderText = document.getElementById("titleReaderText");
-var titleReadFrom = null, titleReadId = null, titleReadY = 0;
+var titleReadFrom = null, titleReadId = null, titleReadY = 0, titleReadExit = null;
 
 function openTitleReader(ev, opener){
   if(titleReader.open || selMode || dragOn || document.body.classList.contains("just-dragged")) return;
   if(lswOpen){ lswClose(true); return; }
   titleReadFrom = opener;
   titleReadId = ev.id;
+  titleReadExit = null;
+  var source = opener.getBoundingClientRect();
+  titleReader.classList.remove("title-reader-shown");
+  /* 相对固定面板的中央定位。在显示前设好偏移，首帧就从入口方向出现。 */
+  var dx = source.left + source.width / 2 - window.innerWidth / 2;
+  var dy = source.top + source.height / 2 - window.innerHeight / 2;
+  titleReader.style.setProperty("--reader-x", Math.max(-18, Math.min(18, dx * .14)) + "px");
+  titleReader.style.setProperty("--reader-y", Math.max(-18, Math.min(18, dy * .14)) + "px");
   titleReaderText.textContent = ev.title || "未命名";
   titleReader.showModal();
   document.body.classList.add("title-reader-open");
   titleReaderText.scrollTop = 0;
+  /* 先让初态生效，再同时过渡面板和原生遮罩。 */
+  void getComputedStyle(titleReader).transform;
+  void getComputedStyle(titleReader, "::backdrop").opacity;
+  titleReader.classList.add("title-reader-shown");
 }
-document.getElementById("titleReaderClose").addEventListener("click", function(){ titleReader.close(); });
+function closeTitleReader(){
+  if(!titleReader.open || titleReadExit) return;
+  titleReader.classList.remove("title-reader-shown");
+  var animations = titleReader.getAnimations ? titleReader.getAnimations() : [];
+  if(!animations.length){ titleReader.close(); return; }
+  /* 到淡出结束才解除模态，避免背景提前滚动或吃到点击。 */
+  var exit = Promise.all(animations.map(function(animation){ return animation.finished.catch(function(){}); }));
+  titleReadExit = exit;
+  exit.then(function(){ if(titleReadExit === exit && titleReader.open) titleReader.close(); });
+}
+document.getElementById("titleReaderClose").addEventListener("click", closeTitleReader);
+titleReader.addEventListener("cancel", function(e){
+  e.preventDefault();
+  closeTitleReader();
+});
 titleReader.addEventListener("close", function(){
   if(titleReader.open) return;    /* 关闭事件晚到时，保留已经重新打开的面板 */
   document.body.classList.remove("title-reader-open");
@@ -3333,7 +3372,7 @@ titleReader.addEventListener("close", function(){
 titleReader.addEventListener("click", function(e){
   if(e.target !== titleReader) return;
   var r = titleReader.getBoundingClientRect();
-  if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) titleReader.close();
+  if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeTitleReader();
 });
 titleReader.addEventListener("touchstart", function(e){
   if(e.touches.length === 1) titleReadY = e.touches[0].clientY;
