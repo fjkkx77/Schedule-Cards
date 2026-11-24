@@ -5357,7 +5357,7 @@ var DRAG_HOLD = 450;      /* 按住多久算"拿起来" */
 var DRAG_SLOP = 10;       /* 按住期间手指动超过这么多，就当是滚动/下拉，取消长按 */
 
 var dragTimer = null, dragOn = false, dragEl = null, dragItems = null, dragTouch = false;
-var dragFrom = 0, dragTo = 0, dragStartY = 0, dragOffset = 0, dragH = 0;
+var dragFrom = 0, dragTo = 0, dragStartY = 0, dragOffset = 0, dragH = 0, dragRects = null;
 var dragV = 0, dragLastY = 0, dragLastT = 0;   /* 手指速度（px/ms，指数平滑），松手落位时交给弹簧 */
 /* 一只手拖、另一只手滑页面找位置（2026-10-15 用户要的；iPhone 主屏幕拖着图标时另一根手指能翻页，是同一个思路）：
    · 位置一律按「页面坐标」算（手指的屏幕 y + 页面滚动量）：页面滚了，被拖的那张仍贴在手指下，让位也跟着重算
@@ -5438,7 +5438,9 @@ function dragBegin(scope, clientY, byTouch){
   deStart();
   dragOffset = 0;
   dragV = 0; dragLastY = clientY; dragLastT = performance.now();
-  dragH = dragEl.getBoundingClientRect().height +
+  /* 在让位动画开始前量一遍，之后用同一组中线判落点，避免动画本身改动判据。 */
+  dragRects = dragItems.map(function(n){ return n.getBoundingClientRect(); });
+  dragH = dragRects[dragFrom].height +
           (scope.box.classList.contains("stack") ? stackGap() : (parseFloat(getComputedStyle(scope.box).rowGap) || 10));
   /* ↑ 同级项之间的间距读 CSS 实际值：原先写死「卡片 14 / 列表 10」，列表视图改成每组一个框后间距变了（2026-09-26） */
   /* 记下每一项当前的 transform，拖动时在它基础上叠加偏移（堆叠里的项本来就带 transform） */
@@ -5473,9 +5475,16 @@ function dragMove(clientY){
   var tnow = performance.now(), dt = tnow - dragLastT;
   if(dt >= 4){ dragV = 0.4 * (pageY - dragLastY) / dt + 0.6 * dragV; dragLastY = pageY; dragLastT = tnow; }
   dragOffset = pageY - dragStartY;
-  var steps = Math.round(dragOffset / dragH);
-  var to = Math.max(0, Math.min(dragItems.length - 1, dragFrom + steps));
-  if(to !== dragTo) dragTo = to;
+  /* LongPressDrag v2：上边越过上方项中线就往上换，下边越过下方项中线就往下换。
+     每项用自己的实测位置，组高、折叠和空分组都不必等高。dragOffset 已含页面滚动。 */
+  var start = dragRects[dragFrom], top = start.top + dragOffset, bottom = start.bottom + dragOffset;
+  var to = 0;
+  dragRects.forEach(function(rect, i){
+    var middle = rect.top + rect.height / 2;
+    if(i < dragFrom && top >= middle) to++;
+    else if(i > dragFrom && bottom > middle) to++;
+  });
+  dragTo = to;
   dragPaint();
 }
 
@@ -5494,7 +5503,7 @@ function dragEnd(commit){
   dragEl.classList.remove("drag-lift");
   document.body.classList.remove("dragging");
   var from = dragFrom, to = dragTo, items = dragItems;
-  dragOn = false; dragEl = null; dragItems = null;
+  dragOn = false; dragEl = null; dragItems = null; dragRects = null;
   dragTouchId = null; dsFinger = null;
   dsStop(); deStop();    /* 惯性滚动、边缘自动滚在落位时停下：落位动画是按此刻的屏幕位置算的，页面再滑会让卡片落偏 */
   /* 松手后浏览器还会补一个 click，要把它吃掉，否则拖完立刻弹出编辑窗；落位动画没走完之前也不让点 */
