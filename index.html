@@ -372,6 +372,7 @@ body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-h
   border-radius:inherit;background:none;pointer-events:none;
 }
 .card-main-action:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-3px}
+.title-reader-compact{word-break:break-all}
 .title-reader-preview{
   display:block;-webkit-line-clamp:unset;max-height:2lh;
 }
@@ -1261,7 +1262,10 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 
 .foot{margin:22px 4px 0;text-align:center;font-size:12px;color:var(--text-3);line-height:1.7}
 /* 阅读面板的正文单独滚动，标题栏与关闭按钮留在上方。 */
-body.title-reader-open{overflow:hidden}
+/* 锁滚动会隐藏桌面滚动条。让正文和固定控件保留原来的宽度与位置。 */
+body.title-reader-open{overflow:hidden;margin-right:var(--title-reader-scrollbar,0px)}
+body.title-reader-open :is(.cbar,.fab){margin-right:var(--title-reader-scrollbar,0px)}
+body.title-reader-open .ptr{margin-left:calc(var(--title-reader-scrollbar,0px) / -2)}
 #titleReader{
   --reader-gutter:clamp(16px,5vw,24px);
   position:fixed;inset:0;margin:auto;width:min(520px,calc(100% - 32px));max-height:82vh;max-height:82dvh;
@@ -1292,6 +1296,11 @@ body.title-reader-open{overflow:hidden}
   font-size:clamp(16px,2.25vw,17px);line-height:1.7;
   white-space:pre-wrap;overflow-wrap:anywhere;text-wrap:pretty;
   cursor:text;-webkit-user-select:text;user-select:text;
+}
+@media (max-width:520px){
+  #titleReader{--reader-gutter:clamp(16px,4.5vw,24px)}
+  #titleReaderText{text-wrap:wrap;text-align:justify;text-align-last:start;text-justify:inter-character}
+  .title-reader-token{word-break:break-all}
 }
 
 /* ============ 搜索 + 跳到分组（2026-10-18） ============
@@ -3321,6 +3330,20 @@ var titleReader = document.getElementById("titleReader");
 var titleReaderText = document.getElementById("titleReaderText");
 var titleReadFrom = null, titleReadId = null, titleReadY = 0, titleReadExit = null;
 
+function setTitleReaderText(text){
+  /* 技术标识符可在窄屏接着上一行排，普通英文单词和原文空格按原规则保留。 */
+  var parts = text.split(/([a-z\d]+(?:[_@./][a-z\d]+)+)/gi);
+  var content = document.createDocumentFragment();
+  parts.forEach(function(part, i){
+    if(i % 2 === 0){ content.append(part); return; }
+    var token = document.createElement("span");
+    token.className = "title-reader-token";
+    token.textContent = part;
+    content.appendChild(token);
+  });
+  titleReaderText.replaceChildren(content);
+}
+
 function openTitleReader(ev, opener){
   if(titleReader.open || selMode || dragOn || document.body.classList.contains("just-dragged")) return;
   if(lswOpen){ lswClose(true); return; }
@@ -3334,9 +3357,14 @@ function openTitleReader(ev, opener){
   var dy = source.top + source.height / 2 - window.innerHeight / 2;
   titleReader.style.setProperty("--reader-x", Math.max(-18, Math.min(18, dx * .14)) + "px");
   titleReader.style.setProperty("--reader-y", Math.max(-18, Math.min(18, dy * .14)) + "px");
-  titleReaderText.textContent = ev.title || "未命名";
+  setTitleReaderText(ev.title || "未命名");
+  var page = document.body;
+  if(!page.classList.contains("title-reader-open")){
+    var scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    if(scrollbar > 0) page.style.setProperty("--title-reader-scrollbar", scrollbar + "px");
+  }
   titleReader.showModal();
-  document.body.classList.add("title-reader-open");
+  page.classList.add("title-reader-open");
   titleReaderText.scrollTop = 0;
   /* 先让初态生效，再同时过渡面板和原生遮罩。 */
   void getComputedStyle(titleReader).transform;
@@ -3361,6 +3389,7 @@ titleReader.addEventListener("cancel", function(e){
 titleReader.addEventListener("close", function(){
   if(titleReader.open) return;    /* 关闭事件晚到时，保留已经重新打开的面板 */
   document.body.classList.remove("title-reader-open");
+  document.body.style.removeProperty("--title-reader-scrollbar");
   var trigger = titleReadFrom;
   if(trigger && !trigger.isConnected){
     trigger = board.querySelector('[data-id="' + cssStr(titleReadId) + '"] .title-read:not([hidden])');
@@ -3418,27 +3447,33 @@ function measureTitleReadOffset(button){
 
 function refreshTitleReaders(){
   var buttons = board.querySelectorAll(".title-read");
-  /* 先按原两行版式判断溢出，再给实际需要的标题加阅读入口。 */
   for(var i = 0; i < buttons.length; i++){
-    buttons[i].parentElement.classList.remove("title-reader-preview");
+    buttons[i].parentElement.classList.remove("title-reader-preview", "title-reader-compact");
   }
-  var hidden = Array.prototype.map.call(buttons, function(button){
+  function spills(button){
     var title = button.parentElement;
+    return title.scrollHeight > title.clientHeight + 1;
+  }
+  var candidates = Array.prototype.filter.call(buttons, function(button){
     var stack = button.closest(".stack");
     var folded = stack && stack.children.length > 1 && !isExpanded(stack.getAttribute("data-group"));
-    return selMode || folded || title.scrollHeight <= title.clientHeight + 1;
+    return !selMode && !folded && spills(button);
   });
+  /* 先试自然换行。若英文整段被挤下去，再用足两行，最后才留省略号的位置。 */
+  candidates.forEach(function(button){ button.parentElement.classList.add("title-reader-compact"); });
+  var readers = candidates.filter(spills);
+  var visible = new Set(readers);
   for(var j = 0; j < buttons.length; j++){
-    buttons[j].parentElement.classList.toggle("title-reader-preview", !hidden[j]);
-    buttons[j].hidden = !!hidden[j];
-    buttons[j].style.removeProperty("--title-read-offset");
+    var button = buttons[j];
+    var show = visible.has(button);
+    button.parentElement.classList.toggle("title-reader-preview", show);
+    button.hidden = !show;
+    button.style.removeProperty("--title-read-offset");
   }
-  var offsets = Array.prototype.map.call(buttons, function(button, i){
-    return hidden[i] ? 0 : measureTitleReadOffset(button);
+  var offsets = readers.map(measureTitleReadOffset);
+  readers.forEach(function(button, i){
+    if(offsets[i]) button.style.setProperty("--title-read-offset", offsets[i] + "px");
   });
-  for(var k = 0; k < buttons.length; k++){
-    if(offsets[k]) buttons[k].style.setProperty("--title-read-offset", offsets[k] + "px");
-  }
 }
 
 function eventCardControls(el, column, ev){
