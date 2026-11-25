@@ -833,7 +833,6 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 @media (hover:hover){ .menu button:hover,.menu label:hover{background:var(--surface-2)} }
 .menu .danger{color:#e0483d}
 .menu .m-accent{color:var(--lsw-pin-fg)}   /* 「新建分组」是动作不是设置，蓝字区分；借左滑「置顶」的蓝字变量，深浅主题对比度都已达标 */
-#gmMenu .m-accent{color:var(--lsw-pin-fg)}  /* 分组 ⋯ 里的「新建日程」同理 */
 .menu hr{border:0;border-top:1px solid var(--line);margin:5px 8px}
 .switch{margin-left:auto;font-size:13px;color:var(--text-2);font-weight:700}
 
@@ -1024,16 +1023,26 @@ body.just-dragged .card, body.just-dragged .row, body.just-dragged .group-head{p
 }
 .chips button.on{background:#2f86f6;color:#fff;box-shadow:none}
 /* 中间这个是"选择已有分组"的下拉：它自带菜单，所以要能定位 */
-/* 分组管理是主操作菜单，按钮要够 44px；日期选择器那个年/月菜单项目多，仍用 40px */
-#gmMenu button{min-height:44px}
-/* 这里必须写死宽度而不是 max-width：底部提示是可任意断行的中文长串，
-   它的 max-content 宽超过任何可用空间，于是菜单的收缩宽度会等于"视口宽 - left"，
-   而 left 又由测出来的宽度算出——循环依赖，结果就是菜单被顶到屏幕右边缘 */
-#gmMenu{width:min(240px, calc(100vw - 32px))}
-.gm-tip{
-  margin:6px 8px 2px;padding-top:6px;border-top:1px solid var(--line);
-  font-size:12px;color:var(--text-3);font-weight:600;line-height:1.5;
-}
+/* 分组操作菜单和日期选择器独立。高度按按钮两侧的可用空间计算。 */
+.gm-menu{position:absolute;z-index:41;width:min(14rem,calc(100vw - 24px));padding:5px;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;
+  scrollbar-color:var(--text-3) transparent}
+.gm-menu button{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;min-height:44px;padding:6px 10px;border:0;border-radius:9px;
+  background:transparent;color:var(--text);font:600 15px/1.35 system-ui,sans-serif;text-align:start;
+  transition:background-color .25s ease}
+.gm-menu button:active,.gm-menu button.is-press{background:var(--press-bg);transition:none}
+@media(hover:hover){.gm-menu button:hover{background:var(--surface-2)}}
+.gm-menu button:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-2px}
+.gm-menu button.m-accent{color:var(--lsw-pin-fg)}
+.gm-menu button.danger{color:var(--lsw-del-fg)}
+.gm-menu .gm-icon{flex:0 0 auto;display:grid;place-items:center;width:20px;height:20px}
+.gm-menu .gm-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.gm-divider{border:0;border-top:1px solid var(--line);margin:3px 8px}
+.gm-tip{margin:3px 0 0;padding:7px 10px 5px;border-top:1px solid var(--line);
+  color:var(--text-2);font-size:12px;font-weight:500;line-height:1.45;overflow-wrap:anywhere}
 .chip-sel{position:relative;display:inline-flex;max-width:100%}
 .chip-sel > button::after{content:"▾";margin-left:6px;font-size:12px;opacity:.7}
 .chip-sel .dp-menu{top:calc(100% + 6px);left:0;min-width:120px}
@@ -1555,7 +1564,7 @@ body.sel-mode .row .row-main{padding-left:48px}
 
 <!-- 分组管理：⋯ 菜单 + 重命名/删除弹窗 -->
 <div class="menu-mask" id="gmMask" hidden></div>
-<div class="dp-menu" id="gmMenu" hidden></div>
+<div class="gm-menu" id="gmMenu" role="group" aria-label="分组操作" hidden></div>
 
 <div class="mask" id="gpMask" hidden>
   <div class="sheet" id="gpSheet">
@@ -2828,6 +2837,7 @@ function render(){
   try{ xaPaint(); }catch(e){}              /* 「全部展开 / 收起」跟着分组的变化走；出错只停它自己 */
   /* 搜索层开着时数据变了（同步下来新东西）：结果跟着刷新。出错只停搜索自己 */
   if(srOpen) try{ srRender(); }catch(e){}
+  if(gmAnchor && !gmAnchor.isConnected) closeGroupMenu();
 }
 function renderNow(){
   var t = today();
@@ -2938,12 +2948,7 @@ function renderNow(){
     gmain.querySelector(".g-count").textContent = g.items.length;
     gmain.addEventListener("click", function(){ toggleGroup(g.name); });
 
-    var gmore = document.createElement("button");
-    gmore.type = "button";
-    gmore.className = "g-more";
-    gmore.setAttribute("aria-label", "管理分组「" + g.name + "」");
-    gmore.textContent = "⋯";
-    gmore.addEventListener("click", function(e){ e.stopPropagation(); openGroupMenu(g.name, gmore); });
+    var gmore = makeGroupMenuButton(g.name);
 
     var gchev = document.createElement("button");
     gchev.type = "button";
@@ -3002,12 +3007,7 @@ function emptyGroupEl(g){
   gmain.innerHTML = '<span class="g-name"></span><span class="g-count">0</span>';
   gmain.querySelector(".g-name").textContent = g.name;
 
-  var gmore = document.createElement("button");
-  gmore.type = "button";
-  gmore.className = "g-more";
-  gmore.setAttribute("aria-label", "管理分组「" + g.name + "」");
-  gmore.textContent = "⋯";
-  gmore.addEventListener("click", function(e){ e.stopPropagation(); openGroupMenu(g.name, gmore); });
+  var gmore = makeGroupMenuButton(g.name);
 
   var gap = document.createElement("span");
   gap.className = "g-chev g-chev-none";
@@ -4097,45 +4097,93 @@ var gpMask = document.getElementById("gpMask");
 var gpTarget = "";        /* 正在管理的分组名 */
 var gpMode = "rename";    /* rename | delete */
 
-function closeGroupMenu(){ gmMenu.hidden = true; gmMask.hidden = true; }
-
-function openGroupMenu(name, anchor){
+var gmAnchor = null;
+function makeGroupMenuButton(name){
+  var button = document.createElement("button");
+  button.type = "button";
+  button.className = "g-more";
+  button.setAttribute("aria-label", "管理分组「" + name + "」");
+  button.setAttribute("aria-controls", "gmMenu");
+  button.setAttribute("aria-expanded", "false");
+  button.textContent = "⋯";
+  button.addEventListener("click", function(e){
+    e.stopPropagation();
+    openGroupMenu(name, button, e.detail === 0);
+  });
+  return button;
+}
+function closeGroupMenu(restoreFocus){
+  var anchor = gmAnchor;
+  gmAnchor = null;
+  gmMenu.hidden = true;
+  gmMask.hidden = true;
+  if(!anchor) return;
+  anchor.setAttribute("aria-expanded", "false");
+  if(restoreFocus === true && anchor.isConnected) anchor.focus({preventScroll:true});
+}
+function positionGroupMenu(){
+  if(gmMenu.hidden) return;
+  if(!gmAnchor || !gmAnchor.isConnected){ closeGroupMenu(); return; }
+  var r = gmAnchor.getBoundingClientRect();
+  /* 按钮按下会缩放，定位仍取按钮原本的边缘。 */
+  var anchorRight = r.left + (r.width + gmAnchor.offsetWidth) / 2;
+  var anchorTop = r.top + (r.height - gmAnchor.offsetHeight) / 2;
+  var anchorBottom = anchorTop + gmAnchor.offsetHeight;
+  var vv = window.visualViewport, gap = 6, edge = 12;
+  var bar = document.getElementById("cbar");
+  var top = (vv ? vv.offsetTop : 0) + edge;
+  var bottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - edge;
+  if(bar.classList.contains("on")) top = Math.max(top, bar.offsetHeight + gap);
+  var below = Math.max(0, bottom - anchorBottom - gap);
+  var above = Math.max(0, anchorTop - gap - top);
+  gmMenu.style.maxHeight = "none";
+  var opensUp = gmMenu.offsetHeight > below && above > below;
+  gmMenu.style.maxHeight = Math.floor(opensUp ? above : below) + "px";
+  var width = gmMenu.offsetWidth;
+  var x = Math.max(edge, Math.min(anchorRight - width, document.documentElement.clientWidth - width - edge));
+  var y = opensUp ? anchorTop - gap - gmMenu.offsetHeight : anchorBottom + gap;
+  gmMenu.style.left = Math.round(x + window.scrollX) + "px";
+  gmMenu.style.top = Math.round(y + window.scrollY) + "px";
+}
+function openGroupMenu(name, anchor, fromKeyboard){
+  if(gmAnchor) closeGroupMenu();
   gpTarget = name;
   gmMenu.innerHTML = "";
-  /* 「＋ 新建日程」排第一、蓝字（2026-10-16 用户要的）：和右上角 ⋯ 的「＋ 新建分组」同一个写法——动作在上、蓝字，设置类在下。
-     直接进新增、分组已经选好，和空分组下面那行「＋ 添加日程」是同一条路（openForm 的 presetGroup）。
-     openForm 必须在这次点击里同步调用：它要当场 focus 事件名称，iOS 才弹键盘 */
-  [["＋ 新建日程", function(){ closeGroupMenu(); openForm(null, name); }, "m-accent"],
-   ["选择本组日程", function(){ closeGroupMenu(); selEnter(name); }],      /* 2026-10-18 批量整理：直接选好这一组 */
-   ["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }],
-   ["删除分组",   function(){ closeGroupMenu(); openGroupSheet("delete"); }]
-  ].forEach(function(pair){
-    var b = document.createElement("button");
-    b.type = "button";
-    b.textContent = pair[0];
-    if(pair[2]) b.className = pair[2];
-    b.addEventListener("click", pair[1]);
-    gmMenu.appendChild(b);
+  function icon(path){ return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + path + '"/></svg>'; }
+  /* 新建必须在这次点击中打开表单，iOS 才能在同一次用户操作里聚焦输入框。 */
+  [["新建日程", function(){ closeGroupMenu(); openForm(null, name); }, "m-accent", icon("M12 5v14M5 12h14")],
+   ["选择本组日程", function(){ closeGroupMenu(); selEnter(name); }, "", icon("M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm3 8 3 3 5-6")],
+   ["重命名分组", function(){ closeGroupMenu(); openGroupSheet("rename"); }, "", icon("m4 16-.5 4.5L8 20 20 8l-4-4L4 16Zm10-10 4 4")],
+   ["删除分组", function(){ closeGroupMenu(); openGroupSheet("delete"); }, "danger", LSW_ICO_DEL]
+  ].forEach(function(item){
+    if(item[2] === "danger"){
+      var divider = document.createElement("hr");
+      divider.className = "gm-divider";
+      gmMenu.appendChild(divider);
+    }
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = item[2];
+    button.textContent = item[0];
+    var glyph = document.createElement("span");
+    glyph.className = "gm-icon";
+    glyph.innerHTML = item[3];
+    button.appendChild(glyph);
+    button.addEventListener("click", item[1]);
+    gmMenu.appendChild(button);
   });
-  /* 排顺序不给按钮（长按拖就够了），但得把"能拖"这件事说出来——不然没人知道。
-     非自定义排序下拖不动是设计使然，这里顺带解释，免得用户以为坏了 */
   var tip = document.createElement("p");
   tip.className = "gm-tip";
-  tip.textContent = state.sort === "manual"
-    ? "长按分组名可以直接拖动排序"
-    : "想自己排顺序：先把上面的排序切到「自定义顺序」，再长按分组名拖动";
+  tip.textContent = state.sort === "manual" ? "按住分组名拖动排序" : "切换到「自定义顺序」可拖动排序";
   gmMenu.appendChild(tip);
-  /* 按锚点算位置，贴着右边缘，别超出屏幕。按页面坐标定位、跟着页面滚，见 placePopup */
   gmAnchor = anchor;
-  var r = anchor.getBoundingClientRect();
+  anchor.setAttribute("aria-expanded", "true");
   gmMenu.hidden = false;
   gmMask.hidden = false;
-  gmMenu.style.position = "absolute";   /* .dp-menu 本来就是 absolute，这里写明：它的包含块是整个页面（宽度在 CSS 里写死了，不受包含块影响） */
-  var w = gmMenu.offsetWidth || 140;
-  var left = Math.min(r.left, document.documentElement.clientWidth - w - 12);
-  placePopup(gmMenu, r, Math.max(12, left), 6);
+  gmMenu.scrollTop = 0;
+  positionGroupMenu();
+  if(fromKeyboard) gmMenu.querySelector("button").focus({preventScroll:true});
 }
-var gmAnchor = null;
 
 /* ---- 电脑上右键日程卡片：置顶 / 归档 / 删除（2026-11-10 用户要的） ----
    只是左滑三个按钮的另一个入口：调的是同一组函数（lswTogglePin / arArchive / arRestore / cfOpen），数据和同步一行没动。
@@ -4200,13 +4248,13 @@ function cmClose(){ cmMask.hidden = true; cmId = null; }
 document.getElementById("cmCancel").addEventListener("click", cmClose);
 cmMask.addEventListener("click", function(e){ if(e.target === cmMask) cmClose(); });
 
-/* 转屏/改窗口大小时内容列会挪（宽屏居中），菜单跟上；按钮已经被重画掉了就直接关 */
-window.addEventListener("resize", function(){
-  if(gmMenu.hidden) return;
-  if(!gmAnchor || !gmAnchor.isConnected){ closeGroupMenu(); return; }
-  openGroupMenu(gpTarget, gmAnchor);
-});
+/* 转屏或调整窗口大小时，菜单保持在当前分组的按钮旁。 */
+window.addEventListener("resize", positionGroupMenu);
+if(window.visualViewport) visualViewport.addEventListener("resize", positionGroupMenu);
 gmMask.addEventListener("click", closeGroupMenu);
+gmMenu.addEventListener("focusout", function(e){
+  if(!gmMenu.hidden && e.relatedTarget && !gmMenu.contains(e.relatedTarget)) closeGroupMenu();
+});
 
 function groupMemberCount(name){
   return boardEvents().filter(function(e){ return (e.group || "").trim() === name; }).length;
@@ -5081,7 +5129,7 @@ document.addEventListener("keydown", function(e){
     if(!cmMask.hidden){ cmClose(); return; }           /* 右键操作面板 */
     if(scCfMask && !scCfMask.hidden){ scCfClose(); return; }   /* 短期倒计时的两层也认 Esc */
     if(scMask && !scMask.hidden){ scCloseAdd(); return; }
-    if(!gmMenu.hidden){ closeGroupMenu(); return; }
+    if(!gmMenu.hidden){ closeGroupMenu(true); return; }
     if(!gpMask.hidden){ closeGroupSheet(); return; }
     if(!dpMask.hidden){ dpClose(); return; }
     if(!mvMask.hidden){ mvClose(); return; }
