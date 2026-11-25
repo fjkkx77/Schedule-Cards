@@ -612,11 +612,11 @@ body.sc-mode .toolbar, body.sc-mode #odBar, body.sc-mode #odHead, body.sc-mode #
 /* 卡片视图：分组结束、后面紧跟一张没分组的卡时，中间多留一段空、画一条细线——线下面的就不属于上面那个分组了
    （2026-10-17 用户看了真机后换成对比图里的 C；10-16 先选的 A「分组底托」真机上不好看，已撤掉）。
    线画在分组自己的 ::after 里、算进分组高度（整组拖动时量的高度包含它）；不用 margin，见上一条。
-   滑动时左滑按钮层会临时插在分组和卡片之间，所以选择器也认「+ .lsw-acts + .card」，否则一滑线就没了、卡片跳 27px（10-17 代码审查指出）。
+   renderNow() 按日程的排列标记带分隔线的分组，横滑插入或移除操作按钮时不影响这段高度。
    只在「分组 → 没分组的卡」之间画：分组接分组有标题分隔，不需要；置顶区、归档区、只看已过期不加 */
 /* 2026-10-18 用户嫌 1px 淡线「太不明显」，从对比图 A 加粗加深 / B 线中写字 / C 分组色收尾线 里选了 B：
    线中间写「以下未分组」，两边各一段线（两层渐变各画半边，中间让出文字的宽度）。高 16px，总占位和原来差不多 */
-#board > .cards > .group:not(.pinned-sec):has(+ .card, + .lsw-acts + .card)::after{
+#board > .cards > .group.has-loose-divider::after{
   content:"以下未分组";display:flex;align-items:center;justify-content:center;height:16px;margin:22px 6px 4px;pointer-events:none;
   font-size:13px;font-weight:700;line-height:1;letter-spacing:.5px;color:var(--text-2);
   --sep:color-mix(in srgb, var(--text-3) 70%, transparent);
@@ -1380,7 +1380,7 @@ body.title-reader-open .ptr{margin-left:calc(var(--title-reader-scrollbar,0px) /
    这个模式里所有分组都展开（收起的一摞没法一张张选）、不能拖动、左滑、下拉刷新 */
 body.sel-mode .topbar, body.sel-mode .toolbar, body.sel-mode #odBar, body.sel-mode .fab, body.sel-mode .cbar{display:none !important}
 body.sel-mode .app{padding-top:calc(var(--safe-t) + 66px);padding-bottom:calc(96px + var(--safe-b))}
-/* 空分组只藏「＋ 添加日程」那行、标题留着：整个藏掉的话「以下未分组」那条线（靠 .group + .card 相邻）会断（代码审查指出） */
+/* 空分组只藏「＋ 添加日程」那行，保留标题和下方可能有的「以下未分组」分隔线。 */
 body.sel-mode .group-head .g-more, body.sel-mode .group-head .g-chev, body.sel-mode .g-empty{display:none}
 /* 顶条文字左右各让出勾选圈的位置，长一点的日期也不会被圈压住（左右对称，文字仍居中） */
 body.sel-mode .card .card-top{padding-left:44px;padding-right:44px}
@@ -2913,6 +2913,8 @@ function renderNow(){
   gsWeave(groupize(list.filter(function(e){ return !isPinned(e); })), empties).forEach(function(g){
     if(g.empty){ box.appendChild(emptyGroupEl(g)); return; }
     if(!g.name){                                  /* 没分组的直接平铺 */
+      var previous = box.lastElementChild;
+      if(isCard && previous && previous.classList.contains("group")) previous.classList.add("has-loose-divider");
       box.appendChild(make(g.items[0]));
       return;
     }
@@ -6141,6 +6143,7 @@ var LSW_OVER = 0.3;       /* 拉过头之后的阻尼 */
 var cfMask = document.getElementById("cfMask");
 var lsw = null;           /* 进行中的手势 */
 var lswOpen = null;       /* 当前滑开停住的那张 {el, acts, w} */
+var lswClosing = new WeakMap();   /* 按卡片跟踪仍在收回的操作层 */
 var lswEatUntil = 0;      /* 滑完浏览器可能补发一个 click，在这个时刻前吃掉一次 */
 
 /* 图钉 / 垃圾桶的线条图标（描边色 = currentColor，跟按钮文字同色） */
@@ -6194,13 +6197,22 @@ function lswMount(el, side){
     else btn("lsw-arc", "arc", LSW_ICO_ARC, "归档", arArchive);
     btn("lsw-del", "del", LSW_ICO_DEL, "删除", cfOpen);   /* 删除始终在最右边 */
   }
+  var closing = lswClosing.get(el), startPos = 0;
+  if(closing){
+    /* 收回还没结束就再次滑动：接上当前的横向位置，并让旧计时器退出。 */
+    var transform = getComputedStyle(el).transform;
+    if(transform !== "none") startPos = new DOMMatrixReadOnly(transform).m41;
+    clearTimeout(closing.timer);
+    lswClosing.delete(el);
+    closing.acts.remove();
+  }
   acts.style.top = el.offsetTop + "px";
   acts.style.height = el.offsetHeight + "px";
   if(side > 0) acts.style.left = el.offsetLeft + "px";
   else acts.style.right = (host.clientWidth - el.offsetLeft - el.offsetWidth) + "px";
   host.insertBefore(acts, el);     /* 排在卡片前面 → 被卡片盖住 */
   /* 卡片最终停在：按钮总宽 + 与卡片之间留 8px 缝 */
-  return {acts:acts, w:acts.offsetWidth + 8, side:side};
+  return {acts:acts, w:acts.offsetWidth + 8, side:side, startPos:startPos};
 }
 
 function lswSet(el, x, animate){
@@ -6215,8 +6227,9 @@ function lswClose(animate){
   o.acts.classList.remove("is-open");
   if(animate === false){ lswSet(o.el, 0, false); o.acts.remove(); return; }
   lswSet(o.el, 0, true);
-  setTimeout(function(){
-    if(lswOpen && lswOpen.acts === o.acts) return;     /* 期间又被滑开了 */
+  lswClosing.set(o.el, o);
+  o.timer = setTimeout(function(){
+    lswClosing.delete(o.el);
     o.el.classList.remove("lsw-anim");
     o.acts.remove();
   }, 320);
@@ -6332,17 +6345,17 @@ document.addEventListener("touchmove", function(e){
     var ps = document.querySelectorAll(".stack.is-pressed");
     for(var i = 0; i < ps.length; i++) ps[i].classList.remove("is-pressed");
     if(lsw.fromOpen){
-      lsw.acts = lswOpen.acts; lsw.w = lswOpen.w; lsw.side = lswOpen.side; lswOpen = null;
+      lsw.acts = lswOpen.acts; lsw.w = lswOpen.w; lsw.side = lswOpen.side; lsw.startPos = lsw.side * lsw.w; lswOpen = null;
     }else{
       var m = lswMount(lsw.el, dx < 0 ? -1 : 1);       /* 出死区那一刻往哪边，就露哪边的按钮 */
       if(!m){ lsw.locked = false; lsw = null; return; }
-      lsw.acts = m.acts; lsw.w = m.w; lsw.side = m.side;
+      lsw.acts = m.acts; lsw.w = m.w; lsw.side = m.side; lsw.startPos = m.startPos;
     }
     lsw.acts.classList.remove("is-open");
   }
   e.preventDefault();
   /* 统一换算成「往按钮那边拉了多远」q（0～w），两边共用一套阻尼：反方向和拉过头都按 LSW_OVER 衰减 */
-  var sd = lsw.side, q = (lsw.fromOpen ? lsw.w : 0) + dx * sd;
+  var sd = lsw.side, q = (lsw.startPos + dx) * sd;
   /* 从滑开的状态往回推＝只是想收起来：推到零点就停住，不换到另一边。
      2026-10-18 用户：露着「置顶」时往左推想收起，常常推过头直接露出「归档 / 删除」（反过来也一样）。
      要另一边的操作，松手再滑一次；从关着起手的那种「一路拉到另一边」照旧 */
@@ -6355,6 +6368,7 @@ document.addEventListener("touchmove", function(e){
       lsw.acts.remove();
       lsw.acts = m2.acts; lsw.w = m2.w; lsw.side = m2.side; lsw.fromOpen = false;
       lsw.x0 = e.touches[0].clientX - q * sd;
+      lsw.startPos = 0;
       sd = lsw.side; q = -q;
     }
   }
