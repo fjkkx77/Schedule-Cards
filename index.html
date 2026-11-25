@@ -390,6 +390,7 @@ body:not(.od-mode):not(.fv-mode) #board > .list:not(.pinned) > .group > .group-h
 .card.is-over .title-read,.row.is-over .title-read{color:var(--over-fg)}
 .title-read.is-press,.title-read:active{opacity:.72}
 .title-read:focus-visible{outline:2px solid currentColor;outline-offset:-1px}
+body.title-reader-pointer .title-read:focus-visible{outline:none}
 @media (pointer:coarse){
   .title-read::after{content:"";position:absolute;right:0;bottom:0;width:44px;height:44px}
 }
@@ -3344,7 +3345,7 @@ function setTitleReaderText(text){
   titleReaderText.replaceChildren(content);
 }
 
-function openTitleReader(ev, opener){
+function openTitleReader(ev, opener, fromPointer){
   if(titleReader.open || selMode || dragOn || document.body.classList.contains("just-dragged")) return;
   if(lswOpen){ lswClose(true); return; }
   titleReadFrom = opener;
@@ -3359,6 +3360,8 @@ function openTitleReader(ev, opener){
   titleReader.style.setProperty("--reader-y", Math.max(-18, Math.min(18, dy * .14)) + "px");
   setTitleReaderText(ev.title || "未命名");
   var page = document.body;
+  /* 触屏点按后浏览器可能把恢复焦点当成键盘操作，等实际按键再显示描边。 */
+  page.classList.toggle("title-reader-pointer", fromPointer);
   if(!page.classList.contains("title-reader-open")){
     var scrollbar = window.innerWidth - document.documentElement.clientWidth;
     if(scrollbar > 0) page.style.setProperty("--title-reader-scrollbar", scrollbar + "px");
@@ -3381,6 +3384,9 @@ function closeTitleReader(){
   titleReadExit = exit;
   exit.then(function(){ if(titleReadExit === exit && titleReader.open) titleReader.close(); });
 }
+document.addEventListener("keydown", function(){
+  document.body.classList.remove("title-reader-pointer");
+}, true);
 document.getElementById("titleReaderClose").addEventListener("click", closeTitleReader);
 titleReader.addEventListener("cancel", function(e){
   e.preventDefault();
@@ -3492,7 +3498,7 @@ function eventCardControls(el, column, ev){
   read.setAttribute("aria-label", "查看全文");
   read.setAttribute("aria-haspopup", "dialog");
   read.hidden = true;
-  read.addEventListener("click", function(e){ e.stopPropagation(); openTitleReader(ev, read); });
+  read.addEventListener("click", function(e){ e.stopPropagation(); openTitleReader(ev, read, e.detail > 0); });
   column.firstElementChild.appendChild(read);
 }
 
@@ -7563,16 +7569,16 @@ function srSection(title, rows){
 /* 主页上从上到下的分组目录：置顶 → 各分组（空分组也在，位置同主页）→ 没有分组的 */
 function srDirectory(list){
   list = list || sortedEvents();             /* srRender 把排好的传进来，一次搜索只排一遍 */
-  var out = [], loose = [];
+  var out = [], looseCount = 0;
   var pins = list.filter(isPinned);
   if(pins.length) out.push({kind:"pin", name:"📌 置顶", count:pins.length, color:groupColor(pins)});
   var empties = gsSafe(gsEmptyList, []) || [];
   gsWeave(groupize(list.filter(function(e){ return !isPinned(e); })), empties).forEach(function(g){
     if(g.empty) out.push({kind:"group", name:g.name, count:0, color:g.color || COLORS[0]});
-    else if(!g.name) loose.push(g.items[0]);
+    else if(!g.name) looseCount++;
     else out.push({kind:"group", name:g.name, count:g.items.length, color:groupColor(g.items)});
   });
-  if(loose.length) out.push({kind:"loose", name:"没有分组的", count:loose.length, color:"", first:loose[0].id});
+  if(looseCount) out.push({kind:"loose", name:"没有分组的", count:looseCount, color:""});
   return out;
 }
 function srNum(ev, t){
@@ -7674,31 +7680,41 @@ function groupSecByName(name){
   return a ? a.closest(".group") : null;
 }
 /* 让一个元素亮一下（重复触发时先摘掉再挂上，动画才会重播） */
+var flashTimers = new WeakMap();
 function flashEl(el, cls, ms){
   if(!el) return;
-  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
-  setTimeout(function(){ el.classList.remove(cls); }, ms || 1500);
+  clearTimeout(flashTimers.get(el));
+  if(el.classList.contains(cls)){ el.classList.remove(cls); void el.offsetWidth; }
+  el.classList.add(cls);
+  flashTimers.set(el, setTimeout(function(){
+    el.classList.remove(cls);
+    flashTimers.delete(el);
+  }, ms || 1500));
 }
 /* 拼进属性选择器的值要转义：同步下来的 id 没校验过，带引号会让 querySelector 直接抛错（代码审查指出） */
 function cssStr(s){ return window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function srJump(d){
   srClose();
   srToMain(function(){
-    var el = null, head = null;
+    var el = null, loose = null;
     if(d.kind === "group"){
       if(!isExpanded(d.name) && groupCount(d.name) > 1){ state.expanded.push(d.name); save(); render(); }
       el = groupSecByName(d.name);
     }else if(d.kind === "pin") el = board.querySelector(".pinned-sec");
-    else el = board.querySelector('[data-id="' + cssStr(d.first) + '"]');
+    else{
+      /* 主页上只有未分组、未置顶的日程直接平铺在主容器内。 */
+      loose = board.querySelectorAll(":scope > :is(.cards, .list) > [data-id]");
+      el = loose[0];
+    }
     if(!el) return;
-    head = el.querySelector(".group-head");
+    var head = el.querySelector(".group-head");
     var bar = document.getElementById("cbar");
     var off = (bar ? bar.offsetHeight : 56) + 10;       /* 停在顶部小栏下面 */
     var y = Math.max(0, (head || el).getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
     try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-    /* 指出是哪一组：分组标题本身闪（用户要的是「分组闪」，不是组里的卡片闪——f4ca548 试过卡片一起闪，用户又改回标题）；
-       「没有分组的」没有标题，闪第一张卡。两种闪法一样，见 CSS「sr-flash」 */
-    flashEl(head || el, head ? "sr-flash" : "sr-hit", 1700);
+    /* 有组名时只闪标题。「没有分组的」没有标题，闪所有对应日程。 */
+    if(loose) loose.forEach(function(card){ flashEl(card, "sr-hit", 1700); });
+    else flashEl(head, "sr-flash", 1700);
   });
 }
 /* 点搜索结果里的一条日程：回到它所在的界面（主页 / 归档区），收着的分组先展开，滚到屏幕中间、闪两下 */
