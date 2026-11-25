@@ -7470,10 +7470,13 @@ async function syncShort(){
    弹层三件事（记忆 feedback_overlay_scroll_keyboard）：拦背景穿透、整层对齐可见区域（键盘弹出也不穿模）、点按钮的同一拍里 focus。
    不进浏览器历史：主屏幕 App 没有返回手势，进出都靠「取消」 */
 var srOpen = false, srPrevOverflow = "", srPending = null, srScrollY = 0;
+var srOpenCount = 0, srCancelGroupFlash = null;
 var srMask = document.getElementById("srMask"), srList = document.getElementById("srList"), srIn = document.getElementById("srIn");
 var srInput = document.getElementById("srInput"), srBarEl = document.getElementById("srBar"), srClearBtn = document.getElementById("srClear");
 function srOpenLayer(){
   if(srOpen) return;
+  srOpenCount++;
+  if(srCancelGroupFlash) srCancelGroupFlash();
   srOpen = true;
   closeMenu();
   lswClose(false);
@@ -7707,9 +7710,63 @@ function flashEl(el, cls, ms){
 }
 /* 拼进属性选择器的值要转义：同步下来的 id 没校验过，带引号会让 querySelector 直接抛错（代码审查指出） */
 function cssStr(s){ return window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
+/* 以浏览器能停下的滚动位置为准，到位且目标可见才开始闪。 */
+function srScrollToGroup(target, y, bar, flash){
+  var root = document.scrollingElement || document.documentElement;
+  function atDestination(){
+    var end = Math.min(y, Math.max(0, root.scrollHeight - root.clientHeight));
+    return Math.abs(window.scrollY - end) <= 1;
+  }
+  var moving = !atDestination(), supportsScrollEnd = "onscrollend" in document;
+  var ended = !moving, lastY = window.scrollY, stableFrames = 0;
+  var frame = 0, timer = 0;
+  function cancel(){
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+    document.removeEventListener("scrollend", onScrollEnd);
+    document.removeEventListener("pointerdown", cancel, true);
+    document.removeEventListener("wheel", cancel, true);
+    srCancelGroupFlash = null;
+  }
+  function onScrollEnd(){
+    if(atDestination()) ended = true;
+  }
+  function check(){
+    if(!target.isConnected){ cancel(); return; }
+    var reached = atDestination();
+    if(!supportsScrollEnd){
+      stableFrames = reached && window.scrollY === lastY ? stableFrames + 1 : 0;
+      lastY = window.scrollY;
+    }
+    if(reached && (ended || stableFrames >= 2)){
+      var vv = window.visualViewport;
+      var visibleTop = vv ? vv.offsetTop : 0;
+      var visibleBottom = visibleTop + (vv ? vv.height : window.innerHeight);
+      if(bar && bar.classList.contains("on")) visibleTop = Math.max(visibleTop, bar.offsetHeight);
+      var top = target.getBoundingClientRect().top;
+      if(top >= visibleTop - 1 && top < visibleBottom){
+        cancel();
+        flash();
+        return;
+      }
+    }
+    frame = requestAnimationFrame(check);
+  }
+  if(srCancelGroupFlash) srCancelGroupFlash();
+  srCancelGroupFlash = cancel;
+  if(supportsScrollEnd) document.addEventListener("scrollend", onScrollEnd);
+  document.addEventListener("pointerdown", cancel, {capture:true, passive:true});
+  document.addEventListener("wheel", cancel, {capture:true, passive:true});
+  timer = setTimeout(cancel, 5000);   /* 滚动被打断或页面切走时，释放等待。 */
+  try{ window.scrollTo({top:y, behavior:moving ? "smooth" : "instant"}); }
+  catch(e){ window.scrollTo(0, y); ended = true; }
+  check();
+}
 function srJump(d){
+  var opened = srOpenCount;
   srClose();
   srToMain(function(){
+    if(opened !== srOpenCount) return;
     var el = null, loose = null;
     if(d.kind === "group"){
       if(!isExpanded(d.name) && groupCount(d.name) > 1){ state.expanded.push(d.name); save(); render(); }
@@ -7724,11 +7781,13 @@ function srJump(d){
     var head = el.querySelector(".group-head");
     var bar = document.getElementById("cbar");
     var off = (bar ? bar.offsetHeight : 56) + 10;       /* 停在顶部小栏下面 */
-    var y = Math.max(0, (head || el).getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
-    try{ window.scrollTo({top:y, behavior:"smooth"}); }catch(e){ window.scrollTo(0, y); }
-    /* 有组名时只闪标题。「没有分组的」没有标题，闪所有对应日程。 */
-    if(loose) loose.forEach(function(card){ flashEl(card, "sr-hit", 1700); });
-    else flashEl(head, "sr-flash", 1700);
+    var target = head || el;
+    var y = Math.max(0, target.getBoundingClientRect().top + window.scrollY - off);   /* 对准标题行：.group 自己有 10px 上内边距 */
+    srScrollToGroup(target, y, bar, function(){
+      /* 有组名时只闪标题。「没有分组的」没有标题，闪所有对应日程。 */
+      if(loose) loose.forEach(function(card){ flashEl(card, "sr-hit", 1700); });
+      else flashEl(head, "sr-flash", 1700);
+    });
   });
 }
 /* 点搜索结果里的一条日程：回到它所在的界面（主页 / 归档区），收着的分组先展开，滚到屏幕中间、闪两下 */
