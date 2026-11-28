@@ -143,9 +143,18 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
   transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform .22s cubic-bezier(.22,.68,.36,1),opacity .18s}
 .cbar.on{transform:none;opacity:1;pointer-events:auto}
 .cbar-in{position:relative;max-width:576px;margin:0 auto;min-height:56px;display:flex;align-items:center;justify-content:flex-end;gap:10px}
-/* 小标题靠左、不居中：右边有三个 44px 按钮，320 宽居中会被按钮压住（iOS 是居中，这里因为右边放不下才改） */
-.cbar-t{margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--text);white-space:nowrap;pointer-events:none}
-@media (prefers-reduced-motion:reduce){.cbar{transition:none}}
+/* 小标题靠左、不居中：右边有四个 44px 按钮，320 宽居中会被按钮压住（iOS 是居中，这里因为右边放不下才改）。
+   2026-11-28：大标题和小栏标题统一支持「单击回顶部、双击到底部」；按钮只包文字本身、高度补足 44px，不侵入右侧按钮 */
+.cbar-t{
+  flex:0 1 auto;margin-right:auto;min-width:0;max-width:100%;
+  height:44px;line-height:44px;padding:0 6px;margin-left:-6px;border:0;border-radius:10px;background:transparent;
+  overflow:hidden;text-overflow:ellipsis;font-size:17px;font-weight:700;color:var(--text);white-space:nowrap;text-align:left;
+  user-select:none;-webkit-user-select:none;transition:opacity .16s ease;
+}
+.cbar-t:active,.cbar-t.is-press,.brand-t:active,.brand-t.is-press{opacity:.55;transition:none}
+@media (hover:hover){ .cbar-t:hover,.brand-t:hover{opacity:.76} }
+.cbar-t:focus-visible,.brand-t:focus-visible{outline:2px solid #2f86f6;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.cbar,.cbar-t,.brand-t{transition:none}}
 /* 小栏开着时弹出的 ⋯ 菜单也钉在屏幕上（按钮不再跟页面走了） */
 .menu.fx{position:fixed}
 /* 「只看已过期」「归档区」的标题行里有「完成」（退出这个视图的按钮）：钉在小栏下面，不跟着列表滚走 */
@@ -183,6 +192,13 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 .brand h1{
   margin:0;font-size:clamp(28px,8vw,36px);font-weight:800;
   letter-spacing:-.2px;line-height:1.16;
+}
+.brand-t{
+  display:block;width:fit-content;max-width:100%;min-height:44px;
+  padding:0;border:0;border-radius:10px;background:transparent;
+  color:inherit;font:inherit;letter-spacing:inherit;line-height:inherit;text-align:left;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  user-select:none;-webkit-user-select:none;transition:opacity .16s ease;
 }
 /* 2026-10-18 右上角多了搜索按钮（用户选的「丙」），一行四个 44px 按钮。360 以下放不下 28px 的标题：
    列间距收到 6、标题按剩下的宽度算（「日程卡片」四个字，(屏宽 − 两侧 28 − 四个按钮和间距 200) ÷ 4，320 宽约 23px）。375 起跟以前一样 */
@@ -1432,10 +1448,10 @@ body.sel-mode .row .row-main{padding-left:48px}
 <body>
 
 <div class="app">
-  <div class="cbar" id="cbar" aria-hidden="true"><div class="cbar-in"><span class="cbar-t">日程卡片</span><span id="cbarB" style="display:flex;gap:10px"></span></div></div>
+  <div class="cbar" id="cbar" aria-hidden="true"><div class="cbar-in"><button type="button" class="cbar-t" id="cbarTitle" title="单击回顶部，双击到底部" aria-label="日程卡片，单击回顶部，双击到底部" tabindex="-1">日程卡片</button><span id="cbarB" style="display:flex;gap:10px"></span></div></div>
   <div class="topbar">
     <div class="brand">
-      <h1>日程卡片</h1>
+      <h1><button type="button" class="brand-t" id="brandTitle" title="单击回顶部，双击到底部" aria-label="日程卡片，单击回顶部，双击到底部">日程卡片</button></h1>
       <p class="today" id="todayLine">今天</p>
       <p class="sync-line" id="syncLine" hidden></p>
     </div>
@@ -3779,6 +3795,7 @@ document.getElementById("menuBtn").addEventListener("click", openMenu);
 /* 顶部小栏（见 CSS「顶部固定小栏」）。大标题的底边滚到屏幕顶以上就算「滚走了」 */
 (function(){
   var bar = document.getElementById("cbar"), slot = document.getElementById("cbarB");
+  var cbarTitle = document.getElementById("cbarTitle");
   var top = document.querySelector(".topbar"), h1 = top.querySelector("h1");
   var IDS = ["srBtn", "arBtn", "scBtn", "menuBtn"], on = false;
   function sync(){
@@ -3786,6 +3803,10 @@ document.getElementById("menuBtn").addEventListener("click", openMenu);
     if(want === on) return;
     on = want;
     bar.classList.toggle("on", on);
+    if(cbarTitle){
+      if(!on && document.activeElement === cbarTitle) cbarTitle.blur();
+      cbarTitle.tabIndex = on ? 0 : -1;
+    }
     bar.setAttribute("aria-hidden", on ? "false" : "true");
     /* 按原来的顺序挪：顶栏里它们排在 .brand 后面，appendChild 依次放回去顺序不变 */
     IDS.forEach(function(id){ var b = document.getElementById(id); if(b) (on ? slot : top).appendChild(b); });
@@ -3794,6 +3815,68 @@ document.getElementById("menuBtn").addEventListener("click", openMenu);
   window.addEventListener("scroll", sync, {passive: true});
   window.addEventListener("resize", sync);
   sync();
+})();
+/* 单击「日程卡片」回顶部，双击到底部（大标题 + 顶部固定小栏联动，2026-11-28）。
+   · 250ms 判定窗：避免双击到底部时画面先往上窜、或在离顶部较近时第 1 下把小栏滚走导致第 2 下戳空；
+   · 顶部大标题（.brand h1）还挂着调手感面板「连点 5 下」暗门：第 2 下后同样等一个判定窗，
+     连点到第 3 下即取消滚动，大标题不会滚走，5 连点暗门照常打开；
+   · 顶部小栏（#cbarTitle）没有暗门，第 2 下立刻出发到底部，并忽略 350ms 内多余连点防止误回顶。 */
+(function(){
+  var TAP_GAP = 250, COOL_MS = 350;
+  var timer = 0, taps = 0, src = null, coolUntil = 0;
+  var brandTitle = document.getElementById("brandTitle");
+  var cbarTitle = document.getElementById("cbarTitle");
+
+  function maxScrollY(){
+    var doc = document.documentElement, body = document.body;
+    var sh = Math.max(doc ? doc.scrollHeight : 0, body ? body.scrollHeight : 0);
+    var vh = window.innerHeight || (doc ? doc.clientHeight : 0);
+    return Math.max(0, sh - vh);
+  }
+  function scrollEdge(toBottom){
+    if(!menu.hidden) closeMenu();
+    if(ptrOverlayOpen()) return;
+    lswClose(false);
+    var maxY = maxScrollY();
+    if(maxY <= 2) return;
+    var cur = window.pageYOffset || window.scrollY || 0;
+    var target = toBottom ? maxY : 0;
+    if(Math.abs(cur - target) <= 2) return;
+    var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try{ window.scrollTo({top: target, behavior: reduce ? "auto" : "smooth"}); }
+    catch(e){ window.scrollTo(0, target); }
+  }
+  function cancel(){ clearTimeout(timer); timer = 0; taps = 0; src = null; }
+
+  function onTitleClick(e){
+    if(e.button && e.button !== 0) return;
+    var el = e.currentTarget, isBrand = (el === brandTitle);
+    var now = Date.now();
+    if(now < coolUntil) return;
+    if(src && src !== el) cancel();
+    src = el;
+    taps++;
+    clearTimeout(timer);
+    if(!isBrand){
+      if(taps >= 2){
+        cancel();
+        coolUntil = now + COOL_MS;
+        scrollEdge(true);
+        return;
+      }
+      timer = setTimeout(function(){ cancel(); scrollEdge(false); }, TAP_GAP);
+    }else{
+      if(taps >= 3){
+        timer = setTimeout(cancel, 600);
+        return;
+      }
+      var n = taps;
+      timer = setTimeout(function(){ cancel(); scrollEdge(n >= 2); }, TAP_GAP);
+    }
+  }
+
+  if(brandTitle) brandTitle.addEventListener("click", onTitleClick);
+  if(cbarTitle) cbarTitle.addEventListener("click", onTitleClick);
 })();
 menuMask.addEventListener("click", closeMenu);
 
@@ -6040,7 +6123,7 @@ var pressTP = TunePanel({
 var PRESS_CFG = pressTP.values();
 var PRESS_TIERS = [
   {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button, .cm-opt, .cm-cancel, .title-read", flat: true},
-  {sel: ".g-main", flat: true},
+  {sel: ".g-main, .cbar-t, .brand-t", flat: true},
   {sel: ".card, .row, .sc-card", card: true, k: 1},
   {sel: ".g-empty, .od-bar", card: true, k: .75},     /* 整块但不是内容卡片：缩得比卡片少一点（按卡片缩的幅度乘 0.75） */
   {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button, button, .modes label, select.sort", glow: true}
