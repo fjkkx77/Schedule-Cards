@@ -243,10 +243,65 @@ button{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:tran
 .fv-btn{padding:0 8px 0 7px;gap:3px}
 .xa-btn.xa-compact{width:44px;padding:0;justify-content:center}
 .xa-btn.xa-compact .xa-t{display:none}
-select.sort{
-  min-height:44px;max-width:100%;
-  border:0;border-radius:12px;background:var(--surface);color:var(--text-2);
-  box-shadow:var(--shadow-sm);padding:0 10px;font-size:14px;font-weight:600;
+/* 排序按钮 + 自定义圆角图标浮层（2026-11-28，替换原生 <select>；用户从三套对比图选的「方案 B」） */
+.sort-btn{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;
+  min-height:44px;max-width:100%;padding:0 10px 0 12px;border:0;border-radius:12px;
+  background:var(--surface);color:var(--text-2);box-shadow:var(--shadow-sm);
+  font-size:14px;font-weight:600;white-space:nowrap;
+  transition:box-shadow .18s ease,color .18s ease;
+}
+.sort-btn .sort-chev{
+  flex:0 0 auto;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.3;
+  stroke-linecap:round;stroke-linejoin:round;opacity:.75;
+  transition:transform .2s cubic-bezier(.2,.9,.3,1);
+}
+.sort-btn[aria-expanded="true"]{
+  color:var(--lsw-pin-fg);
+  box-shadow:0 0 0 2px color-mix(in srgb,#2f86f6 28%,transparent),var(--shadow-sm);
+}
+@supports not (color:color-mix(in srgb,red,blue)){
+  .sort-btn[aria-expanded="true"]{box-shadow:0 0 0 2px rgba(47,134,246,.28),var(--shadow-sm)}
+}
+.sort-btn[aria-expanded="true"] .sort-chev{transform:rotate(180deg);opacity:1}
+@media (hover:hover){ .sort-btn:hover{color:var(--text)} }
+.sort-btn:focus-visible{outline:2px solid #2f86f6;outline-offset:2px}
+.sort-menu{
+  position:absolute;z-index:41;width:min(228px,calc(100vw - 24px));padding:6px;
+  background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:var(--text-3) transparent;
+  opacity:0;pointer-events:none;transform:translateY(-6px) scale(.96);transform-origin:var(--sm-ox,90%) var(--sm-oy,0%);
+  transition:opacity .16s ease,transform .18s cubic-bezier(.2,.9,.3,1);
+}
+.sort-menu.sm-up{transform:translateY(6px) scale(.96)}
+.sort-menu.is-open{opacity:1;pointer-events:auto;transform:none}
+.sort-menu button{
+  display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:7px 10px;
+  border:0;border-radius:10px;background:transparent;color:var(--text);text-align:left;
+  transition:background-color .2s ease;
+}
+.sort-menu button:active,.sort-menu button.is-press{background:var(--press-bg);transition:none}
+@media (hover:hover){ .sort-menu button:hover{background:var(--surface-2)} }
+.sort-menu button.is-sel,.sort-menu button.is-sel:hover{background:var(--lsw-pin-bg);color:var(--lsw-pin-fg)}
+.sort-menu button:focus-visible{outline:2px solid var(--lsw-pin-fg);outline-offset:-2px}
+.sort-menu .sm-ic{
+  flex:0 0 auto;width:18px;height:18px;display:flex;align-items:center;justify-content:center;color:var(--text-3);
+}
+.sort-menu button.is-sel .sm-ic{color:var(--lsw-pin-fg)}
+.sort-menu .sm-ic svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sort-menu .sm-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.sort-menu .sm-name{font-size:14.5px;font-weight:700;line-height:1.25}
+.sort-menu .sm-sub{font-size:11.5px;font-weight:500;line-height:1.35;color:var(--text-3);margin-top:1px}
+.sort-menu button.is-sel .sm-sub{color:var(--lsw-pin-fg);opacity:.82}
+.sort-menu .sm-chk{
+  flex:0 0 auto;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.5;
+  stroke-linecap:round;stroke-linejoin:round;opacity:0;
+}
+.sort-menu button.is-sel .sm-chk{opacity:1}
+@media (prefers-reduced-motion:reduce){
+  .sort-btn,.sort-btn .sort-chev,.sort-menu,.sort-menu.sm-up{transition:opacity .1s ease;transform:none}
+  .sort-btn[aria-expanded="true"] .sort-chev{transform:rotate(180deg)}
 }
 
 /* ============ 卡片视图 ============ */
@@ -1487,13 +1542,10 @@ body.sel-mode .row .row-main{padding-left:48px}
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.4V18l-3.6 2v-7.6z"/></svg>
         <span class="xa-t">筛选</span>
       </button>
-      <select class="sort" id="sortSel" aria-label="排序方式">
-        <option value="manual">自定义顺序</option>
-        <option value="days">按天数临近</option>
-        <option value="date">按日期先后</option>
-        <option value="created">按创建时间</option>
-        <option value="updated">按最近修改</option>
-      </select>
+      <button type="button" class="sort-btn" id="sortSel" value="manual" aria-haspopup="listbox" aria-expanded="false" aria-controls="sortMenu" aria-label="排序方式：自定义顺序">
+        <span class="sort-lbl" id="sortLbl">自定义顺序</span>
+        <svg class="sort-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
     </div>
   </div>
 
@@ -1577,6 +1629,10 @@ body.sel-mode .row .row-main{padding-left:48px}
   <button id="mClear" class="danger">清空全部日程</button>
 </div>
 <input type="file" id="fileInput" accept="application/json,.json" hidden>
+
+<!-- 排序方式菜单（2026-11-28，替换原生 <select>） -->
+<div class="menu-mask" id="sortMask" hidden></div>
+<div class="sort-menu" id="sortMenu" role="listbox" aria-label="排序方式" hidden></div>
 
 <!-- 分组管理：⋯ 菜单 + 重命名/删除弹窗 -->
 <div class="menu-mask" id="gmMask" hidden></div>
@@ -2854,6 +2910,7 @@ function render(){
   /* 搜索层开着时数据变了（同步下来新东西）：结果跟着刷新。出错只停搜索自己 */
   if(srOpen) try{ srRender(); }catch(e){}
   if(gmAnchor && !gmAnchor.isConnected) closeGroupMenu();
+  if(sortOpen && (odView || arView || fvView || scView || selMode)) closeSortMenu();
 }
 function renderNow(){
   var t = today();
@@ -3679,9 +3736,149 @@ viewCard.addEventListener("click", function(){ setView("card"); });
 viewList.addEventListener("click", function(){ setView("list"); });
 
 var sortSel = document.getElementById("sortSel");
-sortSel.addEventListener("change", function(){
-  state.sort = sortSel.value; save(); render();
+var sortLbl = document.getElementById("sortLbl");
+var sortMask = document.getElementById("sortMask");
+var sortMenu = document.getElementById("sortMenu");
+var sortOpen = false, sortAnimSeq = 0, sortHideTimer = 0;
+var SORT_OPTS = [
+  {v:"manual",  t:"自定义顺序", sub:"长按卡片或分组可拖动",
+   ico:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><circle cx="10" cy="17" r="1.5" fill="currentColor"/></svg>'},
+  {v:"days",    t:"按天数临近", sub:"越快到期越靠前",
+   ico:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9.5 2.5h5"/></svg>'},
+  {v:"date",    t:"按日期先后", sub:"",
+   ico:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>'},
+  {v:"created", t:"按创建时间", sub:"",
+   ico:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'},
+  {v:"updated", t:"按最近修改", sub:"",
+   ico:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>'}
+];
+var SORT_CHK = '<svg class="sm-chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>';
+function sortMeta(v){
+  for(var i = 0; i < SORT_OPTS.length; i++){ if(SORT_OPTS[i].v === v) return SORT_OPTS[i]; }
+  return SORT_OPTS[0];
+}
+function syncSortUI(){
+  var m = sortMeta(state.sort);
+  state.sort = m.v;
+  sortSel.value = m.v;
+  sortLbl.textContent = m.t;
+  sortSel.setAttribute("aria-label", "排序方式：" + m.t);
+  var bs = sortMenu.querySelectorAll("button[data-val]");
+  for(var i = 0; i < bs.length; i++){
+    var on = bs[i].getAttribute("data-val") === m.v;
+    bs[i].classList.toggle("is-sel", on);
+    bs[i].setAttribute("aria-selected", on ? "true" : "false");
+  }
+}
+function buildSortMenu(){
+  if(sortMenu.childElementCount) return;
+  SORT_OPTS.forEach(function(o){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "option");
+    b.setAttribute("data-val", o.v);
+    b.innerHTML = '<span class="sm-ic">' + o.ico + '</span><span class="sm-txt"><span class="sm-name"></span>' +
+      (o.sub ? '<span class="sm-sub"></span>' : '') + '</span>' + SORT_CHK;
+    b.querySelector(".sm-name").textContent = o.t;
+    if(o.sub) b.querySelector(".sm-sub").textContent = o.sub;
+    b.addEventListener("click", function(e){
+      var kb = (e.detail === 0);
+      var changed = (state.sort !== o.v);
+      state.sort = o.v;
+      syncSortUI();
+      closeSortMenu(kb);
+      if(changed){ save(); render(); }
+    });
+    sortMenu.appendChild(b);
+  });
+  syncSortUI();
+}
+function positionSortMenu(){
+  if(!sortOpen || sortMenu.hidden) return;
+  var r = sortSel.getBoundingClientRect();
+  if(!r.width && !r.height){ closeSortMenu(); return; }
+  /* 按钮按下会缩放，定位取未缩放的真实边缘 */
+  var anchorRight = r.left + (r.width + sortSel.offsetWidth) / 2;
+  var anchorTop = r.top + (r.height - sortSel.offsetHeight) / 2;
+  var anchorBottom = anchorTop + sortSel.offsetHeight;
+  var vv = window.visualViewport, gap = 6, edge = 12;
+  var bar = document.getElementById("cbar");
+  var top = (vv ? vv.offsetTop : 0) + edge;
+  var bottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - edge;
+  if(bar.classList.contains("on")) top = Math.max(top, bar.offsetHeight + gap);
+  var below = Math.max(0, bottom - anchorBottom - gap);
+  var above = Math.max(0, anchorTop - gap - top);
+  sortMenu.style.maxHeight = "none";
+  var opensUp = sortMenu.offsetHeight > below && above > below;
+  sortMenu.classList.toggle("sm-up", opensUp);
+  sortMenu.style.maxHeight = Math.floor(opensUp ? above : below) + "px";
+  var width = sortMenu.offsetWidth;
+  var x = Math.max(edge, Math.min(anchorRight - width, document.documentElement.clientWidth - width - edge));
+  var y = opensUp ? anchorTop - gap - sortMenu.offsetHeight : anchorBottom + gap;
+  sortMenu.style.setProperty("--sm-ox", Math.max(12, Math.min(width - 12, Math.round(anchorRight - x - sortSel.offsetWidth / 2))) + "px");
+  sortMenu.style.setProperty("--sm-oy", opensUp ? "100%" : "0%");
+  sortMenu.style.left = Math.round(x + window.scrollX) + "px";
+  sortMenu.style.top = Math.round(y + window.scrollY) + "px";
+}
+function openSortMenu(fromKeyboard){
+  buildSortMenu();
+  syncSortUI();
+  clearTimeout(sortHideTimer);
+  sortAnimSeq++;
+  if(!menu.hidden) closeMenu();
+  if(!gmMenu.hidden) closeGroupMenu();
+  lswClose(false);
+  sortOpen = true;
+  sortSel.setAttribute("aria-expanded", "true");
+  sortMask.hidden = false;
+  sortMenu.hidden = false;
+  sortMenu.classList.remove("is-open");
+  sortMenu.scrollTop = 0;
+  positionSortMenu();
+  void sortMenu.offsetWidth;
+  sortMenu.classList.add("is-open");
+  if(fromKeyboard){
+    var cur = sortMenu.querySelector("button.is-sel") || sortMenu.querySelector("button");
+    if(cur) try{ cur.focus({preventScroll:true}); }catch(_){}
+  }
+}
+function closeSortMenu(restoreFocus){
+  if(!sortOpen && sortMenu.hidden) return;
+  sortOpen = false;
+  sortSel.setAttribute("aria-expanded", "false");
+  sortMask.hidden = true;
+  sortMenu.classList.remove("is-open");
+  var seq = ++sortAnimSeq;
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  clearTimeout(sortHideTimer);
+  if(restoreFocus === true && sortSel.isConnected) try{ sortSel.focus({preventScroll:true}); }catch(_){}
+  if(reduce){ sortMenu.hidden = true; return; }
+  sortHideTimer = setTimeout(function(){ if(sortAnimSeq === seq) sortMenu.hidden = true; }, 190);
+}
+sortSel.addEventListener("click", function(e){
+  e.stopPropagation();
+  if(sortOpen) closeSortMenu(e.detail === 0);
+  else openSortMenu(e.detail === 0);
 });
+sortSel.addEventListener("keydown", function(e){
+  if(e.key === "ArrowDown" || e.key === "ArrowUp"){ e.preventDefault(); if(!sortOpen) openSortMenu(true); }
+});
+sortMenu.addEventListener("keydown", function(e){
+  var bs = [].slice.call(sortMenu.querySelectorAll("button[data-val]"));
+  if(!bs.length) return;
+  var i = bs.indexOf(document.activeElement);
+  if(e.key === "ArrowDown"){ e.preventDefault(); bs[(i + 1) % bs.length].focus({preventScroll:true}); }
+  else if(e.key === "ArrowUp"){ e.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus({preventScroll:true}); }
+  else if(e.key === "Home"){ e.preventDefault(); bs[0].focus({preventScroll:true}); }
+  else if(e.key === "End"){ e.preventDefault(); bs[bs.length - 1].focus({preventScroll:true}); }
+  else if(e.key === "Tab"){ closeSortMenu(); }
+});
+sortMask.addEventListener("click", function(){ closeSortMenu(); });
+sortMenu.addEventListener("focusout", function(e){
+  if(sortOpen && e.relatedTarget && !sortMenu.contains(e.relatedTarget) && e.relatedTarget !== sortSel) closeSortMenu();
+});
+window.addEventListener("resize", positionSortMenu);
+if(window.visualViewport) visualViewport.addEventListener("resize", positionSortMenu);
 
 function applyTheme(){
   var root = document.documentElement;
@@ -4281,7 +4478,7 @@ var cmLastPtr = "";
 document.addEventListener("pointerdown", function(e){ cmLastPtr = e.pointerType || ""; }, true);
 function cmBlocked(){
   if(titleReader.open) return true;
-  return dragOn || lswActive() || srOpen || selMode || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden ||
+  return dragOn || lswActive() || srOpen || selMode || sortOpen || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden ||
          !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || !mvMask.hidden || !cmMask.hidden ||
          (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden);
 }
@@ -5213,6 +5410,7 @@ document.addEventListener("keydown", function(e){
     if(scCfMask && !scCfMask.hidden){ scCfClose(); return; }   /* 短期倒计时的两层也认 Esc */
     if(scMask && !scMask.hidden){ scCloseAdd(); return; }
     if(!gmMenu.hidden){ closeGroupMenu(true); return; }
+    if(sortOpen){ closeSortMenu(true); return; }
     if(!gpMask.hidden){ closeGroupSheet(); return; }
     if(!dpMask.hidden){ dpClose(); return; }
     if(!mvMask.hidden){ mvClose(); return; }
@@ -5933,7 +6131,7 @@ document.addEventListener("pointerdown", function(e){
   if(!dragEnabled() || dragOn) return;
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的长按不起拖动 */
   if(e.pointerType === "mouse" && e.button !== 0) return;
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden || !askMask.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !cfMask.hidden || !askMask.hidden || sortOpen) return;
   if(titleReader.open || srOpen || !mvMask.hidden || !cmMask.hidden || e.target.closest(".title-read")) return;
   if(lswOpen) return;       /* 有卡片正滑开着：这一下是去收回它/点按钮的，不起拖拽 */
   var scope = dragScope(e.target);
@@ -6122,11 +6320,11 @@ var pressTP = TunePanel({
 });
 var PRESS_CFG = pressTP.values();
 var PRESS_TIERS = [
-  {sel: ".menu button, .menu label, #gmMenu button, .dp-menu button, .cm-opt, .cm-cancel, .title-read", flat: true},
+  {sel: ".menu button, .menu label, #gmMenu button, #sortMenu button, .dp-menu button, .cm-opt, .cm-cancel, .title-read", flat: true},
   {sel: ".g-main, .cbar-t, .brand-t", flat: true},
   {sel: ".card, .row, .sc-card", card: true, k: 1},
   {sel: ".g-empty, .od-bar", card: true, k: .75},     /* 整块但不是内容卡片：缩得比卡片少一点（按卡片缩的幅度乘 0.75） */
-  {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button, button, .modes label, select.sort", glow: true}
+  {sel: ".icon-btn, .fab, .g-more, .g-chev, .colors label, .dp-days button, button, .modes label, .sort-btn", glow: true}
 ];
 var PRESS_ALL = PRESS_TIERS.map(function(t){ return t.sel; }).join(", ");
 var PRESS_SLOP = 10;
@@ -6436,7 +6634,7 @@ document.addEventListener("touchstart", function(e){
   lsw = null;
   if(e.touches.length !== 1 || dragOn) return;
   if(TunePanel.owns(e.target)) return;      /* 调手感面板里的触摸不起左滑 */
-  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden) return;
+  if(!mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || sortOpen) return;
   if(titleReader.open || srOpen || selMode || !mvMask.hidden || !cmMask.hidden) return;
   var t = e.target;
   if(lswOpen && t.closest(".lsw-acts")) return;              /* 点的是露出来的按钮，交给它的 click */
@@ -6699,7 +6897,7 @@ function ptrBlocked(){
 }
 /* 有浮层 / 正在拖 / 批量模式：这时候也不许因为「有新版本」把页面重新加载掉（填了一半的表单会丢） */
 function ptrOverlayOpen(){
-  return titleReader.open || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || srOpen || selMode || !mvMask.hidden || !cmMask.hidden;
+  return titleReader.open || dragOn || lswActive() || (scMask && !scMask.hidden) || (scCfMask && !scCfMask.hidden) || (scSwipe && scSwipe.active()) || !mask.hidden || !syncMask.hidden || !menu.hidden || !dpMask.hidden || !gpMask.hidden || !gmMenu.hidden || !cfMask.hidden || !askMask.hidden || sortOpen || srOpen || selMode || !mvMask.hidden || !cmMask.hidden;
 }
 function ptrPaint(d){
   ptrDist = d;
@@ -8172,7 +8370,7 @@ loadSync();
 applyTheme();
 viewCard.setAttribute("aria-pressed", state.view === "card" ? "true" : "false");
 viewList.setAttribute("aria-pressed", state.view === "list" ? "true" : "false");
-sortSel.value = state.sort;
+syncSortUI();
 try{ odView = !!(history.state && history.state.od); }catch(e){}   /* 在「只看已过期」里刷新，还留在里面 */
 try{ scView = !!(history.state && history.state.sc); }catch(e){}   /* 短期倒计时同理 */
 try{ arView = !!(history.state && history.state.ar); }catch(e){}   /* 归档区同理 */
